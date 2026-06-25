@@ -16,10 +16,17 @@ A production-ready C# .NET 8 boilerplate for multi-agent AI orchestration. It pr
 - Railway + Vercel deployment-ready
 
 ### Who This Is For
-- .NET engineers building AI-powered products
-- AI engineers needing a production-grade agent framework that isn't Python
-- Engineering teams already on ASP.NET Core who want multi-agent capabilities without adopting a second language
+- .NET developers who want to build AI agents without switching to Python
+- Enterprise teams adopting AI who are already on .NET stacks
+- AI engineers who want a reference implementation of multi-agent CQRS patterns
 - Portfolio showcase for AI Engineer roles in the .NET space
+
+### Success Criteria
+- Developer can clone, configure API key, and run a multi-agent task in under 5 minutes
+- All three specialized agents (Research, Code, Data) execute in parallel
+- Real-time streaming shows agent progress in the React UI as it happens
+- Full session replay from database — every tool call logged with cost
+- GitHub stars and forks as portfolio visibility metric
 
 ### Key Differentiator
 First open-source, production-grade, multi-agent CQRS framework for .NET 8. Not a toy. Not a proof of concept. Deployable, observable, and extensible.
@@ -28,27 +35,45 @@ First open-source, production-grade, multi-agent CQRS framework for .NET 8. Not 
 
 ## 2. System Architecture
 
-### High-Level Flow
+### High-Level Architecture
 ```
-User Task (HTTP POST)
-  → ASP.NET Core API
-  → MediatR → RunOrchestratorCommand
-  → OrchestratorAgent (Claude claude-sonnet-4-6)
-    → Decompose task into SubTasks
-    → Dispatch in parallel:
-        ResearchAgent  → WebSearchTool
-        CodeAgent      → FileSystemTool
-        DataAgent      → DatabaseTool
-    → Aggregate sub-agent results
-  → Stream via SSE
-  → React UI (AgentCard per agent, live token stream)
+React Frontend (Vercel)
+        ↓ HTTP + SSE
+ASP.NET Core API (Railway)
+        ↓ CQRS / MediatR
+Orchestrator Agent
+    ↓           ↓           ↓
+Research     Code        Data
+Agent        Agent       Agent
+    ↓           ↓           ↓
+         MCP Tool Layer
+    WebSearch  FileSystem  Database
+        ↓
+PostgreSQL (Railway)
 ```
 
-### Components
+### Agent Communication Pattern
+```
+User Task
+    ↓
+RunOrchestratorCommand → MediatR → OrchestratorHandler
+    ↓
+Orchestrator analyzes task → creates SubTaskPlan
+    ↓ (parallel execution)
+ResearchAgent.ExecuteAsync()  →  WebSearch MCP Tool
+CodeAgent.ExecuteAsync()      →  FileSystem MCP Tool
+DataAgent.ExecuteAsync()      →  Database MCP Tool
+    ↓ (aggregation)
+Orchestrator.AggregateResults()
+    ↓
+Stream final response via SSE → React UI
+```
+
+### Tech Stack
 | Layer | Technology | Responsibility |
 |---|---|---|
 | API | ASP.NET Core 8 | HTTP endpoints, SSE streaming, request validation |
-| Application | MediatR + CQRS | Commands, queries, handlers, DTOs, pipeline behaviors |
+| Application | MediatR 12 + CQRS | Commands, queries, handlers, DTOs, pipeline behaviors |
 | Domain | C# class library | Entities, interfaces, enums, domain exceptions |
 | Infrastructure | EF Core + Anthropic SDK | Agent implementations, MCP tools, DB repositories |
 | Frontend | React + TailwindCSS | Playground UI, SSE consumer, AgentCard components |
@@ -71,14 +96,14 @@ Each agent is a Claude claude-sonnet-4-6 call with a distinct system prompt and 
 
 ## 3. Database Schema
 
-All tables use `uuid` primary keys, `timestamptz` timestamps, and soft-delete via `deleted_at` where appropriate.
+All tables use `uuid` primary keys and `timestamptz` timestamps for correct timezone handling.
 
 ### agent_sessions
 Represents one user-initiated orchestration run.
 ```sql
 CREATE TABLE agent_sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_task       TEXT NOT NULL,
+    task            TEXT NOT NULL,
     status          VARCHAR(50) NOT NULL DEFAULT 'pending',
     -- pending | running | completed | failed
     result          TEXT,
@@ -95,18 +120,18 @@ CREATE TABLE agent_sessions (
 One row per specialist agent invocation within a session.
 ```sql
 CREATE TABLE sub_tasks (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id      UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
-    agent_type      VARCHAR(50) NOT NULL,
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id       UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    agent_type       VARCHAR(50) NOT NULL,
     -- orchestrator | research | code | data
     task_description TEXT NOT NULL,
-    status          VARCHAR(50) NOT NULL DEFAULT 'pending',
+    status           VARCHAR(50) NOT NULL DEFAULT 'pending',
     -- pending | running | completed | failed
-    result          TEXT,
-    error_message   TEXT,
-    started_at      TIMESTAMPTZ,
-    completed_at    TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    result           TEXT,
+    error_message    TEXT,
+    started_at       TIMESTAMPTZ,
+    completed_at     TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_sub_tasks_session_id ON sub_tasks(session_id);
 ```
@@ -115,16 +140,16 @@ CREATE INDEX idx_sub_tasks_session_id ON sub_tasks(session_id);
 Audit log for every MCP tool invocation.
 ```sql
 CREATE TABLE tool_calls (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sub_task_id     UUID NOT NULL REFERENCES sub_tasks(id) ON DELETE CASCADE,
-    tool_name       VARCHAR(100) NOT NULL,
-    input_json      JSONB NOT NULL,
-    output_json     JSONB,
-    status          VARCHAR(50) NOT NULL DEFAULT 'pending',
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sub_task_id  UUID NOT NULL REFERENCES sub_tasks(id) ON DELETE CASCADE,
+    tool_name    VARCHAR(100) NOT NULL,
+    input_json   JSONB NOT NULL,
+    output_json  JSONB,
+    status       VARCHAR(50) NOT NULL DEFAULT 'pending',
     -- pending | success | error
-    error_message   TEXT,
-    duration_ms     INTEGER,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    error_message TEXT,
+    duration_ms  INTEGER,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_tool_calls_sub_task_id ON tool_calls(sub_task_id);
 ```
@@ -133,14 +158,16 @@ CREATE INDEX idx_tool_calls_sub_task_id ON tool_calls(sub_task_id);
 Full message history for every agent conversation (system + user + assistant turns).
 ```sql
 CREATE TABLE agent_messages (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sub_task_id     UUID NOT NULL REFERENCES sub_tasks(id) ON DELETE CASCADE,
-    role            VARCHAR(20) NOT NULL,
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id  UUID REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    sub_task_id UUID REFERENCES sub_tasks(id) ON DELETE SET NULL,
+    role        VARCHAR(20) NOT NULL,
     -- system | user | assistant | tool_result
-    content         TEXT NOT NULL,
-    token_count     INTEGER,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    content     TEXT NOT NULL,
+    token_count INTEGER,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_agent_messages_session_id ON agent_messages(session_id);
 CREATE INDEX idx_agent_messages_sub_task_id ON agent_messages(sub_task_id);
 ```
 
@@ -148,16 +175,17 @@ CREATE INDEX idx_agent_messages_sub_task_id ON agent_messages(sub_task_id);
 Token and cost breakdown per sub-task for observability.
 ```sql
 CREATE TABLE session_costs (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
-    sub_task_id         UUID REFERENCES sub_tasks(id) ON DELETE SET NULL,
-    input_tokens        INTEGER NOT NULL DEFAULT 0,
-    output_tokens       INTEGER NOT NULL DEFAULT 0,
-    cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
-    cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
-    cost_usd            DECIMAL(10, 6) NOT NULL DEFAULT 0,
-    model               VARCHAR(100) NOT NULL,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id         UUID NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    sub_task_id        UUID REFERENCES sub_tasks(id) ON DELETE SET NULL,
+    agent_type         VARCHAR(100),
+    input_tokens       INTEGER NOT NULL DEFAULT 0,
+    output_tokens      INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd           DECIMAL(10, 6) NOT NULL DEFAULT 0,
+    model_used         VARCHAR(100) NOT NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_session_costs_session_id ON session_costs(session_id);
 ```
@@ -166,14 +194,13 @@ CREATE INDEX idx_session_costs_session_id ON session_costs(session_id);
 Registry of available MCP tools and their metadata.
 ```sql
 CREATE TABLE mcp_tools (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name            VARCHAR(100) NOT NULL UNIQUE,
-    description     TEXT NOT NULL,
-    input_schema    JSONB NOT NULL,
-    -- JSON Schema for tool input validation
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         VARCHAR(100) NOT NULL UNIQUE,
+    description  TEXT,
+    input_schema JSONB,
+    is_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -189,6 +216,10 @@ orchestai/
 ├── .gitignore
 ├── docker-compose.yml
 ├── docker-compose.override.yml        # local dev secrets
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 │
 ├── backend/
 │   ├── OrchestAI.sln
@@ -221,11 +252,12 @@ orchestai/
 │   │   │   │   ├── GetSession/
 │   │   │   │   │   ├── GetSessionQuery.cs
 │   │   │   │   │   └── GetSessionQueryHandler.cs
-│   │   │   │   └── ListSessions/
-│   │   │   │       ├── ListSessionsQuery.cs
-│   │   │   │       └── ListSessionsQueryHandler.cs
+│   │   │   │   └── GetAllSessions/
+│   │   │   │       ├── GetAllSessionsQuery.cs
+│   │   │   │       └── GetAllSessionsQueryHandler.cs
 │   │   │   ├── DTOs/
-│   │   │   │   ├── AgentSessionDto.cs
+│   │   │   │   ├── SessionDetailDto.cs
+│   │   │   │   ├── SessionSummaryDto.cs
 │   │   │   │   ├── SubTaskDto.cs
 │   │   │   │   ├── ToolCallDto.cs
 │   │   │   │   └── SessionCostDto.cs
@@ -233,7 +265,7 @@ orchestai/
 │   │   │   │   ├── LoggingBehavior.cs
 │   │   │   │   └── ValidationBehavior.cs
 │   │   │   └── Common/
-│   │   │       └── IStreamingNotificationHandler.cs
+│   │   │       └── PagedResult.cs
 │   │   │
 │   │   ├── OrchestAI.Domain/
 │   │   │   ├── OrchestAI.Domain.csproj
@@ -250,10 +282,11 @@ orchestai/
 │   │   │   │   └── SubTaskStatus.cs
 │   │   │   ├── Interfaces/
 │   │   │   │   ├── IAgent.cs
+│   │   │   │   ├── IOrchestrator.cs
 │   │   │   │   ├── IMcpTool.cs
+│   │   │   │   ├── IMcpToolRegistry.cs
 │   │   │   │   ├── IAgentSessionRepository.cs
-│   │   │   │   ├── ISubTaskRepository.cs
-│   │   │   │   └── IMcpToolRegistry.cs
+│   │   │   │   └── ISubTaskRepository.cs
 │   │   │   └── Exceptions/
 │   │   │       ├── OrchestAIException.cs
 │   │   │       ├── AgentExecutionException.cs
@@ -262,6 +295,9 @@ orchestai/
 │   │   │
 │   │   └── OrchestAI.Infrastructure/
 │   │       ├── OrchestAI.Infrastructure.csproj
+│   │       ├── AI/
+│   │       │   ├── AnthropicService.cs
+│   │       │   └── CostCalculator.cs
 │   │       ├── Agents/
 │   │       │   ├── BaseAgent.cs
 │   │       │   ├── OrchestratorAgent.cs
@@ -270,10 +306,11 @@ orchestai/
 │   │       │   └── DataAgent.cs
 │   │       ├── Mcp/
 │   │       │   ├── McpToolRegistry.cs
-│   │       │   ├── Tools/
-│   │       │   │   ├── WebSearchTool.cs
-│   │       │   │   ├── FileSystemTool.cs
-│   │       │   │   └── DatabaseTool.cs
+│   │       │   ├── McpExecutor.cs
+│   │       │   └── Tools/
+│   │       │       ├── WebSearchTool.cs
+│   │       │       ├── FileSystemTool.cs
+│   │       │       └── DatabaseTool.cs
 │   │       ├── Persistence/
 │   │       │   ├── OrchestAIDbContext.cs
 │   │       │   ├── Configurations/
@@ -285,22 +322,24 @@ orchestai/
 │   │       │   │   └── McpToolDefinitionConfiguration.cs
 │   │       │   ├── Repositories/
 │   │       │   │   ├── AgentSessionRepository.cs
-│   │       │   │   └── SubTaskRepository.cs
+│   │       │   │   ├── SubTaskRepository.cs
+│   │       │   │   └── ToolCallRepository.cs
 │   │       │   └── Migrations/
+│   │       ├── Streaming/
+│   │       │   └── SseStreamService.cs
 │   │       └── Extensions/
 │   │           └── InfrastructureServiceExtensions.cs
 │   │
 │   └── tests/
-│       ├── OrchestAI.Application.Tests/
-│       │   ├── OrchestAI.Application.Tests.csproj
-│       │   ├── Commands/
-│       │   │   └── RunOrchestratorCommandHandlerTests.cs
-│       │   └── Queries/
-│       │       └── GetSessionQueryHandlerTests.cs
-│       └── OrchestAI.Infrastructure.Tests/
-│           ├── OrchestAI.Infrastructure.Tests.csproj
-│           └── Agents/
-│               └── OrchestratorAgentTests.cs
+│       └── OrchestAI.Tests/
+│           ├── OrchestAI.Tests.csproj
+│           ├── Unit/
+│           │   ├── OrchestratorAgentTests.cs
+│           │   ├── RunOrchestratorCommandHandlerTests.cs
+│           │   ├── GetSessionQueryHandlerTests.cs
+│           │   └── McpToolTests.cs
+│           └── Integration/
+│               └── AgentSessionTests.cs
 │
 └── frontend/
     ├── package.json
@@ -308,28 +347,29 @@ orchestai/
     ├── tailwind.config.js
     ├── vite.config.ts
     ├── index.html
+    ├── vercel.json
     └── src/
         ├── main.tsx
         ├── App.tsx
-        ├── api/
-        │   ├── agentsApi.ts
-        │   └── sessionsApi.ts
+        ├── pages/
+        │   ├── Playground.tsx
+        │   ├── Sessions.tsx
+        │   ├── SessionDetail.tsx
+        │   └── Admin.tsx
         ├── components/
-        │   ├── Playground/
-        │   │   ├── Playground.tsx
-        │   │   └── TaskInput.tsx
-        │   ├── AgentCard/
-        │   │   ├── AgentCard.tsx
-        │   │   └── AgentStatusBadge.tsx
-        │   ├── Stream/
-        │   │   ├── StreamConsumer.tsx
-        │   │   └── StreamEvent.tsx
-        │   └── Sessions/
-        │       ├── SessionList.tsx
-        │       └── SessionDetail.tsx
+        │   ├── TaskInput.tsx
+        │   ├── AgentStatusGrid.tsx
+        │   ├── AgentCard.tsx
+        │   ├── AgentStatusBadge.tsx
+        │   ├── ToolCallLog.tsx
+        │   ├── StreamOutput.tsx
+        │   └── SessionCard.tsx
         ├── hooks/
         │   ├── useAgentStream.ts
         │   └── useSessions.ts
+        ├── services/
+        │   ├── api.ts
+        │   └── agentService.ts
         └── types/
             ├── session.ts
             └── stream.ts
@@ -340,71 +380,92 @@ orchestai/
 ## 5. API Design
 
 ### Base URL
-`/api/v1`
+- Local: `http://localhost:5000/api/v1`
+- Production: `https://orchestai-api.up.railway.app/api/v1`
 
-### Endpoints
+### Error Response Standard
+```json
+{
+  "error": {
+    "code": "SESSION_NOT_FOUND",
+    "message": "Agent session with id xyz does not exist"
+  }
+}
+```
+
+### Agent Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/agents/run` | Submit a task to the orchestrator |
+| GET | `/agents/sessions` | List all sessions (paginated) |
+| GET | `/agents/sessions/{id}` | Get session with full detail |
+| GET | `/agents/sessions/{id}/stream` | SSE stream for live session |
+| DELETE | `/agents/sessions/{id}` | Delete a session |
 
 #### POST /api/v1/agents/run
 Starts an orchestration run. Returns a `sessionId` for SSE subscription.
 ```json
 // Request
 {
-  "task": "Research the latest .NET 8 performance improvements and write a summary with code examples"
+  "task": "Research the latest .NET 8 performance improvements and write a summary with code examples",
+  "config": {
+    "maxParallelAgents": 3,
+    "timeoutSeconds": 120
+  }
 }
 
 // Response 202 Accepted
 {
   "sessionId": "uuid",
-  "streamUrl": "/api/v1/agents/stream/uuid"
+  "status": "running",
+  "streamUrl": "/api/v1/agents/sessions/uuid/stream"
 }
 ```
 
-#### GET /api/v1/agents/stream/{sessionId}
+#### GET /api/v1/agents/sessions/{id}/stream
 SSE endpoint. `Content-Type: text/event-stream`. Streams events until session completes.
 ```
 event: agent_started
-data: {"agentType":"orchestrator","subTaskId":"uuid","timestamp":"..."}
+data: {"agent": "ResearchAgent", "task": "..."}
 
-event: token
-data: {"agentType":"research","subTaskId":"uuid","token":"Breaking "}
-
-event: tool_called
-data: {"agentType":"research","tool":"web_search","input":{"query":"..."}}
+event: tool_call
+data: {"agent": "ResearchAgent", "tool": "WebSearchTool", "input": {...}}
 
 event: tool_result
-data: {"agentType":"research","tool":"web_search","success":true,"durationMs":342}
+data: {"agent": "ResearchAgent", "tool": "WebSearchTool", "output": {...}, "durationMs": 1240}
 
 event: agent_completed
-data: {"agentType":"research","subTaskId":"uuid","result":"...","tokens":1240}
+data: {"agent": "ResearchAgent", "result": "...", "tokens": 1200, "costUsd": 0.012}
 
-event: session_completed
-data: {"sessionId":"uuid","totalTokens":4821,"totalCostUsd":"0.014632"}
+event: orchestrator_result
+data: {"result": "...", "totalCostUsd": 0.035, "durationMs": 8400}
 
-event: session_failed
-data: {"sessionId":"uuid","error":"Agent execution failed: ..."}
+event: error
+data: {"agent": "CodeAgent", "error": "..."}
 ```
 
-#### GET /api/v1/sessions
+#### GET /api/v1/agents/sessions
 Lists sessions, newest first. Supports pagination.
 ```
 Query params: page (default 1), pageSize (default 20, max 100)
 
 Response 200
 {
-  "items": [...AgentSessionDto],
+  "items": [...SessionSummaryDto],
   "totalCount": 142,
   "page": 1,
   "pageSize": 20
 }
 ```
 
-#### GET /api/v1/sessions/{sessionId}
+#### GET /api/v1/agents/sessions/{id}
 Full session detail including sub-tasks, tool calls, and costs.
 ```json
 // Response 200
 {
   "id": "uuid",
-  "userTask": "...",
+  "task": "...",
   "status": "completed",
   "result": "...",
   "totalTokens": 4821,
@@ -427,22 +488,22 @@ Full session detail including sub-tasks, tool calls, and costs.
 }
 ```
 
-#### GET /api/v1/admin/tools
-Lists registered MCP tools and their status.
+#### DELETE /api/v1/agents/sessions/{id}
+Deletes a session and all related sub-tasks, tool calls, and messages (CASCADE).
 ```json
-// Response 200
-[
-  {
-    "name": "web_search",
-    "description": "...",
-    "isActive": true,
-    "inputSchema": {...}
-  }
-]
+// Response 204 No Content
 ```
 
+### Admin Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/admin/usage` | Total sessions, tokens, and cost aggregates |
+| GET | `/admin/tool-calls` | Recent tool calls with latency breakdown |
+| GET | `/admin/agents` | Per-agent usage and cost breakdown |
+| GET | `/admin/health` | API, database, and Anthropic API health check |
+
 #### GET /api/v1/admin/health
-Health check endpoint.
 ```json
 {
   "status": "healthy",
@@ -462,38 +523,59 @@ Health check endpoint.
 ```csharp
 public sealed record RunOrchestratorCommand(
     string Task,
-    string SessionId
+    Guid SessionId,
+    int MaxParallelAgents = 3,
+    int TimeoutSeconds = 120
 ) : IRequest<RunOrchestratorResult>;
 
 public sealed record RunOrchestratorResult(
-    string SessionId,
-    string Status
+    Guid SessionId,
+    string Status,
+    string StreamUrl
 );
 ```
 
 Handler responsibilities:
 1. Persist `AgentSession` with status `pending`
 2. Update status to `running`
-3. Call `OrchestratorAgent.RunAsync(task, sessionId, cancellationToken)`
+3. Call `IOrchestrator.RunAsync(task, sessionId, maxParallelAgents, timeoutSeconds, cancellationToken)`
 4. On success: update status to `completed`, persist `result`
 5. On failure: update status to `failed`, persist `error_message`
-6. Publish SSE completion event
+6. Publish SSE completion event via `ISseStreamService`
+
+```csharp
+public sealed class RunOrchestratorCommandHandler
+    : IRequestHandler<RunOrchestratorCommand, RunOrchestratorResult>
+{
+    private readonly IOrchestrator _orchestrator;
+    private readonly IAgentSessionRepository _sessionRepository;
+    private readonly ISseStreamService _sseStreamService;
+    private readonly ILogger<RunOrchestratorCommandHandler> _logger;
+
+    public async Task<RunOrchestratorResult> Handle(
+        RunOrchestratorCommand request,
+        CancellationToken cancellationToken)
+    {
+        // Create session, fire orchestrator, return session ID and stream URL immediately
+    }
+}
+```
 
 ### Queries
 
 #### GetSessionQuery
 ```csharp
-public sealed record GetSessionQuery(string SessionId) : IRequest<AgentSessionDto?>;
+public sealed record GetSessionQuery(Guid SessionId) : IRequest<SessionDetailDto>;
 ```
 
-Handler: Fetch session + eager-load sub-tasks, tool calls, costs via repository. Map to DTO. Throw `SessionNotFoundException` if not found.
+Handler: Fetch session + eager-load sub-tasks, tool calls, costs via repository. Map to `SessionDetailDto`. Throw `SessionNotFoundException` if not found.
 
-#### ListSessionsQuery
+#### GetAllSessionsQuery
 ```csharp
-public sealed record ListSessionsQuery(
+public sealed record GetAllSessionsQuery(
     int Page = 1,
     int PageSize = 20
-) : IRequest<PagedResult<AgentSessionDto>>;
+) : IRequest<PagedResult<SessionSummaryDto>>;
 ```
 
 ### Pipeline Behaviors (applied via MediatR registration order)
@@ -508,20 +590,15 @@ public sealed record ListSessionsQuery(
 ```csharp
 public interface IAgent
 {
-    AgentType AgentType { get; }
+    AgentType Type { get; }
+    string Description { get; }
+    IReadOnlyList<string> SupportedTools { get; }
 
-    Task<AgentResult> RunAsync(
-        AgentContext context,
+    Task<AgentResult> ExecuteAsync(
+        SubTask subTask,
+        IReadOnlyList<IMcpTool> availableTools,
         CancellationToken cancellationToken = default);
 }
-
-public sealed record AgentContext(
-    string SessionId,
-    string SubTaskId,
-    string Task,
-    IReadOnlyList<string> AvailableTools,
-    Func<StreamEvent, Task> OnStreamEvent
-);
 
 public sealed record AgentResult(
     bool Success,
@@ -533,27 +610,51 @@ public sealed record AgentResult(
 );
 ```
 
+### IOrchestrator Interface
+```csharp
+public interface IOrchestrator
+{
+    Task<OrchestratorResult> RunAsync(
+        string task,
+        Guid sessionId,
+        int maxParallelAgents,
+        int timeoutSeconds,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record OrchestratorResult(
+    bool Success,
+    string? Result,
+    string? ErrorMessage,
+    int TotalInputTokens,
+    int TotalOutputTokens,
+    decimal TotalCostUsd
+);
+```
+
 ### BaseAgent
 Abstract base providing:
-- Anthropic client injection
-- Tool call dispatch loop (agentic loop)
-- Token/cost tracking
+- Anthropic client injection via `AnthropicService`
+- Tool call dispatch loop (agentic loop) via `McpExecutor`
+- Token/cost tracking via `CostCalculator`
 - Structured logging (`ILogger<T>`)
 - Message persistence via `IAgentMessageRepository`
 
 The agentic loop:
-1. Call `client.Messages.CreateAsync(...)` with tools
-2. If `StopReason == "tool_use"`: extract tool call blocks, dispatch each via `IMcpToolRegistry`, append results, loop
+1. Call `AnthropicService.CreateMessageAsync(...)` with tools
+2. If `StopReason == "tool_use"`: extract tool call blocks, dispatch each via `McpExecutor`, append results, loop
 3. If `StopReason == "end_turn"`: extract text, return `AgentResult`
 4. Max iterations guard (default 10) to prevent runaway loops
 
 ### OrchestratorAgent
 **System prompt focus:** Task decomposition, delegation, aggregation.
 ```
-You are an orchestration agent. Your job is to:
-1. Analyze the user's task
-2. Decompose it into specialist sub-tasks
-3. Return a JSON plan: { "subTasks": [{ "agentType": "research|code|data", "task": "..." }] }
+You are an orchestrator. Given a task, analyze it and create a plan.
+Identify which specialized agents are needed:
+- ResearchAgent: for web research, information gathering
+- CodeAgent: for code generation, file operations
+- DataAgent: for data analysis, database queries
+Return a JSON plan with subtasks assigned to agents.
 Do not perform research, coding, or data analysis yourself. Delegate everything.
 ```
 
@@ -561,34 +662,36 @@ Execution flow:
 1. Call Claude to produce a decomposition plan (JSON)
 2. Parse plan into `List<SubTask>`
 3. Persist sub-tasks to DB
-4. Dispatch each sub-task to the appropriate agent in parallel using `Task.WhenAll`
+4. Dispatch each sub-task to the appropriate agent in parallel using `Task.WhenAll` (up to `maxParallelAgents`)
 5. Aggregate results into a final summary (second Claude call)
-6. Return aggregated result
+6. Return aggregated `OrchestratorResult`
 
 ### ResearchAgent
 **System prompt focus:** Web research, source evaluation, concise summarization.
 Tools: `WebSearchTool`
 ```
-You are a research specialist. Use web_search to gather accurate, up-to-date information.
-Cite sources. Summarize findings concisely. Do not fabricate information.
+You are a research specialist. Use web search to gather accurate, up-to-date information
+on the given topic. Synthesize findings into a clear, structured summary with sources.
+Cite sources. Do not fabricate information.
 ```
 
 ### CodeAgent
 **System prompt focus:** Code generation, best practices, file operations.
 Tools: `FileSystemTool`
 ```
-You are a code generation specialist. Write production-quality code.
-Follow language idioms and best practices. Use file operations to read context and write outputs.
-Always include error handling. Never write placeholder or TODO code.
+You are a code specialist. Generate clean, production-quality code.
+Read and write files as needed. Always explain what the code does and why.
+Follow language idioms and best practices. Never write placeholder or TODO code.
 ```
 
 ### DataAgent
 **System prompt focus:** SQL generation, data analysis, pattern identification.
 Tools: `DatabaseTool`
 ```
-You are a data analysis specialist. Query databases to extract insights.
-Write safe, parameterized SQL. Summarize findings with key metrics and patterns.
-Never run destructive queries (DROP, DELETE, TRUNCATE) without explicit instruction.
+You are a data specialist. Query databases, analyze data, identify patterns and insights.
+Present findings clearly with supporting data.
+Write safe, parameterized SQL. Never run destructive queries (DROP, DELETE, TRUNCATE)
+without explicit instruction.
 ```
 
 ---
@@ -601,7 +704,7 @@ public interface IMcpTool
 {
     string Name { get; }
     string Description { get; }
-    JsonElement InputSchema { get; }
+    JsonSchema InputSchema { get; }
 
     Task<McpToolResult> ExecuteAsync(
         JsonElement input,
@@ -610,17 +713,18 @@ public interface IMcpTool
 
 public sealed record McpToolResult(
     bool Success,
-    JsonElement? Output,
-    string? ErrorMessage,
-    int DurationMs
+    JsonElement Output,
+    string? ErrorMessage = null,
+    int DurationMs = 0
 );
 ```
 
-### McpToolRegistry
+### IMcpToolRegistry
 ```csharp
 public interface IMcpToolRegistry
 {
     IReadOnlyList<IMcpTool> GetToolsForAgent(AgentType agentType);
+    IMcpTool? GetTool(string name);
     Task<McpToolResult> ExecuteToolAsync(
         string toolName,
         JsonElement input,
@@ -628,7 +732,10 @@ public interface IMcpToolRegistry
 }
 ```
 
-Registry is registered as a singleton. Tools are registered at startup via DI and keyed by name. Tool-to-agent mapping is defined in configuration.
+Registry is registered as a singleton. Tools are auto-discovered at startup via DI — add a new `IMcpTool` implementation and it's available. Tool-to-agent mapping is defined in configuration.
+
+### McpExecutor
+Wraps the dispatch loop: accepts a tool name and raw `JsonElement` input, delegates to the registry, logs the call to `tool_calls` table via `ToolCallRepository`, and returns the result. Enforces per-tool timeout (`DEFAULT_TOOL_TIMEOUT_SECONDS`).
 
 ### WebSearchTool
 ```
@@ -637,29 +744,36 @@ Description: Search the web for current information
 Input schema: { "query": "string", "maxResults": "integer (default 5)" }
 Output: { "results": [{ "title": "...", "url": "...", "snippet": "..." }] }
 ```
-Implementation: Tavily Search API (or SerpAPI) HTTP client. Respects `maxResults`. Returns structured JSON.
+Implementation: Brave Search API or SerpAPI (configurable via `SEARCH_PROVIDER` env var). Respects `maxResults`. Returns structured JSON.
 
 ### FileSystemTool
 ```
 Name: file_system
 Description: Read and write files in a sandboxed workspace directory
 Input schema: {
-  "operation": "read | write | list",
+  "operation": "read | write | list | create_directory",
   "path": "string (relative to workspace root)",
   "content": "string (required for write)"
 }
 Output: { "content": "..." } | { "files": [...] }
 ```
-Implementation: Sandboxed to a configurable workspace directory (`WORKSPACE_PATH`). Rejects path traversal attempts (any `..` in path).
+Implementation: Sandboxed to a configurable workspace directory (`FILESYSTEM_WORKSPACE`). Rejects path traversal attempts (any `..` in path).
 
 ### DatabaseTool
 ```
 Name: database_query
-Description: Execute a read-only SQL query against the application database
-Input schema: { "query": "string", "parameters": "object (optional)" }
+Description: Query the application database
+Input schema: {
+  "operation": "execute_query | list_tables | describe_table",
+  "query": "string (required for execute_query)",
+  "table": "string (required for describe_table)",
+  "parameters": "object (optional)"
+}
 Output: { "rows": [...], "rowCount": number, "durationMs": number }
+       | { "tables": [...] }
+       | { "columns": [...] }
 ```
-Implementation: EF Core raw SQL with a read-only DB connection. Enforces SELECT-only (rejects anything matching `INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER` patterns after stripping comments).
+Implementation: EF Core raw SQL with a read-only DB connection. `execute_query` enforces SELECT-only (rejects anything matching `INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER` patterns after stripping comments). `list_tables` and `describe_table` use information_schema queries.
 
 ---
 
@@ -676,34 +790,40 @@ Implementation: EF Core raw SQL with a read-only DB connection. Enforces SELECT-
 - `/` — Playground (task input + live agent stream)
 - `/sessions` — Session history list
 - `/sessions/:id` — Session detail with full sub-task breakdown
+- `/admin` — Usage and cost dashboard
 
-### Key Components
-
-#### Playground
+### Playground UI Behavior
 ```
-┌─────────────────────────────────────────────────────────┐
-│  OrchestAI Playground                                   │
-│                                                         │
-│  Task: [Research .NET 8 perf and write examples____]    │
-│                                                         │
-│  [ Run Agents ]                                         │
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ OrchestratorAgent  [running]                     │  │
-│  │ Decomposing task into sub-tasks...               │  │
-│  └──────────────────────────────────────────────────┘  │
-│  ┌─────────────────────┐  ┌────────────────────────┐   │
-│  │ ResearchAgent [run] │  │ CodeAgent      [pend]  │   │
-│  │ Searching: .NET 8   │  │ Waiting for research   │   │
-│  │ perf improvements.. │  │ results...             │   │
-│  └─────────────────────┘  └────────────────────────┘   │
-│                                                         │
-│  Cost: $0.0142  |  Tokens: 4,821                       │
-└─────────────────────────────────────────────────────────┘
+1. User types a task in the input box
+2. Clicks "Run" → POST /agents/run
+3. Session ID returned → SSE connection opens to /agents/sessions/{id}/stream
+4. AgentStatusGrid appears with three agent cards: Research | Code | Data
+   - Each shows: status (waiting/running/done), tool calls, partial result
+5. As SSE events arrive:
+   - Agent card updates to "running" with spinner
+   - ToolCallLog shows tool calls as they execute (tool name, input, output, duration)
+   - Agent card shows "completed" with result when done
+6. Final aggregated result streams in via StreamOutput below agent cards
+7. Session automatically saved — appears in /sessions history
 ```
 
-#### AgentCard
-Props:
+### AgentCard Component
+```
+┌──────────────────────────────────┐
+│ 🔬 Research Agent     ● Running  │
+├──────────────────────────────────┤
+│ Task: Research .NET 8 perf trends│
+│                                  │
+│ Tool Calls:                      │
+│ ✓ WebSearch(".NET 8 perf") — 1.2s│
+│ ✓ WebSearch("System.Threading")  │
+│   — 0.9s                         │
+│ ⟳ WebSearch("Span<T> perf...")   │
+│                                  │
+│ Tokens: 1,240 | $0.012           │
+└──────────────────────────────────┘
+```
+
 ```typescript
 interface AgentCardProps {
   agentType: 'orchestrator' | 'research' | 'code' | 'data';
@@ -711,23 +831,32 @@ interface AgentCardProps {
   streamedContent: string;
   toolCalls: ToolCallEvent[];
   tokens?: number;
+  costUsd?: number;
 }
 ```
 
-#### useAgentStream Hook
+### useAgentStream Hook
 ```typescript
 const useAgentStream = (sessionId: string | null) => {
-  // Creates EventSource for /api/v1/agents/stream/{sessionId}
-  // Parses events by type: agent_started, token, tool_called, tool_result, agent_completed, session_completed, session_failed
+  // Creates EventSource for /api/v1/agents/sessions/{sessionId}/stream
+  // Parses events by type:
+  //   agent_started, tool_call, tool_result, agent_completed,
+  //   orchestrator_result, error
   // Returns: agentStates map, isComplete, error, totalCost
 };
 ```
 
-SSE events update per-agent state slices in a `Map<AgentType, AgentState>`. Each `AgentCard` receives its slice. Token events are appended to the agent's `streamedContent` string for live display.
+SSE events update per-agent state slices in a `Map<AgentType, AgentState>`. Each `AgentCard` receives its slice. `agent_completed` events fill the card result. `orchestrator_result` fills the `StreamOutput` component.
 
 ---
 
 ## 10. C# Coding Standards
+
+### Naming
+- Classes: `PascalCase`
+- Methods: `PascalCase`
+- Private fields: `_camelCase`
+- Interfaces: `IPrefix`
 
 ### Controller Pattern
 ```csharp
@@ -739,8 +868,6 @@ public sealed class AgentsController : ControllerBase
     private readonly IMediator _mediator;
     private readonly ILogger<AgentsController> _logger;
 
-    // Constructor injection only
-
     [HttpPost("run")]
     [ProducesResponseType(typeof(RunOrchestratorResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -748,9 +875,17 @@ public sealed class AgentsController : ControllerBase
         [FromBody] RunOrchestratorRequest request,
         CancellationToken cancellationToken)
     {
-        var command = new RunOrchestratorCommand(request.Task, Guid.NewGuid().ToString());
+        var sessionId = Guid.NewGuid();
+        var command = new RunOrchestratorCommand(
+            request.Task,
+            sessionId,
+            request.Config?.MaxParallelAgents ?? 3,
+            request.Config?.TimeoutSeconds ?? 120);
         var result = await _mediator.Send(command, cancellationToken);
-        return Accepted(new RunOrchestratorResponse(result.SessionId, $"/api/v1/agents/stream/{result.SessionId}"));
+        return Accepted(new RunOrchestratorResponse(
+            result.SessionId,
+            result.Status,
+            $"/api/v1/agents/sessions/{result.SessionId}/stream"));
     }
 }
 ```
@@ -763,6 +898,7 @@ public interface IAgentSessionRepository
     Task<PagedResult<AgentSession>> GetPagedAsync(int page, int pageSize, CancellationToken cancellationToken = default);
     Task AddAsync(AgentSession session, CancellationToken cancellationToken = default);
     Task UpdateAsync(AgentSession session, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
 ```
 
@@ -804,24 +940,46 @@ public sealed class McpToolException : OrchestAIException
 
 ### Structured Logging
 ```csharp
-// Use structured log properties, not string interpolation
 _logger.LogInformation(
     "Agent {AgentType} started sub-task {SubTaskId} for session {SessionId}",
-    agentType, subTaskId, sessionId);
+    agent.Type, subTask.Id, session.Id);
 
-// Time operations with LoggerMessage or ActivitySource
-using var activity = ActivitySource.StartActivity("agent.run");
-activity?.SetTag("agent.type", agentType.ToString());
+_logger.LogError(
+    "Agent {AgentType} failed: {Error}",
+    agent.Type, ex.Message);
 ```
+
+### React / Frontend Standards
+- All API calls via `services/` layer — no direct `fetch` in components
+- SSE handled exclusively by `useAgentStream` hook — no `EventSource` outside it
+- No inline styles — TailwindCSS only
+- Components are pure — no side effects, no direct API calls
+- Server state via React Query; local UI state via `useState`
+- TypeScript strict mode — no `any` types
+- Named exports only — no default exports
 
 ---
 
-## 11. Environment Variables
+## 11. Non-Functional Requirements
+
+| Requirement | Target |
+|---|---|
+| Task completion time | < 120 seconds for typical 3-agent task |
+| Parallel agent execution | All agents run simultaneously, not sequential |
+| SSE event latency | < 500ms from event to UI update |
+| Tool call timeout | 30 seconds per tool call |
+| Failed agent handling | Partial failure returns partial result, not full failure |
+| Cost per session | Tracked per agent and total — target < $0.10 average |
+| API availability | Health check at `/admin/health` — required for Railway deploys |
+
+---
+
+## 12. Environment Variables
 
 ```bash
 # API
 ASPNETCORE_ENVIRONMENT=Development
-ASPNETCORE_URLS=http://+:8080
+ASPNETCORE_URLS=http://+:5000
 
 # Database
 DATABASE_URL=Host=localhost;Port=5432;Database=orchestai;Username=postgres;Password=postgres
@@ -830,17 +988,24 @@ DATABASE_URL=Host=localhost;Port=5432;Database=orchestai;Username=postgres;Passw
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-sonnet-4-6
 
-# MCP Tools
-TAVILY_API_KEY=tvly-...        # WebSearchTool
-WORKSPACE_PATH=/tmp/workspace  # FileSystemTool sandbox root
+# MCP Tools — Web Search
+SEARCH_API_KEY=...               # Brave Search or SerpAPI key
+SEARCH_PROVIDER=brave            # brave | serpapi
+
+# MCP Tools — File System
+FILESYSTEM_WORKSPACE=/tmp/orchestai   # sandboxed file operations root
+
+# Agent Limits
+MAX_PARALLEL_AGENTS=3
+DEFAULT_TIMEOUT_SECONDS=120
 
 # Frontend (Vite)
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_BASE_URL=http://localhost:5000
 ```
 
 ---
 
-## 12. Docker Compose Local Setup
+## 13. Docker Compose Local Setup
 
 ```yaml
 # docker-compose.yml
@@ -866,27 +1031,30 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "5000:5000"
     environment:
       DATABASE_URL: Host=postgres;Port=5432;Database=orchestai;Username=postgres;Password=postgres
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_MODEL: claude-sonnet-4-6
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      WORKSPACE_PATH: /tmp/workspace
+      SEARCH_API_KEY: ${SEARCH_API_KEY}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-brave}
+      FILESYSTEM_WORKSPACE: /tmp/orchestai
+      MAX_PARALLEL_AGENTS: 3
+      DEFAULT_TIMEOUT_SECONDS: 120
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - workspace:/tmp/workspace
+      - workspace:/tmp/orchestai
 
-  frontend:
+  web:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      VITE_API_BASE_URL: http://localhost:8080
+      VITE_API_BASE_URL: http://localhost:5000
     depends_on:
       - api
 
@@ -897,34 +1065,37 @@ volumes:
 
 Local dev startup:
 ```bash
+git clone https://github.com/jigargajjarcad/orchestai
+cd orchestai
 cp docker-compose.override.yml.example docker-compose.override.yml
-# Add your ANTHROPIC_API_KEY and TAVILY_API_KEY
-docker compose up -d
-# API: http://localhost:8080
+# Add ANTHROPIC_API_KEY and SEARCH_API_KEY to docker-compose.override.yml
+docker compose up
+
+# API:      http://localhost:5000
+# Swagger:  http://localhost:5000/swagger
 # Frontend: http://localhost:3000
-# DB: localhost:5432
+# DB:       localhost:5432
 ```
 
 ---
 
-## 13. Deployment
+## 14. Deployment
 
-### Railway (API + Database)
+### Backend + Database → Railway
 1. Create Railway project
 2. Add PostgreSQL plugin — Railway provides `DATABASE_URL`
 3. Connect GitHub repo, set root to `/backend`
-4. Set environment variables: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `WORKSPACE_PATH=/tmp/workspace`
+4. Set environment variables: `ANTHROPIC_API_KEY`, `SEARCH_API_KEY`, `SEARCH_PROVIDER`, `FILESYSTEM_WORKSPACE=/tmp/orchestai`, `MAX_PARALLEL_AGENTS`, `DEFAULT_TIMEOUT_SECONDS`
 5. Railway auto-detects .NET and builds with `dotnet publish`
 6. Migrations run on startup via `dbContext.Database.MigrateAsync()` in `Program.cs`
 
-### Vercel (Frontend)
+### Frontend → Vercel
 1. Import GitHub repo on Vercel
 2. Set root directory to `/frontend`
 3. Set `VITE_API_BASE_URL` to Railway API URL
 4. Vercel auto-detects Vite and deploys
 
 ### CORS
-API must allow Vercel frontend origin in production. Configure in `Program.cs`:
 ```csharp
 builder.Services.AddCors(options =>
 {
@@ -935,64 +1106,101 @@ builder.Services.AddCors(options =>
 });
 ```
 
+### CI/CD — GitHub Actions
+```yaml
+# .github/workflows/ci.yml
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build backend
+        run: dotnet build backend/OrchestAI.sln --configuration Release
+
+      - name: Test backend
+        run: dotnet test backend/OrchestAI.sln --configuration Release --no-build
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+```
+
 ---
 
-## 14. Build Order — 4 Weeks
+## 15. Build Order — 4 Weeks
 
 ### Week 1 — Foundation
 - [ ] Docker Compose: PostgreSQL + API service skeleton
 - [ ] .NET solution: 4 projects with correct project references
-- [ ] Domain layer: all entities, enums, interfaces, exceptions
-- [ ] Infrastructure: EF Core `OrchestAIDbContext` with all configurations
+- [ ] Domain layer: all entities, enums, interfaces, exceptions (including `IOrchestrator`)
+- [ ] Infrastructure: EF Core `OrchestAIDbContext` with all table configurations
 - [ ] Initial migration: create all 6 tables
-- [ ] Repository implementations (AgentSessionRepository, SubTaskRepository)
-- [ ] MediatR setup: `RunOrchestratorCommand` handler stub, `GetSessionQuery` handler
-- [ ] API: `AgentsController` (POST /run returns 202, GET /stream placeholder), `SessionsController`
+- [ ] Repository implementations (`AgentSessionRepository`, `SubTaskRepository`, `ToolCallRepository`)
+- [ ] MediatR setup: `RunOrchestratorCommand` handler stub, `GetSessionQuery` handler, `GetAllSessionsQuery` handler
+- [ ] API: `AgentsController` (POST /run returns 202, GET /agents/sessions, DELETE), `AdminController` (health)
 - [ ] Pipeline behaviors: `LoggingBehavior`, `ValidationBehavior`
-- [ ] Health check endpoint
+- [ ] `SseStreamService` skeleton (channel-based, no events yet)
 
-**Done when:** `POST /api/v1/agents/run` persists a session and returns `202`, `GET /api/v1/sessions/{id}` returns the session.
+**Done when:** `POST /api/v1/agents/run` persists a session and returns 202 with stream URL. `GET /api/v1/agents/sessions/{id}` returns the session.
 
 ### Week 2 — Agent Core
 - [ ] Anthropic SDK integration (`Anthropic.SDK` NuGet)
-- [ ] `BaseAgent` with agentic loop (tool call dispatch, max iterations guard)
-- [ ] `OrchestratorAgent`: task decomposition + aggregation
-- [ ] `ResearchAgent`: system prompt + tool binding
-- [ ] `CodeAgent`: system prompt + tool binding
-- [ ] `DataAgent`: system prompt + tool binding
-- [ ] `McpToolRegistry` with DI registration
-- [ ] `WebSearchTool` (Tavily API integration)
-- [ ] `FileSystemTool` (sandboxed read/write/list)
-- [ ] `DatabaseTool` (read-only SQL, SELECT enforcement)
-- [ ] Token/cost tracking → `session_costs` table
+- [ ] `AnthropicService` wrapper and `CostCalculator`
+- [ ] `BaseAgent` with agentic loop (tool call dispatch via `McpExecutor`, max iterations guard)
+- [ ] `OrchestratorAgent`: task decomposition + parallel dispatch + aggregation (implements `IOrchestrator`)
+- [ ] `ResearchAgent`, `CodeAgent`, `DataAgent`: system prompts + tool binding
+- [ ] Session and sub-task persistence throughout agent lifecycle
+- [ ] Token/cost tracking → `session_costs` table via `CostCalculator`
+- [ ] `RunOrchestratorCommandHandler` wired to `IOrchestrator`
 
-**Done when:** A real multi-agent run completes end-to-end in logs (no frontend yet).
+**Done when:** A real multi-agent run completes end-to-end and is fully persisted in DB (verify via `GET /agents/sessions/{id}`).
 
-### Week 3 — Streaming + Frontend
-- [ ] SSE endpoint (`GET /api/v1/agents/stream/{sessionId}`)
-- [ ] `IStreamPublisher` abstraction + in-memory channel implementation
-- [ ] `RunOrchestratorCommandHandler` publishes all SSE events
+### Week 3 — MCP Integration
+- [ ] `IMcpTool` interface and `McpToolRegistry` with DI auto-discovery
+- [ ] `McpExecutor`: dispatch + `tool_calls` table logging
+- [ ] `WebSearchTool` (Brave/SerpAPI — configurable)
+- [ ] `FileSystemTool` (sandboxed read/write/list/create_directory)
+- [ ] `DatabaseTool` (read-only SQL with `execute_query`, `list_tables`, `describe_table`)
+- [ ] SSE endpoint (`GET /api/v1/agents/sessions/{id}/stream`) publishing all events
+- [ ] `SseStreamService` broadcasting `agent_started`, `tool_call`, `tool_result`, `agent_completed`, `orchestrator_result`, `error`
+
+**Done when:** Full end-to-end run with real MCP tools, all events streaming over SSE (verify with `curl`).
+
+### Week 4 — Frontend + Polish
 - [ ] React app scaffold (Vite + TypeScript + Tailwind)
-- [ ] `useAgentStream` hook (EventSource consumer)
-- [ ] `AgentCard` component
-- [ ] `Playground` page (task input → run → live cards)
-- [ ] `SessionList` + `SessionDetail` pages
-- [ ] Error display (session_failed event)
-- [ ] Cost/token display in UI
-
-**Done when:** Full end-to-end: browser submits task, watches agents stream live, sees results.
-
-### Week 4 — Polish + Ship
-- [ ] Admin endpoints: tool list, health check
-- [ ] `ExceptionHandlingMiddleware` (structured error responses)
-- [ ] `RequestLoggingMiddleware`
-- [ ] Dockerfile for API (multi-stage build)
-- [ ] Dockerfile for frontend
-- [ ] `docker-compose.yml` complete
-- [ ] Unit tests: command handler, query handler, OrchestratorAgent decomposition
+- [ ] `useAgentStream` hook (EventSource consumer, all event types)
+- [ ] `AgentStatusGrid` + `AgentCard` + `AgentStatusBadge` + `ToolCallLog` components
+- [ ] `Playground` page (task input → run → live agent cards → StreamOutput)
+- [ ] `Sessions` + `SessionDetail` pages
+- [ ] `Admin` page (usage, cost dashboard)
+- [ ] `ExceptionHandlingMiddleware` + `RequestLoggingMiddleware`
+- [ ] Admin endpoints: `/admin/usage`, `/admin/tool-calls`, `/admin/agents`
+- [ ] Dockerfile for API (multi-stage build) + Dockerfile for frontend
+- [ ] GitHub Actions CI pipeline
+- [ ] Unit tests: command handler, query handlers, OrchestratorAgent decomposition, MCP tool validation
 - [ ] README: setup guide, architecture diagram, API reference, deployment guide
-- [ ] Railway deployment
-- [ ] Vercel deployment
+- [ ] Railway + Vercel deployment
 - [ ] `.env.example` + `docker-compose.override.yml.example`
 
-**Done when:** Live public URL, README complete, repo public on GitHub.
+**Done when:** Live public URL, full end-to-end in browser, README complete, repo public on GitHub.

@@ -3,6 +3,13 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# OrchestAI runtime output — never commit generated agent files
+agent-workspace/
+
+# Local env files — keys are in Railway/Vercel dashboards
+.env.local
+.env.*.local
+
 # User-specific files
 *.rsuser
 *.suo

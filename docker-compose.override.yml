@@ -1,0 +1,6 @@
+# Local dev overrides — not committed with secrets
+# Copy this file and add real values for ANTHROPIC_API_KEY etc. when needed
+services:
+  postgres:
+    ports:
+      - "5432:5432"

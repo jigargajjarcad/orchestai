@@ -1,0 +1,39 @@
+namespace OrchestAI.Domain.Entities;
+
+public sealed class CostLedger
+{
+    private CostLedger() { }
+
+    public Guid Id { get; private set; }
+    public Guid OrchestrationTaskId { get; private set; }
+    public Guid? AgentExecutionId { get; private set; }
+    public string Model { get; private set; } = string.Empty;
+    public int InputTokens { get; private set; }
+    public int OutputTokens { get; private set; }
+    public decimal CostUsd { get; private set; }
+    public DateTimeOffset RecordedAt { get; private set; }
+
+    public OrchestrationTask OrchestrationTask { get; private set; } = null!;
+    public AgentExecution? AgentExecution { get; private set; }
+
+    public static CostLedger Create(
+        Guid orchestrationTaskId,
+        string model,
+        int inputTokens,
+        int outputTokens,
+        decimal costUsd,
+        Guid? agentExecutionId = null)
+    {
+        return new CostLedger
+        {
+            Id = Guid.NewGuid(),
+            OrchestrationTaskId = orchestrationTaskId,
+            AgentExecutionId = agentExecutionId,
+            Model = model,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            CostUsd = costUsd,
+            RecordedAt = DateTimeOffset.UtcNow
+        };
+    }
+}

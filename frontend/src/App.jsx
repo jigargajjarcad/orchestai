@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
 
-const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'http://localhost:5000').replace(/\/$/, '')}/api/v1`
+const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 
 const STATUS_COLORS = {

@@ -359,6 +359,13 @@ public abstract class AgentBase : IAgent
         if (memories.Count == 0)
             return SystemPrompt;
 
+        // The memory-augmented prompt is only ever sent to the LLM, never persisted
+        // (AgentExecution.InputPrompt holds the task instruction, not agent-internal
+        // context) — this log line is the only record of which memories were used.
+        _logger.LogInformation(
+            "Agent {AgentType} injecting {Count} memories for user {UserId}: {Keys}",
+            AgentType, memories.Count, userId, string.Join(", ", memories.Select(m => m.Key)));
+
         var memorySection = string.Join("\n", memories.Select(m => $"- {m.Key}: {m.Value}"));
 
         return $"""

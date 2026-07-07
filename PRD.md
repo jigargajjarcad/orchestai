@@ -16,10 +16,12 @@ A production-ready C# .NET 8 boilerplate for multi-agent AI orchestration. It pr
 - Railway + Vercel deployment-ready
 
 ### Who This Is For
-- .NET developers who want to build AI agents without switching to Python
-- Enterprise teams adopting AI who are already on .NET stacks
-- AI engineers who want a reference implementation of multi-agent CQRS patterns
-- Portfolio showcase for AI Engineer roles in the .NET space
+Enterprise .NET development teams building AI applications. Organizations already
+invested in C#/.NET who need production-grade multi-agent orchestration without
+adopting a Python toolchain or hand-rolling their own framework. This is the single
+target customer — every roadmap and positioning decision downstream is filtered
+through "does this serve an enterprise .NET team," not general developer adoption
+or hobbyist use.
 
 ### Success Criteria
 - Developer can clone, configure API key, and run a multi-agent task in under 5 minutes
@@ -1239,104 +1241,93 @@ Every roadmap item below is tagged with a priority:
 
 ---
 
-## 19. Roadmap
+## 19. Product Strategy
 
-### Completed — Weeks 1–4 (Foundation → Frontend + Polish)
-Foundation (Docker Compose, .NET solution, EF Core, MediatR, API skeleton) → Agent Core (Anthropic SDK, `BaseAgent` agentic loop, Orchestrator + specialists) → MCP Integration (tool registry, Firecrawl/Perplexity/FileSystem tools, SSE streaming) → Frontend + Polish (React playground, admin dashboard, CI, Railway + Vercel deployment). See [Current State](#2-current-state-week-4-complete) for what shipped.
+### Product Sequence: Framework → Observability Platform → Cloud
+Three stages, in this order, each gated on the previous one proving itself:
 
-### Phase 1 — Weeks 5–8: Enterprise Ready
+1. **Framework** (Weeks 1–6, shipped) — the open-source CQRS multi-agent framework
+   itself. This is the adoption driver: free, self-hosted, gives enterprise .NET
+   teams a reason to install OrchestAI and put it in front of their own workloads.
+2. **Observability Platform** (Weeks 7–8) — this is the monetization path.
+   Teams running multi-agent systems in production need execution visibility, cost
+   tracking, and quality signal that a self-hosted open-source framework doesn't
+   provide out of the box. Observability is the wedge from "free framework" to
+   "paid product."
+3. **Cloud** (later, timeline TBD) — a hosted version of the observability
+   platform, gated on Weeks 7–8 actually proving customer demand. Cloud is not
+   scheduled until Observability has real usage signal to build on — building
+   hosted infrastructure before anyone has asked for it is the wrong order.
 
-**Week 5**
-- Human-in-the-loop approval gates — **P0**
-- Azure OpenAI provider — **P0**
-- Manager Agent review pass — **P1**
+### Use Case Framing Principle
+Every feature is named and scoped as the enterprise problem it solves, not the
+API it wraps. This governs both marketing copy and how features get scoped —
+"a use case" implies an opinionated agent + workflow; "a connector" implies a
+thin tool wrapper, and the latter is not the product.
 
-**Week 6**
-- Checkpointing — **P0**
-- Agent memory — **P1**
-- SQL Server tool — **P0**
-- Retry with backoff — **P0**
-- PII redaction hooks — **P0**
+| Say this | Not this |
+|---|---|
+| AI Code Review Pipeline | GitHub Tool |
+| Sprint Manager Agent | Jira Tool |
+| Business Intelligence Agent | SQL Server Tool |
 
-**Week 7**
-- GitHub tool — **P2**
-- OpenAI provider — **P1**
-- NuGet package — **P2**
-- Budget caps — **P0**
-- Jira tool — **P2**
+### Build in Public
+One LinkedIn post per week on an architectural decision from that week's build
+(a real trade-off, an ADR, a bug found in production — not a feature announcement).
+Goal: become known as the person who built the .NET AI orchestration framework,
+compounding portfolio credibility with each post rather than a one-time launch.
 
-**Week 8**
-- Docs site — **P2**
-- Rate limiting — **P0**
-- Dead letter queue — **P0**
-- Audit log export — **P0**
+---
 
-### Phase 2 — Weeks 9–14: Community Growth
+## 20. Roadmap
 
-**Microsoft ecosystem** — Azure Blob Storage tool, Teams tool, Outlook/Graph tool, Azure DevOps tool — **P2**
+### Completed — Weeks 1–6
+Foundation → Agent Core → MCP Integration → Frontend (Weeks 1–4) → multi-provider
+LLM support, human-in-the-loop approval gates, Manager Agent review pass (Week 5)
+→ per-agent checkpointing, user memory, SQL Server tool, retry with backoff, PII
+redaction (Week 6). See [Current State](#2-current-state-week-4-complete) and
+`DECISIONS.md` for what shipped and why.
 
-**Data tools** — PDF tool, Excel tool, Google Search tool, SEC EDGAR tool — **P2**
+### Phase 1 — Weeks 7–12: Observability, Evaluation, Distribution, Enterprise Use Cases
 
-**Productivity tools** — Slack tool, SendGrid tool, Generic REST caller tool, Webhook tool — **P2**
+**Week 7 — Observability Foundation** — **P1**
+- Execution timeline view (per-task, per-agent, per-tool-call)
+- Cost dashboard (spend by agent, by model, by task, over time)
+- Error rate tracking
+- Prompt performance comparison (same task, different prompts/models)
 
-### Phase 3 — Weeks 15–20: Revenue
+**Week 8 — AI Evaluation** — **P1**
+- Per-execution scoring
+- Hallucination risk signal
+- Task completion rate
+- Output quality scoring
+- New `EvaluationResults` table
 
-- Visual workflow builder — **P3**
-- Observability dashboard — **P3**
-- Google / AWS / Ollama providers — **P3**
+**Week 9 — NuGet Package + AI Code Review Pipeline** — **P2**
+- OrchestAI published as a NuGet package (`dotnet add package OrchestAI`)
+- AI Code Review Pipeline use case (built on GitHub's API — framed and shipped as
+  the use case, not "a GitHub tool")
+
+**Week 10 — Azure Ecosystem** — **P2**
+- Azure Blob Storage
+- Azure DevOps
+- SQL Server patterns (building on the Week 6 `DatabaseTool` foundation)
+
+**Week 11–12 — Enterprise Use Cases** — **P1**
+- Sprint Manager Agent
+- Business Intelligence Agent
+- Executive Assistant Agent
+- Team Notification Agent
+
+### Phase 2 — Cloud (timeline TBD)
+Hosted version of the Week 7–8 observability platform. Not scheduled until
+Observability has proven real customer demand — see Product Sequence above.
 - OrchestAI Cloud beta — **P3**
+- Google / AWS / Ollama providers — **P3**
+- Visual workflow builder — **P3**
 
-### Week 1 — Foundation
-- [ ] Docker Compose: PostgreSQL + API service skeleton
-- [ ] .NET solution: 4 projects with correct project references
-- [ ] Domain layer: all entities, enums, interfaces, exceptions (including `IOrchestrator`)
-- [ ] Infrastructure: EF Core `OrchestAIDbContext` with all table configurations
-- [ ] Initial migration: create all 6 tables
-- [ ] Repository implementations (`AgentSessionRepository`, `SubTaskRepository`, `ToolCallRepository`)
-- [ ] MediatR setup: `RunOrchestratorCommand` handler stub, `GetSessionQuery` handler, `GetAllSessionsQuery` handler
-- [ ] API: `AgentsController` (POST /run returns 202, GET /agents/sessions, DELETE), `AdminController` (health)
-- [ ] Pipeline behaviors: `LoggingBehavior`, `ValidationBehavior`
-- [ ] `SseStreamService` skeleton (channel-based, no events yet)
-
-**Done when:** `POST /api/v1/agents/run` persists a session and returns 202 with stream URL. `GET /api/v1/agents/sessions/{id}` returns the session.
-
-### Week 2 — Agent Core
-- [ ] Anthropic SDK integration (`Anthropic.SDK` NuGet)
-- [ ] `AnthropicService` wrapper and `CostCalculator`
-- [ ] `BaseAgent` with agentic loop (tool call dispatch via `McpExecutor`, max iterations guard)
-- [ ] `OrchestratorAgent`: task decomposition + parallel dispatch + aggregation (implements `IOrchestrator`)
-- [ ] `ResearchAgent`, `CodeAgent`, `DataAgent`: system prompts + tool binding
-- [ ] Session and sub-task persistence throughout agent lifecycle
-- [ ] Token/cost tracking → `session_costs` table via `CostCalculator`
-- [ ] `RunOrchestratorCommandHandler` wired to `IOrchestrator`
-
-**Done when:** A real multi-agent run completes end-to-end and is fully persisted in DB (verify via `GET /agents/sessions/{id}`).
-
-### Week 3 — MCP Integration
-- [ ] `IMcpTool` interface and `McpToolRegistry` with DI auto-discovery
-- [ ] `McpExecutor`: dispatch + `tool_calls` table logging
-- [ ] `WebSearchTool` (Brave/SerpAPI — configurable)
-- [ ] `FileSystemTool` (sandboxed read/write/list/create_directory)
-- [ ] `DatabaseTool` (read-only SQL with `execute_query`, `list_tables`, `describe_table`)
-- [ ] SSE endpoint (`GET /api/v1/agents/sessions/{id}/stream`) publishing all events
-- [ ] `SseStreamService` broadcasting `agent_started`, `tool_call`, `tool_result`, `agent_completed`, `orchestrator_result`, `error`
-
-**Done when:** Full end-to-end run with real MCP tools, all events streaming over SSE (verify with `curl`).
-
-### Week 4 — Frontend + Polish
-- [ ] React app scaffold (Vite + TypeScript + Tailwind)
-- [ ] `useAgentStream` hook (EventSource consumer, all event types)
-- [ ] `AgentStatusGrid` + `AgentCard` + `AgentStatusBadge` + `ToolCallLog` components
-- [ ] `Playground` page (task input → run → live agent cards → StreamOutput)
-- [ ] `Sessions` + `SessionDetail` pages
-- [ ] `Admin` page (usage, cost dashboard)
-- [ ] `ExceptionHandlingMiddleware` + `RequestLoggingMiddleware`
-- [ ] Admin endpoints: `/admin/usage`, `/admin/tool-calls`, `/admin/agents`
-- [ ] Dockerfile for API (multi-stage build) + Dockerfile for frontend
-- [ ] GitHub Actions CI pipeline
-- [ ] Unit tests: command handler, query handlers, OrchestratorAgent decomposition, MCP tool validation
-- [ ] README: setup guide, architecture diagram, API reference, deployment guide
-- [ ] Railway + Vercel deployment
-- [ ] `.env.example` + `docker-compose.override.yml.example`
-
-**Done when:** Live public URL, full end-to-end in browser, README complete, repo public on GitHub.
+### Postponed Indefinitely
+SharePoint, Power BI, SAP, Salesforce, PagerDuty, Datadog. Revisit only on
+explicit enterprise customer request — none of these serve the Week 7–12
+sequence and speculative integration work here is exactly the kind of
+connector-first thinking the Use Case Framing Principle exists to avoid.

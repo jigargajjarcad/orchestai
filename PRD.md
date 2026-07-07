@@ -33,7 +33,71 @@ First open-source, production-grade, multi-agent CQRS framework for .NET 8. Not 
 
 ---
 
-## 2. System Architecture
+## 2. Current State (Week 4 Complete)
+
+### What's Built and Deployed
+Weeks 1–4 are complete: full backend + frontend, deployed and live.
+- CQRS backend on .NET 8 with 6 domain entities, EF Core migrations auto-applied on startup
+- 6 agents (Orchestrator + 5 specialists) with a shared agentic tool-call loop
+- 3 MCP tools wired to real external APIs (not stubs)
+- Parallel **and** sequential agent execution, selected by the Orchestrator per task
+- Full SSE event stream (10 event types) consumed live by the React UI
+- 59 xUnit tests passing (unit + integration), CI-ready
+- Dockerized locally; deployed to Railway (API + Postgres) and Vercel (frontend)
+
+### Live URLs
+| Service | URL |
+|---|---|
+| API (Railway) | https://orchestai-production.up.railway.app |
+| Frontend (Vercel) | https://orchestai-git-main-jigar-gajjar.vercel.app |
+| Health check | https://orchestai-production.up.railway.app/health |
+| Swagger | https://orchestai-production.up.railway.app/swagger |
+
+### Tech Stack (as shipped)
+| Layer | Technology |
+|---|---|
+| Backend | C# .NET 8, ASP.NET Core |
+| AI | Anthropic Claude API (claude-haiku-4-5) |
+| Orchestration | CQRS with MediatR 12.4.1 (MIT-licensed; 13+ requires a commercial license) |
+| MCP Tools | Custom `IMcpTool` implementation |
+| ORM | Entity Framework Core 8 + Npgsql |
+| Database | PostgreSQL |
+| Streaming | Server-Sent Events (SSE), direct — no proxy buffering |
+| Frontend | React 19, Vite 8, react-markdown |
+| Testing | xUnit, FluentAssertions, Moq |
+| Deployment | Railway (API + DB) · Vercel (Frontend) |
+| Container | Docker + Docker Compose |
+
+### Agents (6)
+`OrchestratorAgent` (task decomposition + execution-mode selection) delegating to five specialists: `ResearchAgent` (`firecrawl_scrape`, `perplexity_search`), `WriterAgent` (`file_write`, `firecrawl_scrape`), `CodeAgent` (`file_write`), `DataAgent` (`firecrawl_scrape`), `BrowserAgent` (extensible, no tools bound yet).
+
+### Tools (3)
+`FirecrawlTool` (web scraping), `PerplexityTool` (web search with citations), `FileSystemTool` (sandboxed file writes under `./agent-workspace/`).
+
+### Execution Modes
+The Orchestrator chooses per task: **parallel** (`Task.WhenAll` across selected agents) or **sequential** (agents run one at a time, each receiving the prior agent's output injected into its prompt, truncated to 3,000 characters — see ADR-002 in `DECISIONS.md`).
+
+### Tests
+59 tests passing across `StartOrchestrationHandlerTests`, `OrchestratorAgentTests`, `FileSystemToolTests`, `FirecrawlToolTests`, `PerplexityToolTests`, `AgentBaseToolLoopTests`, `CreateOrchestrationTaskHandlerTests`.
+
+> Sections 4–16 below capture the original Week 1 design intent. Implementation details (entity names, tool names, agent count) evolved during the build — `README.md` and `ARCHITECTURE.md` are the authoritative reference for exact current schema and API shape.
+
+---
+
+## 3. Competitive Positioning
+
+### vs. LangGraph
+Same core patterns — stateful agent graphs, tool-calling loops, conditional routing between parallel and sequential execution — but native .NET. No Python interop, no subprocess bridge, no separate runtime to operate. Drops into existing enterprise .NET stacks using the same CQRS/MediatR/EF Core patterns .NET teams already run in production, with compile-time type safety on agent and tool contracts (`IAgent`, `IMcpTool`) instead of loosely-typed Python dicts.
+
+### vs. CrewAI
+Same agent-collaboration model — an orchestrator delegating to role-specialized agents that can run in parallel or as a pipeline — but built on enterprise-grade architecture instead of a lightweight scripting framework: CQRS command/query separation, structured logging on every agent operation, a persisted cost ledger per token/agent/session, a typed exception hierarchy with error codes, and a real relational schema (not in-memory state) backing every run.
+
+### vs. n8n
+Code-first, not visual-first. Every agent, tool, and execution path is version-controlled, unit-tested (59 tests), and extensible by implementing an interface — not by dragging nodes on a canvas. Built for autonomous multi-step reasoning (an agentic tool-call loop that decides its own next action) rather than a fixed, human-authored workflow graph.
+
+---
+
+## 4. System Architecture
 
 ### High-Level Architecture
 ```
@@ -94,7 +158,7 @@ Each agent is a Claude claude-sonnet-4-6 call with a distinct system prompt and 
 
 ---
 
-## 3. Database Schema
+## 5. Database Schema
 
 All tables use `uuid` primary keys and `timestamptz` timestamps for correct timezone handling.
 
@@ -206,7 +270,7 @@ CREATE TABLE mcp_tools (
 
 ---
 
-## 4. Project Structure
+## 6. Project Structure
 
 ```
 orchestai/
@@ -377,7 +441,7 @@ orchestai/
 
 ---
 
-## 5. API Design
+## 7. API Design
 
 ### Base URL
 - Local: `http://localhost:5000/api/v1`
@@ -515,7 +579,7 @@ Deletes a session and all related sub-tasks, tool calls, and messages (CASCADE).
 
 ---
 
-## 6. CQRS Design
+## 8. CQRS Design
 
 ### Commands
 
@@ -584,7 +648,7 @@ public sealed record GetAllSessionsQuery(
 
 ---
 
-## 7. Agent Design
+## 9. Agent Design
 
 ### IAgent Interface
 ```csharp
@@ -696,7 +760,7 @@ without explicit instruction.
 
 ---
 
-## 8. MCP Tool Design
+## 10. MCP Tool Design
 
 ### IMcpTool Interface
 ```csharp
@@ -777,7 +841,7 @@ Implementation: EF Core raw SQL with a read-only DB connection. `execute_query` 
 
 ---
 
-## 9. Frontend Design
+## 11. Frontend Design
 
 ### Tech Stack
 - React 18 with TypeScript
@@ -850,7 +914,7 @@ SSE events update per-agent state slices in a `Map<AgentType, AgentState>`. Each
 
 ---
 
-## 10. C# Coding Standards
+## 12. C# Coding Standards
 
 ### Naming
 - Classes: `PascalCase`
@@ -960,7 +1024,7 @@ _logger.LogError(
 
 ---
 
-## 11. Non-Functional Requirements
+## 13. Non-Functional Requirements
 
 | Requirement | Target |
 |---|---|
@@ -974,7 +1038,7 @@ _logger.LogError(
 
 ---
 
-## 12. Environment Variables
+## 14. Environment Variables
 
 ```bash
 # API
@@ -1005,7 +1069,7 @@ VITE_API_BASE_URL=http://localhost:5000
 
 ---
 
-## 13. Docker Compose Local Setup
+## 15. Docker Compose Local Setup
 
 ```yaml
 # docker-compose.yml
@@ -1079,7 +1143,7 @@ docker compose up
 
 ---
 
-## 14. Deployment
+## 16. Deployment
 
 ### Backend + Database → Railway
 1. Create Railway project
@@ -1148,7 +1212,79 @@ jobs:
 
 ---
 
-## 15. Build Order — 4 Weeks
+## 17. Architecture Principles
+
+These apply to every future build in this repo — Claude Code follows them without being re-asked:
+
+- **Clean architecture** — dependencies flow Domain → Application → Infrastructure → API; nothing in Domain references outer layers
+- **CQRS throughout** — controllers handle HTTP only; all logic lives in MediatR command/query handlers
+- **Always async/await with `CancellationToken`** — no `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()`, no exceptions
+- **Production quality always** — proper error handling, structured logging, and cost tracking on every agent operation; no "simplified for demo" shortcuts
+- **No manual coding** — Claude Code writes everything; the human directs, reviews, and architects
+- **Every feature needs tests before it's done** — unit tests for handlers/agents/tools, integration tests for end-to-end flows
+- **Every architectural decision goes in `DECISIONS.md`** — non-obvious tradeoffs get an ADR with context and a trigger for revisiting
+
+---
+
+## 18. Priority Framework
+
+Every roadmap item below is tagged with a priority:
+
+| Tag | Meaning |
+|---|---|
+| **P0** | Enterprise blocker — without this, enterprises can't adopt |
+| **P1** | Differentiator — makes OrchestAI better than competitors |
+| **P2** | Growth — drives community adoption and GitHub stars |
+| **P3** | Revenue — enables paid tiers |
+
+---
+
+## 19. Roadmap
+
+### Completed — Weeks 1–4 (Foundation → Frontend + Polish)
+Foundation (Docker Compose, .NET solution, EF Core, MediatR, API skeleton) → Agent Core (Anthropic SDK, `BaseAgent` agentic loop, Orchestrator + specialists) → MCP Integration (tool registry, Firecrawl/Perplexity/FileSystem tools, SSE streaming) → Frontend + Polish (React playground, admin dashboard, CI, Railway + Vercel deployment). See [Current State](#2-current-state-week-4-complete) for what shipped.
+
+### Phase 1 — Weeks 5–8: Enterprise Ready
+
+**Week 5**
+- Human-in-the-loop approval gates — **P0**
+- Azure OpenAI provider — **P0**
+- Manager Agent review pass — **P1**
+
+**Week 6**
+- Checkpointing — **P0**
+- Agent memory — **P1**
+- SQL Server tool — **P0**
+- Retry with backoff — **P0**
+- PII redaction hooks — **P0**
+
+**Week 7**
+- GitHub tool — **P2**
+- OpenAI provider — **P1**
+- NuGet package — **P2**
+- Budget caps — **P0**
+- Jira tool — **P2**
+
+**Week 8**
+- Docs site — **P2**
+- Rate limiting — **P0**
+- Dead letter queue — **P0**
+- Audit log export — **P0**
+
+### Phase 2 — Weeks 9–14: Community Growth
+
+**Microsoft ecosystem** — Azure Blob Storage tool, Teams tool, Outlook/Graph tool, Azure DevOps tool — **P2**
+
+**Data tools** — PDF tool, Excel tool, Google Search tool, SEC EDGAR tool — **P2**
+
+**Productivity tools** — Slack tool, SendGrid tool, Generic REST caller tool, Webhook tool — **P2**
+
+### Phase 3 — Weeks 15–20: Revenue
+
+- Visual workflow builder — **P3**
+- Observability dashboard — **P3**
+- Google / AWS / Ollama providers — **P3**
+- OrchestAI Cloud beta — **P3**
 
 ### Week 1 — Foundation
 - [ ] Docker Compose: PostgreSQL + API service skeleton

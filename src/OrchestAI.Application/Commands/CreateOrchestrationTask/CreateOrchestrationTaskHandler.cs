@@ -29,7 +29,8 @@ public sealed class CreateOrchestrationTaskHandler
         var task = OrchestrationTask.Create(
             request.UserId,
             request.Title,
-            request.UserPrompt);
+            request.UserPrompt,
+            request.RequireApproval);
 
         await _repository.AddAsync(task, cancellationToken).ConfigureAwait(false);
 
@@ -42,6 +43,7 @@ public sealed class CreateOrchestrationTaskHandler
             task.UserId,
             task.Title,
             task.Status.ToString(),
+            task.RequireApproval,
             task.CreatedAt);
     }
 

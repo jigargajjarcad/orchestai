@@ -8,6 +8,7 @@ const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 const STATUS_COLORS = {
   Pending: '#6b7280',
   Running: '#2563eb',
+  WaitingForApproval: '#f59e0b',
   Completed: '#16a34a',
   Failed: '#dc2626',
 }
@@ -108,9 +109,136 @@ function AgentCard({ execution }) {
   )
 }
 
+function ApprovalCard({ request, onApprove, onReject, busy }) {
+  const [showRejectInput, setShowRejectInput] = useState(false)
+  const [note, setNote] = useState('')
+
+  return (
+    <div style={{
+      border: '1px solid #f59e0b60',
+      borderLeft: '3px solid #f59e0b',
+      borderRadius: 8,
+      padding: '14px 16px',
+      marginBottom: 14,
+      background: '#1e1e2e',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span>⏸</span>
+        <strong style={{ color: '#f59e0b', fontSize: 13 }}>Waiting for Your Approval</strong>
+      </div>
+      <div style={{ fontSize: 12, color: '#cdd6f4', marginBottom: 8, lineHeight: 1.5 }}>{request.plan}</div>
+      <div style={{ fontSize: 11, color: '#a6adc8', marginBottom: 12 }}>
+        <div>Agents selected: {request.selectedAgents?.join(', ')}</div>
+        <div>Mode: {request.executionMode}</div>
+      </div>
+
+      {!showRejectInput ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onApprove}
+            disabled={busy}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+              background: '#16a34a', color: '#11111b', fontWeight: 700, fontSize: 12,
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Approve ✓
+          </button>
+          <button
+            onClick={() => setShowRejectInput(true)}
+            disabled={busy}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #dc262680',
+              background: 'transparent', color: '#f38ba8', fontWeight: 700, fontSize: 12,
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Reject ✗
+          </button>
+        </div>
+      ) : (
+        <div>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Reason for rejection (optional)"
+            rows={2}
+            style={{
+              width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #313244',
+              background: '#181825', color: '#cdd6f4', fontSize: 12, resize: 'vertical',
+              boxSizing: 'border-box', marginBottom: 8,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => onReject(note)}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                background: '#dc2626', color: '#11111b', fontWeight: 700, fontSize: 12,
+                cursor: busy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Confirm Reject
+            </button>
+            <button
+              onClick={() => setShowRejectInput(false)}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #313244',
+                background: 'transparent', color: '#a6adc8', fontWeight: 700, fontSize: 12,
+                cursor: busy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ManagerReviewCard({ review }) {
+  const isRunning = review.status === 'running'
+  const color = isRunning ? '#f59e0b' : '#16a34a'
+
+  return (
+    <div style={{
+      border: `1px solid ${color}40`,
+      borderLeft: `3px solid ${color}`,
+      borderRadius: 8,
+      padding: '12px 14px',
+      marginBottom: 10,
+      background: '#1e1e2e',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <strong style={{ color: '#cdd6f4', fontSize: 14 }}>🎯 Manager Review</strong>
+        <span style={{
+          background: `${color}20`,
+          color,
+          border: `1px solid ${color}60`,
+          borderRadius: 4,
+          padding: '1px 8px',
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '0.05em',
+        }}>{isRunning ? 'RUNNING' : 'COMPLETED'}</span>
+      </div>
+      <div style={{ fontSize: 12, color: '#a6adc8', marginTop: 8 }}>
+        {isRunning
+          ? 'Synthesizing and quality-checking all agent outputs…'
+          : 'Synthesized and quality-checked all agent outputs into the final result.'}
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
+  const [requireApproval, setRequireApproval] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [taskId, setTaskId] = useState(null)
   const [taskStatus, setTaskStatus] = useState(null)
@@ -119,6 +247,9 @@ export default function App() {
   const [finalResult, setFinalResult] = useState(null)
   const [totalCost, setTotalCost] = useState(null)
   const [error, setError] = useState(null)
+  const [approvalRequest, setApprovalRequest] = useState(null)
+  const [approvalBusy, setApprovalBusy] = useState(false)
+  const [managerReview, setManagerReview] = useState(null)
   const eventSourceRef = useRef(null)
 
   const updateAgent = (id, patch) => {
@@ -167,13 +298,15 @@ export default function App() {
     setTotalCost(null)
     setTaskId(null)
     setTaskStatus(null)
+    setApprovalRequest(null)
+    setManagerReview(null)
     eventSourceRef.current?.close()
 
     try {
       const createRes = await fetch(`${API_BASE}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: DEV_USER_ID, title, userPrompt: prompt }),
+        body: JSON.stringify({ userId: DEV_USER_ID, title, userPrompt: prompt, requireApproval }),
       })
       if (!createRes.ok) throw new Error(`Create failed: ${createRes.status}`)
       const created = await createRes.json()
@@ -195,6 +328,23 @@ export default function App() {
           switch (data.event) {
             case 'task_started':
               setTaskStatus('Running')
+              break
+            case 'approval_required':
+              setTaskStatus('WaitingForApproval')
+              setApprovalRequest(p)
+              break
+            case 'task_approved':
+              setApprovalRequest(null)
+              setTaskStatus('Running')
+              break
+            case 'task_rejected':
+              setApprovalRequest(null)
+              break
+            case 'manager_review_started':
+              setManagerReview({ status: 'running' })
+              break
+            case 'manager_review_completed':
+              setManagerReview({ status: 'completed', result: p.result })
               break
             case 'agent_started':
               setAgentOrder(prev => prev.includes(p.agentExecutionId) ? prev : [...prev, p.agentExecutionId])
@@ -236,6 +386,7 @@ export default function App() {
               break
             case 'task_failed':
               setTaskStatus('Failed')
+              setApprovalRequest(null)
               setError(p.errorMessage ?? 'Task failed')
               es.close()
               break
@@ -261,9 +412,41 @@ export default function App() {
     } catch (_) {}
   }
 
+  const handleApprove = async () => {
+    if (!taskId) return
+    setApprovalBusy(true)
+    try {
+      await fetch(`${API_BASE}/tasks/${taskId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
+  const handleReject = async (note) => {
+    if (!taskId) return
+    setApprovalBusy(true)
+    try {
+      await fetch(`${API_BASE}/tasks/${taskId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note || null }),
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
   useEffect(() => () => eventSourceRef.current?.close(), [])
 
-  const isRunning = taskStatus === 'Running'
+  const isActive = taskStatus === 'Running' || taskStatus === 'WaitingForApproval'
   const statusColor = STATUS_COLORS[taskStatus] ?? '#6b7280'
 
   return (
@@ -323,18 +506,26 @@ export default function App() {
                 style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #313244', background: '#1e1e2e', color: '#cdd6f4', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: '#a6adc8', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={requireApproval}
+                onChange={e => setRequireApproval(e.target.checked)}
+              />
+              Require human approval before agents run
+            </label>
             <button
               type="submit"
-              disabled={submitting || isRunning}
+              disabled={submitting || isActive}
               style={{
                 width: '100%', padding: '9px 0', borderRadius: 6, border: 'none',
-                background: submitting || isRunning ? '#313244' : '#89b4fa',
-                color: submitting || isRunning ? '#6c7086' : '#1e1e2e',
-                fontWeight: 700, fontSize: 13, cursor: submitting || isRunning ? 'not-allowed' : 'pointer',
+                background: submitting || isActive ? '#313244' : '#89b4fa',
+                color: submitting || isActive ? '#6c7086' : '#1e1e2e',
+                fontWeight: 700, fontSize: 13, cursor: submitting || isActive ? 'not-allowed' : 'pointer',
                 transition: 'background 0.15s',
               }}
             >
-              {isRunning ? '⏳ Running…' : 'Run Agents'}
+              {isActive ? '⏳ Running…' : 'Run Agents'}
             </button>
           </form>
 
@@ -344,12 +535,22 @@ export default function App() {
             </div>
           )}
 
-          {agentOrder.length > 0 && (
+          {approvalRequest && (
+            <ApprovalCard
+              request={approvalRequest}
+              onApprove={handleApprove}
+              onReject={handleReject}
+              busy={approvalBusy}
+            />
+          )}
+
+          {(agentOrder.length > 0 || managerReview) && (
             <div>
               <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Agent Executions</div>
               {agentOrder.map(id => agents[id] && (
                 <AgentCard key={id} execution={agents[id]} />
               ))}
+              {managerReview && <ManagerReviewCard review={managerReview} />}
             </div>
           )}
         </div>
@@ -388,7 +589,7 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#313244', fontSize: 13 }}>
-              {isRunning ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
+              {isActive ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
             </div>
           )}
         </div>

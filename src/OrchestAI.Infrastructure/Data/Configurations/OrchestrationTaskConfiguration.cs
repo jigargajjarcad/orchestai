@@ -51,6 +51,22 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
 
         builder.Property(t => t.ErrorMessage);
 
+        builder.Property(t => t.RequireApproval)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(t => t.ApprovalStatus)
+            .HasMaxLength(50)
+            .HasConversion<string>();
+
+        builder.Property(t => t.ApprovalRequestedAt)
+            .HasColumnType("timestamptz");
+
+        builder.Property(t => t.ApprovedAt)
+            .HasColumnType("timestamptz");
+
+        builder.Property(t => t.ApprovalNote);
+
         builder.Property(t => t.CreatedAt)
             .IsRequired()
             .HasColumnType("timestamptz")

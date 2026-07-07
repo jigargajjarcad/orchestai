@@ -1,5 +1,3 @@
-using System.Text.Json.Nodes;
-using Anthropic.SDK.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,16 +10,16 @@ using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Agents.Base;
 using OrchestAI.Infrastructure.Configuration;
-using CommonFunction = Anthropic.SDK.Common.Function;
 
 namespace OrchestAI.Tests.Infrastructure;
 
-public sealed class AgentBaseToolLoopTests
+public sealed class AgentBaseProviderTests
 {
     private static readonly Guid TaskId = Guid.NewGuid();
     private const string ModelName = "claude-haiku-4-5-20251001";
 
-    private readonly Mock<IAnthropicClientWrapper> _clientMock;
+    private readonly Mock<ILlmProvider> _providerMock;
+    private readonly Mock<ILlmProviderFactory> _providerFactoryMock;
     private readonly Mock<IAgentExecutionRepository> _execRepoMock;
     private readonly Mock<IAgentMessageRepository> _msgRepoMock;
     private readonly Mock<ICostLedgerRepository> _costRepoMock;
@@ -31,9 +29,14 @@ public sealed class AgentBaseToolLoopTests
     private readonly IOptions<AgentOptions> _agentOptions;
     private readonly IOptions<Dictionary<string, PricingEntry>> _pricingOptions;
 
-    public AgentBaseToolLoopTests()
+    public AgentBaseProviderTests()
     {
-        _clientMock = new Mock<IAnthropicClientWrapper>();
+        _providerMock = new Mock<ILlmProvider>();
+        _providerMock.Setup(p => p.ProviderId).Returns("anthropic");
+
+        _providerFactoryMock = new Mock<ILlmProviderFactory>();
+        _providerFactoryMock.Setup(f => f.Resolve("anthropic")).Returns(_providerMock.Object);
+
         _execRepoMock = new Mock<IAgentExecutionRepository>();
         _msgRepoMock = new Mock<IAgentMessageRepository>();
         _costRepoMock = new Mock<ICostLedgerRepository>();
@@ -43,7 +46,7 @@ public sealed class AgentBaseToolLoopTests
 
         _agentOptions = Options.Create(new AgentOptions
         {
-            Models = new Dictionary<string, string> { ["Code"] = ModelName },
+            Models = new Dictionary<string, string> { ["Code"] = $"anthropic/{ModelName}" },
             MaxTokens = new Dictionary<string, int> { ["Code"] = 1024 }
         });
         _pricingOptions = Options.Create(new Dictionary<string, PricingEntry>
@@ -66,7 +69,7 @@ public sealed class AgentBaseToolLoopTests
     private TestAgent BuildAgent()
     {
         return new TestAgent(
-            _clientMock.Object,
+            _providerFactoryMock.Object,
             _execRepoMock.Object,
             _msgRepoMock.Object,
             _costRepoMock.Object,
@@ -78,49 +81,13 @@ public sealed class AgentBaseToolLoopTests
             NullLoggerFactory.Instance);
     }
 
-    private static MessageResponse MakeEndTurnResponse(string text = "Final answer")
-    {
-        return new MessageResponse
-        {
-            StopReason = "end_turn",
-            Content = [new TextContent { Text = text }],
-            ToolCalls = [],
-            Usage = new Usage { InputTokens = 100, OutputTokens = 50 }
-        };
-    }
-
-    private static MessageResponse MakeToolUseResponse(string toolName, string toolId, string argsJson = "{}")
-    {
-        var func = MakeToolCallFunction(toolName, toolId, argsJson);
-        return new MessageResponse
-        {
-            StopReason = "tool_use",
-            Content = [],
-            ToolCalls = [func],
-            Usage = new Usage { InputTokens = 80, OutputTokens = 40 }
-        };
-    }
-
-    // CommonFunction.Name, Id, and Arguments have private setters set during SDK deserialization.
-    // We use reflection to construct valid tool call instances for testing.
-    private static CommonFunction MakeToolCallFunction(string name, string id, string argsJson = "{}")
-    {
-        var func = new CommonFunction(name, "test tool", (JsonNode?)null);
-        var funcType = typeof(CommonFunction);
-        funcType.GetProperty("Id")!.GetSetMethod(nonPublic: true)!.Invoke(func, [id]);
-        funcType.GetProperty("Arguments")!.GetSetMethod(nonPublic: true)!.Invoke(func, [JsonNode.Parse(argsJson)]);
-        return func;
-    }
-
     [Fact]
     public async Task ExecuteAsync_EndTurnOnFirstCall_ReturnsSuccessWithText()
     {
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([]);
-
-        _clientMock.Setup(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeEndTurnResponse("Task completed successfully."));
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Task completed successfully.", [], 100, 50));
 
         var agent = BuildAgent();
         var result = await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
@@ -132,13 +99,29 @@ public sealed class AgentBaseToolLoopTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ResolvesProviderFromQualifiedModelPrefix()
+    {
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
+
+        var agent = BuildAgent();
+        await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+
+        _providerFactoryMock.Verify(f => f.Resolve("anthropic"), Times.Once);
+        _providerMock.Verify(
+            p => p.SendAsync(It.Is<AgentConversation>(c => c.Model == ModelName), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_EndTurnOnFirstCall_PublishesAgentStartedAndCompleted()
     {
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([]);
-        _clientMock.Setup(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeEndTurnResponse());
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Final answer", [], 100, 50));
 
         var agent = BuildAgent();
         await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
@@ -170,15 +153,12 @@ public sealed class AgentBaseToolLoopTests
         mockTool.Setup(t => t.ExecuteAsync(It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new McpToolResult(true, "tool output here"));
 
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([mockTool.Object]);
-        _toolRegistryMock.Setup(r => r.Get(toolName))
-            .Returns(mockTool.Object);
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([mockTool.Object]);
+        _toolRegistryMock.Setup(r => r.Get(toolName)).Returns(mockTool.Object);
 
-        _clientMock.SetupSequence(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeToolUseResponse(toolName, toolId, @"{""key"":""value""}"))
-            .ReturnsAsync(MakeEndTurnResponse("Done after tool use."));
+        _providerMock.SetupSequence(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("tool_use", "", [new ToolRequest(toolId, toolName, @"{""key"":""value""}")], 80, 40))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done after tool use.", [], 60, 30));
 
         var agent = BuildAgent();
         var result = await agent.ExecuteAsync(TaskId, "Use a tool", CancellationToken.None);
@@ -186,12 +166,10 @@ public sealed class AgentBaseToolLoopTests
         result.Success.Should().BeTrue();
         result.Output.Should().Be("Done after tool use.");
 
-        // LLM was called twice
-        _clientMock.Verify(
-            c => c.CreateMessageAsync(It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()),
+        _providerMock.Verify(
+            p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
 
-        // Tool was invoked once
         mockTool.Verify(
             t => t.ExecuteAsync(It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -209,14 +187,12 @@ public sealed class AgentBaseToolLoopTests
         mockTool.Setup(t => t.ExecuteAsync(It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new McpToolResult(true, "success output"));
 
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([mockTool.Object]);
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([mockTool.Object]);
         _toolRegistryMock.Setup(r => r.Get(toolName)).Returns(mockTool.Object);
 
-        _clientMock.SetupSequence(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeToolUseResponse(toolName, "call_xyz", "{}"))
-            .ReturnsAsync(MakeEndTurnResponse("Done."));
+        _providerMock.SetupSequence(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("tool_use", "", [new ToolRequest("call_xyz", toolName, "{}")], 10, 5))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done.", [], 10, 5));
 
         var agent = BuildAgent();
         await agent.ExecuteAsync(TaskId, "Use a tool", CancellationToken.None);
@@ -241,22 +217,18 @@ public sealed class AgentBaseToolLoopTests
         mockTool.Setup(t => t.ExecuteAsync(It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new McpToolResult(false, string.Empty, "External API down"));
 
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([mockTool.Object]);
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([mockTool.Object]);
         _toolRegistryMock.Setup(r => r.Get(toolName)).Returns(mockTool.Object);
 
-        _clientMock.SetupSequence(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeToolUseResponse(toolName, "call_fail", "{}"))
-            .ReturnsAsync(MakeEndTurnResponse("Recovered."));
+        _providerMock.SetupSequence(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("tool_use", "", [new ToolRequest("call_fail", toolName, "{}")], 10, 5))
+            .ReturnsAsync(new AgentTurn("end_turn", "Recovered.", [], 10, 5));
 
         var agent = BuildAgent();
         var result = await agent.ExecuteAsync(TaskId, "Try tool", CancellationToken.None);
 
-        // Even with tool failure, agent should complete successfully
         result.Success.Should().BeTrue();
 
-        // Tool call should still be persisted
         _toolCallRepoMock.Verify(
             r => r.AddAsync(It.IsAny<McpToolCall>(), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -265,28 +237,25 @@ public sealed class AgentBaseToolLoopTests
     [Fact]
     public async Task ExecuteAsync_GetToolsCalledWithAgentToolNames()
     {
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([]);
-        _clientMock.Setup(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeEndTurnResponse());
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
 
         var agent = BuildAgent();
         await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
 
         _toolRegistryMock.Verify(
-            r => r.GetTools(It.Is<IReadOnlyList<string>>(names =>
-                names.Contains("test_tool"))),
+            r => r.GetTools(It.Is<IReadOnlyList<string>>(names => names.Contains("test_tool"))),
             Times.Once);
     }
 
     [Fact]
-    public async Task ExecuteAsync_AnthropicClientThrows_ReturnsFailure()
+    public async Task ExecuteAsync_LlmProviderThrows_ReturnsFailure()
     {
-        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>()))
-            .Returns([]);
-        _clientMock.Setup(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Anthropic API unreachable"));
 
         var agent = BuildAgent();
@@ -311,22 +280,9 @@ public sealed class AgentBaseToolLoopTests
         _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([mockTool.Object]);
         _toolRegistryMock.Setup(r => r.Get(toolName)).Returns(mockTool.Object);
 
-        _clientMock.SetupSequence(c => c.CreateMessageAsync(
-                It.IsAny<MessageParameters>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MessageResponse
-            {
-                StopReason = "tool_use",
-                Content = [],
-                ToolCalls = [MakeToolCallFunction(toolName, "id1", "{}")],
-                Usage = new Usage { InputTokens = 200, OutputTokens = 100 }
-            })
-            .ReturnsAsync(new MessageResponse
-            {
-                StopReason = "end_turn",
-                Content = [new TextContent { Text = "Done" }],
-                ToolCalls = [],
-                Usage = new Usage { InputTokens = 150, OutputTokens = 75 }
-            });
+        _providerMock.SetupSequence(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("tool_use", "", [new ToolRequest("id1", toolName, "{}")], 200, 100))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 150, 75));
 
         var agent = BuildAgent();
         var result = await agent.ExecuteAsync(TaskId, "Test", CancellationToken.None);
@@ -345,7 +301,7 @@ public sealed class AgentBaseToolLoopTests
         protected override IReadOnlyList<string> AvailableToolNames => ["test_tool"];
 
         public TestAgent(
-            IAnthropicClientWrapper client,
+            ILlmProviderFactory llmProviderFactory,
             IAgentExecutionRepository execRepo,
             IAgentMessageRepository msgRepo,
             ICostLedgerRepository costRepo,
@@ -355,7 +311,7 @@ public sealed class AgentBaseToolLoopTests
             IOptions<Dictionary<string, PricingEntry>> pricingOptions,
             IToolRegistry toolRegistry,
             ILoggerFactory loggerFactory)
-            : base(client, execRepo, msgRepo, costRepo, toolCallRepo, eventBus,
+            : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, eventBus,
                    agentOptions, pricingOptions, toolRegistry, loggerFactory)
         { }
     }

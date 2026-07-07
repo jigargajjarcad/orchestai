@@ -1,7 +1,9 @@
 using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using OrchestAI.Application.Commands.ApproveOrchestrationTask;
 using OrchestAI.Application.Commands.CreateOrchestrationTask;
+using OrchestAI.Application.Commands.RejectOrchestrationTask;
 using OrchestAI.Application.Commands.StartOrchestration;
 using OrchestAI.Application.Exceptions;
 using OrchestAI.Application.Queries.GetOrchestrationTask;
@@ -113,6 +115,76 @@ public sealed class TasksController : ControllerBase
         return Accepted(new StartOrchestrationResponse(id, []));
     }
 
+    /// <summary>Approves a task that is waiting for human review, allowing agent dispatch to resume.</summary>
+    [HttpPost("{id:guid}/approve")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ApproveAsync(
+        Guid id,
+        [FromBody] ApprovalRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _mediator.Send(new ApproveOrchestrationTaskCommand(id, request?.Note), cancellationToken);
+            return Ok();
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Conflict",
+                Detail = ex.Message,
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+    }
+
+    /// <summary>Rejects a task that is waiting for human review, marking it failed without dispatching agents.</summary>
+    [HttpPost("{id:guid}/reject")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RejectAsync(
+        Guid id,
+        [FromBody] ApprovalRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _mediator.Send(new RejectOrchestrationTaskCommand(id, request?.Note), cancellationToken);
+            return Ok();
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Conflict",
+                Detail = ex.Message,
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+    }
+
     /// <summary>SSE stream for real-time task execution events.</summary>
     [HttpGet("{id:guid}/stream")]
     public async Task StreamAsync(Guid id, CancellationToken cancellationToken)
@@ -142,3 +214,6 @@ public sealed class TasksController : ControllerBase
         return Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow });
     }
 }
+
+/// <summary>Optional reviewer note attached to an approve/reject decision.</summary>
+public sealed record ApprovalRequest(string? Note);

@@ -22,7 +22,7 @@ public sealed class ResearchAgent : AgentBase
         """;
 
     public ResearchAgent(
-        IAnthropicClientWrapper anthropicClient,
+        ILlmProviderFactory llmProviderFactory,
         IAgentExecutionRepository agentExecutionRepository,
         IAgentMessageRepository agentMessageRepository,
         ICostLedgerRepository costLedgerRepository,
@@ -32,7 +32,7 @@ public sealed class ResearchAgent : AgentBase
         IOptions<Dictionary<string, PricingEntry>> pricingOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
-        : base(anthropicClient, agentExecutionRepository, agentMessageRepository,
+        : base(llmProviderFactory, agentExecutionRepository, agentMessageRepository,
                costLedgerRepository, mcpToolCallRepository, eventBus,
                agentOptions, pricingOptions, toolRegistry, loggerFactory)
     {

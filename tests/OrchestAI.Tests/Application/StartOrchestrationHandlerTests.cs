@@ -16,6 +16,7 @@ public sealed class StartOrchestrationHandlerTests
     private readonly Mock<IOrchestratorAgent> _orchestratorMock;
     private readonly Mock<IAgentFactory> _agentFactoryMock;
     private readonly Mock<IOrchestrationEventBus> _eventBusMock;
+    private readonly Mock<IApprovalGateway> _approvalGatewayMock;
     private readonly Mock<ILogger<StartOrchestrationHandler>> _loggerMock;
     private readonly StartOrchestrationHandler _handler;
 
@@ -27,6 +28,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock = new Mock<IOrchestratorAgent>();
         _agentFactoryMock = new Mock<IAgentFactory>();
         _eventBusMock = new Mock<IOrchestrationEventBus>();
+        _approvalGatewayMock = new Mock<IApprovalGateway>();
         _loggerMock = new Mock<ILogger<StartOrchestrationHandler>>();
 
         _handler = new StartOrchestrationHandler(
@@ -34,7 +36,17 @@ public sealed class StartOrchestrationHandlerTests
             _orchestratorMock.Object,
             _agentFactoryMock.Object,
             _eventBusMock.Object,
+            _approvalGatewayMock.Object,
             _loggerMock.Object);
+    }
+
+    // The handler now always calls ReviewAsync once sub-agents finish, regardless of outcome.
+    private void SetupReview(Guid taskId, OrchestrationPlan plan, string text = "Reviewed synthesis.")
+    {
+        _orchestratorMock
+            .Setup(o => o.ReviewAsync(
+                taskId, It.IsAny<string>(), plan, It.IsAny<IReadOnlyList<AgentExecutionResult>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentExecutionResult(Guid.NewGuid(), text, true, 20, 10, 0.0001m));
     }
 
     [Fact]
@@ -113,6 +125,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var researchResult = new AgentExecutionResult(
             researchExecutionId, "Research findings...", true, 500, 300, 0.001m);
@@ -183,6 +196,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var failedResult = new AgentExecutionResult(
             Guid.NewGuid(), string.Empty, false, 0, 0, 0m, "API timeout");
@@ -238,6 +252,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var researchResult = new AgentExecutionResult(Guid.NewGuid(), researchOutput, true, 400, 200, 0.001m);
         string capturedWriterPrompt = string.Empty;
@@ -293,6 +308,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var failedResearch = new AgentExecutionResult(Guid.NewGuid(), string.Empty, false, 0, 0, 0m, "API error");
         string capturedWriterPrompt = string.Empty;
@@ -350,6 +366,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var researchResult = new AgentExecutionResult(Guid.NewGuid(), "Research output.", true, 400, 200, 0.001m);
         var dataResult = new AgentExecutionResult(Guid.NewGuid(), "Analysis output.", true, 300, 400, 0.002m);
@@ -403,6 +420,7 @@ public sealed class StartOrchestrationHandlerTests
         _orchestratorMock
             .Setup(o => o.PlanAsync(taskId, task.UserPrompt, It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
+        SetupReview(taskId, plan);
 
         var researchResult = new AgentExecutionResult(Guid.NewGuid(), "Research done.", true, 400, 200, 0.001m);
         var codeResult = new AgentExecutionResult(Guid.NewGuid(), "Code written.", true, 300, 400, 0.002m);

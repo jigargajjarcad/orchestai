@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Anthropic.SDK.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OrchestAI.Domain.Entities;
@@ -52,8 +51,22 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         For sequential mode, execution_order determines which agent runs first.
         """;
 
+    private const string ReviewSystemPrompt =
+        """
+        You are a quality control manager reviewing the outputs of your AI agent team.
+        You have received the outputs from each agent that worked on a task.
+        Your job is to:
+        1. Assess whether each agent completed their assigned work successfully
+        2. Identify any gaps, errors, or missing information
+        3. Synthesize all outputs into a single, coherent final result
+        4. Note any agents that failed or produced poor quality output
+
+        Be concise in your assessment. Lead with the synthesized result, then add a brief
+        quality note at the end. Format: synthesized content first, then "---\nQuality Note: ..."
+        """;
+
     public OrchestratorAgent(
-        IAnthropicClientWrapper anthropicClient,
+        ILlmProviderFactory llmProviderFactory,
         IAgentExecutionRepository agentExecutionRepository,
         IAgentMessageRepository agentMessageRepository,
         ICostLedgerRepository costLedgerRepository,
@@ -63,7 +76,7 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         IOptions<Dictionary<string, PricingEntry>> pricingOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
-        : base(anthropicClient, agentExecutionRepository, agentMessageRepository,
+        : base(llmProviderFactory, agentExecutionRepository, agentMessageRepository,
                costLedgerRepository, mcpToolCallRepository, eventBus,
                agentOptions, pricingOptions, toolRegistry, loggerFactory)
     {
@@ -79,13 +92,10 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
 
         try
         {
-            var messages = new List<Message>
-            {
-                new() { Role = RoleType.User, Content = [new TextContent { Text = userPrompt }] }
-            };
+            var messages = new List<ConversationMessage> { new("user", userPrompt) };
 
             var (text, inputTokens, outputTokens, costUsd) =
-                await RunLlmTurnAsync(execution, messages, 1, cancellationToken).ConfigureAwait(false);
+                await RunLlmTurnAsync(execution, SystemPrompt, messages, 1, cancellationToken).ConfigureAwait(false);
 
             var totalInputTokens = inputTokens;
             var totalOutputTokens = outputTokens;
@@ -96,22 +106,12 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
                 _logger.LogWarning(
                     "Orchestrator returned invalid JSON, retrying. ExecutionId: {ExecutionId}", execution.Id);
 
-                messages.Add(new Message
-                {
-                    Role = RoleType.Assistant,
-                    Content = [new TextContent { Text = text }]
-                });
-                messages.Add(new Message
-                {
-                    Role = RoleType.User,
-                    Content = [new TextContent
-                    {
-                        Text = "Your previous response was not valid JSON. Return ONLY the JSON object, no other text."
-                    }]
-                });
+                messages.Add(new ConversationMessage("assistant", text));
+                messages.Add(new ConversationMessage(
+                    "user", "Your previous response was not valid JSON. Return ONLY the JSON object, no other text."));
 
                 var (retryText, retryInput, retryOutput, retryCost) =
-                    await RunLlmTurnAsync(execution, messages, 2, cancellationToken).ConfigureAwait(false);
+                    await RunLlmTurnAsync(execution, SystemPrompt, messages, 2, cancellationToken).ConfigureAwait(false);
 
                 totalInputTokens += retryInput;
                 totalOutputTokens += retryOutput;
@@ -150,6 +150,62 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
             _logger.LogError(ex, "Orchestrator failed for task {TaskId}", orchestrationTaskId);
             await FinalizeFailureAsync(execution, ex.Message, cancellationToken).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    public async Task<AgentExecutionResult> ReviewAsync(
+        Guid orchestrationTaskId,
+        string userPrompt,
+        OrchestrationPlan plan,
+        IReadOnlyList<AgentExecutionResult> results,
+        CancellationToken cancellationToken = default)
+    {
+        var execution = await SetupExecutionAsync(orchestrationTaskId, userPrompt, cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            _eventBus.Publish(orchestrationTaskId, new SseEvent(
+                "manager_review_started",
+                orchestrationTaskId,
+                new { taskId = orchestrationTaskId },
+                DateTimeOffset.UtcNow));
+
+            var agentOutputs = string.Join("\n", plan.ExecutionOrder.Zip(results, (agentType, result) =>
+                $"[{agentType}]: {(result.Success ? result.Output : $"FAILED: {result.ErrorMessage}")}"));
+
+            var reviewPrompt =
+                $"""
+                User's original task: {userPrompt}
+
+                Agent outputs:
+                {agentOutputs}
+
+                Synthesize these outputs into the best possible final result for the user.
+                """;
+
+            var messages = new List<ConversationMessage> { new("user", reviewPrompt) };
+
+            var (text, inputTokens, outputTokens, costUsd) =
+                await RunLlmTurnAsync(execution, ReviewSystemPrompt, messages, 1, cancellationToken)
+                    .ConfigureAwait(false);
+
+            var executionResult = await FinalizeSuccessAsync(
+                execution, text, inputTokens, outputTokens, costUsd, cancellationToken)
+                .ConfigureAwait(false);
+
+            _eventBus.Publish(orchestrationTaskId, new SseEvent(
+                "manager_review_completed",
+                orchestrationTaskId,
+                new { taskId = orchestrationTaskId, result = text },
+                DateTimeOffset.UtcNow));
+
+            return executionResult;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manager review failed for task {TaskId}", orchestrationTaskId);
+            return await FinalizeFailureAsync(execution, ex.Message, cancellationToken).ConfigureAwait(false);
         }
     }
 

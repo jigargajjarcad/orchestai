@@ -8,4 +8,11 @@ public interface IOrchestratorAgent
         Guid orchestrationTaskId,
         string userPrompt,
         CancellationToken cancellationToken = default);
+
+    Task<AgentExecutionResult> ReviewAsync(
+        Guid orchestrationTaskId,
+        string userPrompt,
+        OrchestrationPlan plan,
+        IReadOnlyList<AgentExecutionResult> results,
+        CancellationToken cancellationToken = default);
 }

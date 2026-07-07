@@ -5,5 +5,6 @@ public sealed record CreateOrchestrationTaskResponse(
     Guid UserId,
     string Title,
     string Status,
+    bool RequireApproval,
     DateTimeOffset CreatedAt
 );

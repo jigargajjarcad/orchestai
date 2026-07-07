@@ -16,6 +16,7 @@ public sealed class StartOrchestrationHandler
     private readonly IOrchestratorAgent _orchestratorAgent;
     private readonly IAgentFactory _agentFactory;
     private readonly IOrchestrationEventBus _eventBus;
+    private readonly IApprovalGateway _approvalGateway;
     private readonly ILogger<StartOrchestrationHandler> _logger;
 
     public StartOrchestrationHandler(
@@ -23,12 +24,14 @@ public sealed class StartOrchestrationHandler
         IOrchestratorAgent orchestratorAgent,
         IAgentFactory agentFactory,
         IOrchestrationEventBus eventBus,
+        IApprovalGateway approvalGateway,
         ILogger<StartOrchestrationHandler> logger)
     {
         _taskRepository = taskRepository;
         _orchestratorAgent = orchestratorAgent;
         _agentFactory = agentFactory;
         _eventBus = eventBus;
+        _approvalGateway = approvalGateway;
         _logger = logger;
     }
 
@@ -66,6 +69,41 @@ public sealed class StartOrchestrationHandler
             request.TaskId,
             string.Join(", ", plan.SelectedAgents));
 
+        if (task.RequireApproval)
+        {
+            task.RequestApproval();
+            await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
+
+            _eventBus.Publish(request.TaskId, new SseEvent(
+                "approval_required",
+                request.TaskId,
+                new
+                {
+                    taskId = request.TaskId,
+                    plan = plan.Plan,
+                    selectedAgents = plan.SelectedAgents.Select(a => a.ToString()).ToList(),
+                    agentPrompts = plan.AgentPrompts.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value),
+                    executionMode = plan.ExecutionMode.ToString()
+                },
+                DateTimeOffset.UtcNow));
+
+            _logger.LogInformation("Task {TaskId} waiting for human approval", request.TaskId);
+
+            await _approvalGateway.WaitForApprovalAsync(request.TaskId, cancellationToken).ConfigureAwait(false);
+
+            task = await _taskRepository.GetByIdAsync(request.TaskId, cancellationToken).ConfigureAwait(false)
+                ?? throw new NotFoundException(nameof(OrchestrationTask), request.TaskId);
+
+            if (task.ApprovalStatus == TaskApprovalStatus.Rejected)
+            {
+                // RejectOrchestrationTaskHandler already marked the task Failed and published task_failed.
+                _logger.LogInformation("Task {TaskId} rejected — aborting before agent dispatch", request.TaskId);
+                return new StartOrchestrationResponse(request.TaskId, []);
+            }
+
+            _logger.LogInformation("Task {TaskId} approved — resuming agent dispatch", request.TaskId);
+        }
+
         AgentExecutionResult[] results;
 
         if (plan.ExecutionMode == ExecutionMode.Sequential)
@@ -90,16 +128,21 @@ public sealed class StartOrchestrationHandler
         var aggregatedOutput = string.Join("\n\n---\n\n",
             successResults.Select(r => r.Output).Where(o => !string.IsNullOrWhiteSpace(o)));
 
-        var allResults = results.Append(plan.OrchestratorExecution);
+        var reviewResult = await _orchestratorAgent
+            .ReviewAsync(request.TaskId, task.UserPrompt, plan, results, cancellationToken)
+            .ConfigureAwait(false);
+
+        var allResults = results.Append(plan.OrchestratorExecution).Append(reviewResult).ToList();
+        var synthesizedOutput = reviewResult.Success ? reviewResult.Output : aggregatedOutput;
+
         var totalInputTokens = allResults.Sum(r => r.InputTokens);
         var totalOutputTokens = allResults.Sum(r => r.OutputTokens);
         var totalCostUsd = allResults.Sum(r => r.CostUsd);
-
         task.AccumulateCost(totalInputTokens, totalOutputTokens, totalCostUsd);
 
         if (failedResults.Count == 0)
         {
-            task.MarkCompleted(aggregatedOutput);
+            task.MarkCompleted(synthesizedOutput);
 
             _eventBus.Publish(request.TaskId, new SseEvent(
                 "task_completed",
@@ -113,7 +156,7 @@ public sealed class StartOrchestrationHandler
         else
         {
             var errorSummary = string.Join("; ", failedResults.Select(r => r.ErrorMessage));
-            task.MarkFailed(errorSummary);
+            task.MarkFailed(errorSummary, synthesizedOutput);
 
             _eventBus.Publish(request.TaskId, new SseEvent(
                 "task_failed",

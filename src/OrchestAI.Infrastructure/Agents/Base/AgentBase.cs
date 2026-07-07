@@ -1,10 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Anthropic.SDK.Messaging;
 using Microsoft.Extensions.Logging;
-using CommonFunction = Anthropic.SDK.Common.Function;
-using CommonTool = Anthropic.SDK.Common.Tool;
 using Microsoft.Extensions.Options;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
@@ -23,7 +20,7 @@ public abstract class AgentBase : IAgent
 
     private const int MaxAgenticIterations = 10;
 
-    protected readonly IAnthropicClientWrapper _anthropicClient;
+    protected readonly ILlmProviderFactory _llmProviderFactory;
     protected readonly IAgentExecutionRepository _agentExecutionRepository;
     protected readonly IAgentMessageRepository _agentMessageRepository;
     protected readonly ICostLedgerRepository _costLedgerRepository;
@@ -35,7 +32,7 @@ public abstract class AgentBase : IAgent
     protected readonly ILogger _logger;
 
     protected AgentBase(
-        IAnthropicClientWrapper anthropicClient,
+        ILlmProviderFactory llmProviderFactory,
         IAgentExecutionRepository agentExecutionRepository,
         IAgentMessageRepository agentMessageRepository,
         ICostLedgerRepository costLedgerRepository,
@@ -46,7 +43,7 @@ public abstract class AgentBase : IAgent
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
     {
-        _anthropicClient = anthropicClient;
+        _llmProviderFactory = llmProviderFactory;
         _agentExecutionRepository = agentExecutionRepository;
         _agentMessageRepository = agentMessageRepository;
         _costLedgerRepository = costLedgerRepository;
@@ -68,18 +65,20 @@ public abstract class AgentBase : IAgent
 
         try
         {
-            var model = _agentOptions.Value.Models[AgentType.ToString()];
+            var modelRef = ModelRef.Parse(_agentOptions.Value.Models[AgentType.ToString()]);
             var maxTokens = _agentOptions.Value.MaxTokens[AgentType.ToString()];
+            var provider = _llmProviderFactory.Resolve(modelRef.ProviderId);
 
-            var availableTools = _toolRegistry.GetTools(AvailableToolNames);
-            IList<CommonTool>? claudeTools = availableTools.Count > 0
-                ? availableTools.Select(BuildClaudeTool).ToList()
-                : null;
+            var toolDefinitions = _toolRegistry.GetTools(AvailableToolNames)
+                .Select(BuildToolDefinition)
+                .ToList();
 
-            var messages = new List<Message>
-            {
-                new() { Role = RoleType.User, Content = [new TextContent { Text = userPrompt }] }
-            };
+            var conversation = new AgentConversation(
+                SystemPrompt,
+                Messages: [new ConversationMessage("user", userPrompt)],
+                Tools: toolDefinitions,
+                Model: modelRef.ModelName,
+                MaxTokens: maxTokens);
 
             var totalInputTokens = 0;
             var totalOutputTokens = 0;
@@ -89,26 +88,15 @@ public abstract class AgentBase : IAgent
 
             for (int iteration = 0; iteration < MaxAgenticIterations; iteration++)
             {
-                var response = await _anthropicClient.CreateMessageAsync(
-                    new MessageParameters
-                    {
-                        Model = model,
-                        MaxTokens = maxTokens,
-                        System = [new SystemMessage(SystemPrompt)],
-                        Messages = messages,
-                        Stream = false,
-                        Tools = claudeTools
-                    }, cancellationToken).ConfigureAwait(false);
+                var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
 
-                totalInputTokens += response.Usage.InputTokens;
-                totalOutputTokens += response.Usage.OutputTokens;
-                totalCostUsd += CalculateCost(model, response.Usage.InputTokens, response.Usage.OutputTokens);
+                totalInputTokens += turn.InputTokens;
+                totalOutputTokens += turn.OutputTokens;
+                totalCostUsd += CalculateCost(modelRef.ModelName, turn.InputTokens, turn.OutputTokens);
 
-                // Persist and emit any text content in this turn
-                var textBlock = response.Content.OfType<TextContent>().LastOrDefault();
-                if (textBlock is { Text.Length: > 0 })
+                if (turn.Text.Length > 0)
                 {
-                    finalText = textBlock.Text;
+                    finalText = turn.Text;
                     var agentMessage = AgentMessage.Create(
                         execution.Id, MessageRole.Assistant, finalText, sequenceNumber++);
                     await _agentMessageRepository.AddAsync(agentMessage, cancellationToken).ConfigureAwait(false);
@@ -127,34 +115,25 @@ public abstract class AgentBase : IAgent
                         DateTimeOffset.UtcNow));
                 }
 
-                if (response.StopReason == "end_turn" || response.StopReason == "max_tokens")
+                if (turn.StopReason == "end_turn" || turn.StopReason == "max_tokens")
                     break;
 
-                if (response.StopReason == "tool_use" && response.ToolCalls is { Count: > 0 })
+                if (turn.StopReason == "tool_use" && turn.ToolRequests.Count > 0)
                 {
-                    var toolResultContents = new List<ContentBase>();
+                    var toolResults = new List<ToolResultContent>();
 
-                    foreach (var func in response.ToolCalls)
+                    foreach (var request in turn.ToolRequests)
                     {
-                        var result = await InvokeToolAsync(execution, func, cancellationToken)
+                        var result = await InvokeToolAsync(execution, request, cancellationToken)
                             .ConfigureAwait(false);
 
-                        toolResultContents.Add(new ToolResultContent
-                        {
-                            ToolUseId = func.Id,
-                            Content = [new TextContent
-                            {
-                                Text = result.Success
-                                    ? result.Output
-                                    : $"Tool error: {result.ErrorMessage ?? "Unknown error"}"
-                            }],
-                            IsError = !result.Success
-                        });
+                        toolResults.Add(new ToolResultContent(
+                            request.Id,
+                            result.Success ? result.Output : $"Tool error: {result.ErrorMessage ?? "Unknown error"}",
+                            !result.Success));
                     }
 
-                    // Append assistant turn + tool results for next iteration
-                    messages.Add(new Message { Role = RoleType.Assistant, Content = response.Content });
-                    messages.Add(new Message { Role = RoleType.User, Content = toolResultContents });
+                    conversation = conversation.AppendToolResults(turn, toolResults);
                     continue;
                 }
 
@@ -193,32 +172,26 @@ public abstract class AgentBase : IAgent
         return execution;
     }
 
-    // Used by OrchestratorAgent for its JSON-routing flow (no tools, single-turn)
+    // Used by OrchestratorAgent for its JSON-routing and review flows (no tools, single-turn)
     protected async Task<(string Text, int InputTokens, int OutputTokens, decimal CostUsd)> RunLlmTurnAsync(
         AgentExecution execution,
-        List<Message> messages,
+        string systemPrompt,
+        List<ConversationMessage> messages,
         int sequenceNumber,
         CancellationToken cancellationToken)
     {
-        var model = _agentOptions.Value.Models[AgentType.ToString()];
+        var modelRef = ModelRef.Parse(_agentOptions.Value.Models[AgentType.ToString()]);
         var maxTokens = _agentOptions.Value.MaxTokens[AgentType.ToString()];
+        var provider = _llmProviderFactory.Resolve(modelRef.ProviderId);
 
-        var response = await _anthropicClient.CreateMessageAsync(
-            new MessageParameters
-            {
-                Model = model,
-                MaxTokens = maxTokens,
-                System = [new SystemMessage(SystemPrompt)],
-                Messages = messages,
-                Stream = false
-            }, cancellationToken).ConfigureAwait(false);
+        var conversation = new AgentConversation(systemPrompt, messages, Tools: [], modelRef.ModelName, maxTokens);
+        var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
 
-        var text = response.FirstMessage?.Text ?? string.Empty;
-        var inputTokens = response.Usage.InputTokens;
-        var outputTokens = response.Usage.OutputTokens;
-        var costUsd = CalculateCost(model, inputTokens, outputTokens);
+        var inputTokens = turn.InputTokens;
+        var outputTokens = turn.OutputTokens;
+        var costUsd = CalculateCost(modelRef.ModelName, inputTokens, outputTokens);
 
-        var agentMessage = AgentMessage.Create(execution.Id, MessageRole.Assistant, text, sequenceNumber);
+        var agentMessage = AgentMessage.Create(execution.Id, MessageRole.Assistant, turn.Text, sequenceNumber);
         await _agentMessageRepository.AddAsync(agentMessage, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(execution.OrchestrationTaskId, new SseEvent(
@@ -230,11 +203,11 @@ public abstract class AgentBase : IAgent
                 agentType = AgentType.ToString(),
                 messageId = agentMessage.Id,
                 role = "Assistant",
-                contentPreview = text.Length > 200 ? text[..200] : text
+                contentPreview = turn.Text.Length > 200 ? turn.Text[..200] : turn.Text
             },
             DateTimeOffset.UtcNow));
 
-        return (text, inputTokens, outputTokens, costUsd);
+        return (turn.Text, inputTokens, outputTokens, costUsd);
     }
 
     protected async Task<AgentExecutionResult> FinalizeSuccessAsync(
@@ -287,10 +260,10 @@ public abstract class AgentBase : IAgent
 
     private async Task<McpToolResult> InvokeToolAsync(
         AgentExecution execution,
-        CommonFunction func,
+        ToolRequest request,
         CancellationToken cancellationToken)
     {
-        var inputJson = func.Arguments?.ToJsonString() ?? "{}";
+        var inputJson = string.IsNullOrWhiteSpace(request.ArgsJson) ? "{}" : request.ArgsJson;
         var parameters = ParseParameters(inputJson);
 
         _eventBus.Publish(execution.OrchestrationTaskId, new SseEvent(
@@ -300,19 +273,19 @@ public abstract class AgentBase : IAgent
             {
                 agentExecutionId = execution.Id,
                 agentType = AgentType.ToString(),
-                toolName = func.Name,
+                toolName = request.Name,
                 inputParameters = inputJson
             },
             DateTimeOffset.UtcNow));
 
-        _logger.LogInformation("Agent {AgentType} invoking tool '{ToolName}'", AgentType, func.Name);
+        _logger.LogInformation("Agent {AgentType} invoking tool '{ToolName}'", AgentType, request.Name);
 
         var sw = Stopwatch.StartNew();
         McpToolResult result;
 
         try
         {
-            var tool = _toolRegistry.Get(func.Name);
+            var tool = _toolRegistry.Get(request.Name);
             result = await tool.ExecuteAsync(parameters, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -323,7 +296,7 @@ public abstract class AgentBase : IAgent
         sw.Stop();
         var durationMs = (int)sw.ElapsedMilliseconds;
 
-        var toolCall = McpToolCall.Create(execution.Id, func.Name, inputJson);
+        var toolCall = McpToolCall.Create(execution.Id, request.Name, inputJson);
         if (result.Success)
             toolCall.RecordSuccess(result.Output, durationMs);
         else
@@ -342,7 +315,7 @@ public abstract class AgentBase : IAgent
             {
                 agentExecutionId = execution.Id,
                 agentType = AgentType.ToString(),
-                toolName = func.Name,
+                toolName = request.Name,
                 success = result.Success,
                 durationMs,
                 outputPreview
@@ -351,7 +324,7 @@ public abstract class AgentBase : IAgent
 
         _logger.LogInformation(
             "Tool '{ToolName}' completed in {DurationMs}ms, success={Success}",
-            func.Name, durationMs, result.Success);
+            request.Name, durationMs, result.Success);
 
         return result;
     }
@@ -385,7 +358,7 @@ public abstract class AgentBase : IAgent
              + (outputTokens / 1_000_000m) * pricing.OutputPerMillion;
     }
 
-    private static CommonTool BuildClaudeTool(IMcpTool tool)
+    private static ToolDefinition BuildToolDefinition(IMcpTool tool)
     {
         var schema = tool.GetInputSchema();
 
@@ -407,13 +380,13 @@ public abstract class AgentBase : IAgent
         var requiredArr = new JsonArray();
         foreach (var r in schema.Required) requiredArr.Add(r);
 
-        var parametersNode = new JsonObject
+        var schemaNode = new JsonObject
         {
             ["type"] = schema.Type,
             ["properties"] = propertiesObj,
             ["required"] = requiredArr
         };
 
-        return new CommonTool(new CommonFunction(tool.ToolName, tool.Description, parametersNode));
+        return new ToolDefinition(tool.ToolName, tool.Description, schemaNode.ToJsonString());
     }
 }

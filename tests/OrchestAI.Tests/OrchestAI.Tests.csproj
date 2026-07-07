@@ -7,15 +7,19 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- OpenAIChatModelFactory is the SDK's intended test-model factory but is marked experimental -->
+    <NoWarn>$(NoWarn);OPENAI001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <PackageReference Include="MediatR" Version="12.4.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="OpenAI" Version="2.12.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
   </ItemGroup>

@@ -1,7 +1,9 @@
 using Anthropic.SDK;
+using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenAI;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure.Agents;
 using OrchestAI.Infrastructure.Agents.Base;
@@ -9,8 +11,10 @@ using OrchestAI.Infrastructure.Configuration;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Data.Interceptors;
 using OrchestAI.Infrastructure.Events;
+using OrchestAI.Infrastructure.Providers;
 using OrchestAI.Infrastructure.Repositories;
 using OrchestAI.Infrastructure.Tools;
+using System.ClientModel;
 
 namespace OrchestAI.Infrastructure;
 
@@ -42,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IMcpToolCallRepository, McpToolCallRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
+        services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
 
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
         services.Configure<Dictionary<string, PricingEntry>>(configuration.GetSection("Pricing"));
@@ -53,6 +58,30 @@ public static class DependencyInjection
 
         services.AddSingleton(new AnthropicClient(new APIAuthentication(apiKey)));
         services.AddSingleton<IAnthropicClientWrapper, AnthropicClientWrapper>();
+
+        services.AddSingleton<ILlmProvider>(sp =>
+            new AnthropicProvider(sp.GetRequiredService<IAnthropicClientWrapper>()));
+
+        var azureApiKey = configuration["AzureOpenAI:ApiKey"];
+        var azureEndpoint = configuration["AzureOpenAI:Endpoint"];
+        var azureDeploymentName = configuration["AzureOpenAI:DeploymentName"];
+        if (!string.IsNullOrWhiteSpace(azureApiKey)
+            && !string.IsNullOrWhiteSpace(azureEndpoint)
+            && !string.IsNullOrWhiteSpace(azureDeploymentName))
+        {
+            var azureClient = new AzureOpenAIClient(new Uri(azureEndpoint), new ApiKeyCredential(azureApiKey));
+            services.AddSingleton<ILlmProvider>(
+                new AzureOpenAIProvider(new AzureOpenAIChatCompletionClient(azureClient, azureDeploymentName)));
+        }
+
+        var openAiApiKey = configuration["OpenAI:ApiKey"];
+        if (!string.IsNullOrWhiteSpace(openAiApiKey))
+        {
+            var openAiClient = new OpenAIClient(openAiApiKey);
+            services.AddSingleton<ILlmProvider>(new OpenAIProvider(new OpenAIChatCompletionClient(openAiClient)));
+        }
+
+        services.AddSingleton<ILlmProviderFactory, LlmProviderFactory>();
 
         // Tools — use IHttpClientFactory so singletons can create scoped HTTP clients safely
         services.AddHttpClient();

@@ -4,6 +4,7 @@ public enum OrchestrationTaskStatus
 {
     Pending,
     Running,
+    WaitingForApproval,
     Completed,
     Failed,
     Cancelled

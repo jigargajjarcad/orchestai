@@ -5,5 +5,6 @@ namespace OrchestAI.Application.Commands.CreateOrchestrationTask;
 public sealed record CreateOrchestrationTaskCommand(
     Guid UserId,
     string Title,
-    string UserPrompt
+    string UserPrompt,
+    bool RequireApproval = false
 ) : IRequest<CreateOrchestrationTaskResponse>;

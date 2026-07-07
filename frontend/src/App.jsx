@@ -48,7 +48,7 @@ function ToolCallRow({ toolCall }) {
   )
 }
 
-function AgentCard({ execution }) {
+function AgentCard({ execution, memoryCount, savedMemories }) {
   const statusColor = STATUS_COLORS[execution.status] ?? '#6b7280'
 
   return (
@@ -61,7 +61,14 @@ function AgentCard({ execution }) {
       background: '#1e1e2e',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <strong style={{ color: '#cdd6f4', fontSize: 14 }}>{execution.agentType}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <strong style={{ color: '#cdd6f4', fontSize: 14 }}>{execution.agentType}</strong>
+          {memoryCount > 0 && (
+            <span title={`${memoryCount} saved ${memoryCount === 1 ? 'memory' : 'memories'} for this agent`} style={{ fontSize: 11, color: '#a6adc8' }}>
+              🧠 {memoryCount}
+            </span>
+          )}
+        </div>
         <span style={{
           background: `${statusColor}20`,
           color: statusColor,
@@ -103,6 +110,12 @@ function AgentCard({ execution }) {
         <div style={{ fontSize: 11, color: '#585b70', marginTop: 8, display: 'flex', gap: 12 }}>
           <span>{execution.inputTokens}in + {execution.outputTokens}out tokens</span>
           <span style={{ color: '#6c7086' }}>${Number(execution.costUsd).toFixed(6)}</span>
+        </div>
+      )}
+
+      {savedMemories > 0 && (
+        <div style={{ fontSize: 11, color: '#a6e3a1', marginTop: 6 }}>
+          🧠 Saved {savedMemories} {savedMemories === 1 ? 'memory' : 'memories'}
         </div>
       )}
     </div>
@@ -235,6 +248,86 @@ function ManagerReviewCard({ review }) {
   )
 }
 
+function MemoriesPage({ onDelete }) {
+  const [memories, setMemories] = useState(null)
+  const [error, setError] = useState(null)
+
+  const load = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
+      if (!res.ok) throw new Error(`Failed to load memories: ${res.status}`)
+      setMemories(await res.json())
+    } catch (err) {
+      setError(err.message)
+      setMemories([])
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleDelete = async (id) => {
+    try {
+      await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories/${id}`, { method: 'DELETE' })
+      setMemories(prev => prev.filter(m => m.id !== id))
+      onDelete?.()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>
+        Agent Memories
+      </div>
+
+      {error && (
+        <div style={{ background: '#2d1b1b', border: '1px solid #dc262680', borderRadius: 6, padding: '10px 12px', marginBottom: 16, color: '#f38ba8', fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {memories == null ? (
+        <div style={{ color: '#585b70', fontSize: 13 }}>Loading…</div>
+      ) : memories.length === 0 ? (
+        <div style={{ color: '#585b70', fontSize: 13 }}>No memories saved yet — run a task and agents will start remembering things.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', color: '#6c7086', borderBottom: '1px solid #313244' }}>
+              <th style={{ padding: '8px 10px' }}>Agent</th>
+              <th style={{ padding: '8px 10px' }}>Key</th>
+              <th style={{ padding: '8px 10px' }}>Value</th>
+              <th style={{ padding: '8px 10px' }}>Importance</th>
+              <th style={{ padding: '8px 10px' }}>Updated</th>
+              <th style={{ padding: '8px 10px' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {memories.map(m => (
+              <tr key={m.id} style={{ borderBottom: '1px solid #1e1e2e' }}>
+                <td style={{ padding: '8px 10px', color: '#89b4fa' }}>{m.agentType}</td>
+                <td style={{ padding: '8px 10px', color: '#cdd6f4' }}>{m.key}</td>
+                <td style={{ padding: '8px 10px', color: '#a6adc8', maxWidth: 400 }}>{m.value}</td>
+                <td style={{ padding: '8px 10px', color: '#6c7086' }}>{m.importance}</td>
+                <td style={{ padding: '8px 10px', color: '#6c7086' }}>{new Date(m.updatedAt).toLocaleString()}</td>
+                <td style={{ padding: '8px 10px' }}>
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    style={{ background: 'transparent', border: '1px solid #dc262680', color: '#f38ba8', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -250,7 +343,26 @@ export default function App() {
   const [approvalRequest, setApprovalRequest] = useState(null)
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
+  const [view, setView] = useState('playground')
+  const [memoryCounts, setMemoryCounts] = useState({})
+  const [memoryBaseline, setMemoryBaseline] = useState({})
+  const [savedMemories, setSavedMemories] = useState({})
   const eventSourceRef = useRef(null)
+
+  const fetchMemoryCounts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
+      if (!res.ok) return {}
+      const memories = await res.json()
+      const counts = {}
+      for (const m of memories) counts[m.agentType] = (counts[m.agentType] ?? 0) + 1
+      return counts
+    } catch (_) {
+      return {}
+    }
+  }
+
+  useEffect(() => { fetchMemoryCounts().then(setMemoryCounts) }, [])
 
   const updateAgent = (id, patch) => {
     setAgents(prev => {
@@ -300,7 +412,12 @@ export default function App() {
     setTaskStatus(null)
     setApprovalRequest(null)
     setManagerReview(null)
+    setSavedMemories({})
     eventSourceRef.current?.close()
+
+    const baseline = await fetchMemoryCounts()
+    setMemoryBaseline(baseline)
+    setMemoryCounts(baseline)
 
     try {
       const createRes = await fetch(`${API_BASE}/tasks`, {
@@ -383,12 +500,14 @@ export default function App() {
               setTotalCost(p.totalCostUsd)
               es.close()
               fetchFinalResult(id)
+              refreshSavedMemories()
               break
             case 'task_failed':
               setTaskStatus('Failed')
               setApprovalRequest(null)
               setError(p.errorMessage ?? 'Task failed')
               es.close()
+              refreshSavedMemories()
               break
           }
         } catch (_) {}
@@ -410,6 +529,17 @@ export default function App() {
         setFinalResult(data.finalResult)
       }
     } catch (_) {}
+  }
+
+  const refreshSavedMemories = async () => {
+    const current = await fetchMemoryCounts()
+    setMemoryCounts(current)
+    const deltas = {}
+    for (const agentType of Object.keys(current)) {
+      const delta = current[agentType] - (memoryBaseline[agentType] ?? 0)
+      if (delta > 0) deltas[agentType] = delta
+    }
+    setSavedMemories(deltas)
   }
 
   const handleApprove = async () => {
@@ -458,7 +588,31 @@ export default function App() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: '#89b4fa', margin: 0 }}>OrchestAI</h1>
           <p style={{ color: '#585b70', margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
         </div>
-        {taskId && (
+
+        <nav style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => setView('playground')}
+            style={{
+              background: view === 'playground' ? '#313244' : 'transparent',
+              color: view === 'playground' ? '#cdd6f4' : '#6c7086',
+              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            Playground
+          </button>
+          <button
+            onClick={() => setView('memories')}
+            style={{
+              background: view === 'memories' ? '#313244' : 'transparent',
+              color: view === 'memories' ? '#cdd6f4' : '#6c7086',
+              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            🧠 Memories
+          </button>
+        </nav>
+
+        {taskId && view === 'playground' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 11, color: '#585b70' }}>{taskId.slice(0, 8)}…</span>
             <span style={{
@@ -480,6 +634,9 @@ export default function App() {
         )}
       </div>
 
+      {view === 'memories' ? (
+        <MemoriesPage onDelete={() => fetchMemoryCounts().then(setMemoryCounts)} />
+      ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 'calc(100vh - 57px)' }}>
 
         {/* Left: Input + Agent Feed */}
@@ -548,7 +705,12 @@ export default function App() {
             <div>
               <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Agent Executions</div>
               {agentOrder.map(id => agents[id] && (
-                <AgentCard key={id} execution={agents[id]} />
+                <AgentCard
+                  key={id}
+                  execution={agents[id]}
+                  memoryCount={memoryCounts[agents[id].agentType]}
+                  savedMemories={savedMemories[agents[id].agentType]}
+                />
               ))}
               {managerReview && <ManagerReviewCard review={managerReview} />}
             </div>
@@ -594,6 +756,7 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

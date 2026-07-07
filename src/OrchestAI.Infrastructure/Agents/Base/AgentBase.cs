@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Events;
+using OrchestAI.Domain.Exceptions;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Configuration;
@@ -19,15 +20,32 @@ public abstract class AgentBase : IAgent
     protected virtual IReadOnlyList<string> AvailableToolNames => [];
 
     private const int MaxAgenticIterations = 10;
+    private const int MaxMemoryEntries = 5;
+    private const int MemoryExtractionInputCharLimit = 4000;
+    private const int MemoryExtractionMaxTokens = 512;
+
+    private const string MemoryExtractionSystemPrompt =
+        """
+        Extract 1-3 key facts from this agent output worth remembering for future tasks.
+        Return ONLY valid JSON array, no markdown:
+        [
+          {"key": "short_identifier", "value": "the fact to remember", "importance": 7}
+        ]
+        Importance 1-10. Only extract genuinely useful facts. Return [] if nothing worth remembering.
+        """;
 
     protected readonly ILlmProviderFactory _llmProviderFactory;
     protected readonly IAgentExecutionRepository _agentExecutionRepository;
     protected readonly IAgentMessageRepository _agentMessageRepository;
     protected readonly ICostLedgerRepository _costLedgerRepository;
     protected readonly IMcpToolCallRepository _mcpToolCallRepository;
+    protected readonly ITaskCheckpointRepository _checkpointRepository;
+    protected readonly IAgentMemoryRepository _memoryRepository;
+    protected readonly IPiiRedactor _piiRedactor;
     protected readonly IOrchestrationEventBus _eventBus;
     protected readonly IOptions<AgentOptions> _agentOptions;
     protected readonly IOptions<Dictionary<string, PricingEntry>> _pricingOptions;
+    protected readonly IOptions<RetryPolicyOptions> _retryOptions;
     protected readonly IToolRegistry _toolRegistry;
     protected readonly ILogger _logger;
 
@@ -37,9 +55,13 @@ public abstract class AgentBase : IAgent
         IAgentMessageRepository agentMessageRepository,
         ICostLedgerRepository costLedgerRepository,
         IMcpToolCallRepository mcpToolCallRepository,
+        ITaskCheckpointRepository checkpointRepository,
+        IAgentMemoryRepository memoryRepository,
+        IPiiRedactor piiRedactor,
         IOrchestrationEventBus eventBus,
         IOptions<AgentOptions> agentOptions,
         IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+        IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
     {
@@ -48,19 +70,26 @@ public abstract class AgentBase : IAgent
         _agentMessageRepository = agentMessageRepository;
         _costLedgerRepository = costLedgerRepository;
         _mcpToolCallRepository = mcpToolCallRepository;
+        _checkpointRepository = checkpointRepository;
+        _memoryRepository = memoryRepository;
+        _piiRedactor = piiRedactor;
         _eventBus = eventBus;
         _agentOptions = agentOptions;
         _pricingOptions = pricingOptions;
+        _retryOptions = retryOptions;
         _toolRegistry = toolRegistry;
         _logger = loggerFactory.CreateLogger(GetType());
     }
 
     public async Task<AgentExecutionResult> ExecuteAsync(
         Guid orchestrationTaskId,
+        Guid userId,
         string userPrompt,
         CancellationToken cancellationToken = default)
     {
-        var execution = await SetupExecutionAsync(orchestrationTaskId, userPrompt, cancellationToken)
+        var safePrompt = RedactIfEnabled(userPrompt);
+
+        var execution = await SetupExecutionAsync(orchestrationTaskId, safePrompt, cancellationToken)
             .ConfigureAwait(false);
 
         try
@@ -73,9 +102,12 @@ public abstract class AgentBase : IAgent
                 .Select(BuildToolDefinition)
                 .ToList();
 
+            var systemPrompt = await BuildSystemPromptWithMemoryAsync(userId, cancellationToken)
+                .ConfigureAwait(false);
+
             var conversation = new AgentConversation(
-                SystemPrompt,
-                Messages: [new ConversationMessage("user", userPrompt)],
+                systemPrompt,
+                Messages: [new ConversationMessage("user", safePrompt)],
                 Tools: toolDefinitions,
                 Model: modelRef.ModelName,
                 MaxTokens: maxTokens);
@@ -88,7 +120,8 @@ public abstract class AgentBase : IAgent
 
             for (int iteration = 0; iteration < MaxAgenticIterations; iteration++)
             {
-                var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
+                var turn = await SendWithRetryAsync(provider, conversation, orchestrationTaskId, cancellationToken)
+                    .ConfigureAwait(false);
 
                 totalInputTokens += turn.InputTokens;
                 totalOutputTokens += turn.OutputTokens;
@@ -96,7 +129,7 @@ public abstract class AgentBase : IAgent
 
                 if (turn.Text.Length > 0)
                 {
-                    finalText = turn.Text;
+                    finalText = RedactIfEnabled(turn.Text);
                     var agentMessage = AgentMessage.Create(
                         execution.Id, MessageRole.Assistant, finalText, sequenceNumber++);
                     await _agentMessageRepository.AddAsync(agentMessage, cancellationToken).ConfigureAwait(false);
@@ -140,9 +173,18 @@ public abstract class AgentBase : IAgent
                 break;
             }
 
-            return await FinalizeSuccessAsync(
+            var executionResult = await FinalizeSuccessAsync(
                 execution, finalText, totalInputTokens, totalOutputTokens, totalCostUsd, cancellationToken)
                 .ConfigureAwait(false);
+
+            await SaveCheckpointAsync(
+                orchestrationTaskId, execution.Id, finalText, totalInputTokens, totalOutputTokens, totalCostUsd,
+                cancellationToken).ConfigureAwait(false);
+
+            await ExtractAndStoreMemoryAsync(
+                userId, provider, modelRef, finalText, cancellationToken).ConfigureAwait(false);
+
+            return executionResult;
         }
         catch (Exception ex)
         {
@@ -184,14 +226,20 @@ public abstract class AgentBase : IAgent
         var maxTokens = _agentOptions.Value.MaxTokens[AgentType.ToString()];
         var provider = _llmProviderFactory.Resolve(modelRef.ProviderId);
 
-        var conversation = new AgentConversation(systemPrompt, messages, Tools: [], modelRef.ModelName, maxTokens);
-        var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
+        var safeMessages = messages
+            .Select(m => m.TextContent is null ? m : m with { TextContent = RedactIfEnabled(m.TextContent) })
+            .ToList();
+
+        var conversation = new AgentConversation(systemPrompt, safeMessages, Tools: [], modelRef.ModelName, maxTokens);
+        var turn = await SendWithRetryAsync(provider, conversation, execution.OrchestrationTaskId, cancellationToken)
+            .ConfigureAwait(false);
 
         var inputTokens = turn.InputTokens;
         var outputTokens = turn.OutputTokens;
         var costUsd = CalculateCost(modelRef.ModelName, inputTokens, outputTokens);
+        var safeText = RedactIfEnabled(turn.Text);
 
-        var agentMessage = AgentMessage.Create(execution.Id, MessageRole.Assistant, turn.Text, sequenceNumber);
+        var agentMessage = AgentMessage.Create(execution.Id, MessageRole.Assistant, safeText, sequenceNumber);
         await _agentMessageRepository.AddAsync(agentMessage, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(execution.OrchestrationTaskId, new SseEvent(
@@ -203,11 +251,11 @@ public abstract class AgentBase : IAgent
                 agentType = AgentType.ToString(),
                 messageId = agentMessage.Id,
                 role = "Assistant",
-                contentPreview = turn.Text.Length > 200 ? turn.Text[..200] : turn.Text
+                contentPreview = safeText.Length > 200 ? safeText[..200] : safeText
             },
             DateTimeOffset.UtcNow));
 
-        return (turn.Text, inputTokens, outputTokens, costUsd);
+        return (safeText, inputTokens, outputTokens, costUsd);
     }
 
     protected async Task<AgentExecutionResult> FinalizeSuccessAsync(
@@ -256,6 +304,232 @@ public abstract class AgentBase : IAgent
             DateTimeOffset.UtcNow));
 
         return new AgentExecutionResult(execution.Id, string.Empty, false, 0, 0, 0m, error);
+    }
+
+    // ── Checkpointing ──────────────────────────────────────────────────────
+    // Only called from the sub-agent ExecuteAsync loop — Orchestrator plan/review
+    // turns (RunLlmTurnAsync) are not resumable pipeline steps, so they're not checkpointed.
+
+    private async Task SaveCheckpointAsync(
+        Guid orchestrationTaskId,
+        Guid agentExecutionId,
+        string output,
+        int inputTokens,
+        int outputTokens,
+        decimal costUsd,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var checkpoint = TaskCheckpoint.Create(
+                orchestrationTaskId, AgentType, agentExecutionId, output, inputTokens, outputTokens, costUsd);
+            await _checkpointRepository.UpsertAsync(checkpoint, cancellationToken).ConfigureAwait(false);
+
+            _eventBus.Publish(orchestrationTaskId, new SseEvent(
+                "checkpoint_saved",
+                orchestrationTaskId,
+                new { taskId = orchestrationTaskId, agentType = AgentType.ToString(), agentExecutionId },
+                DateTimeOffset.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            // Checkpointing is a resilience optimization, not a correctness requirement —
+            // losing one just means a future resume can't skip this agent.
+            _logger.LogWarning(ex, "Failed to save checkpoint for agent {AgentType}, continuing", AgentType);
+        }
+    }
+
+    // ── Agent memory ───────────────────────────────────────────────────────
+
+    private async Task<string> BuildSystemPromptWithMemoryAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<AgentMemory> memories;
+        try
+        {
+            memories = await _memoryRepository
+                .GetRelevantAsync(userId, AgentType, MaxMemoryEntries, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load memory for agent {AgentType}, continuing without it", AgentType);
+            return SystemPrompt;
+        }
+
+        if (memories.Count == 0)
+            return SystemPrompt;
+
+        var memorySection = string.Join("\n", memories.Select(m => $"- {m.Key}: {m.Value}"));
+
+        return $"""
+            {SystemPrompt}
+
+            --- MEMORY FROM PREVIOUS INTERACTIONS ---
+            {memorySection}
+            --- END MEMORY ---
+            """;
+    }
+
+    // Best-effort — a lightweight second LLM call. Never fails agent execution.
+    private async Task ExtractAndStoreMemoryAsync(
+        Guid userId,
+        ILlmProvider provider,
+        ModelRef modelRef,
+        string agentOutput,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(agentOutput))
+            return;
+
+        try
+        {
+            var truncated = agentOutput.Length > MemoryExtractionInputCharLimit
+                ? agentOutput[..MemoryExtractionInputCharLimit]
+                : agentOutput;
+
+            var conversation = new AgentConversation(
+                MemoryExtractionSystemPrompt,
+                Messages: [new ConversationMessage("user", truncated)],
+                Tools: [],
+                Model: modelRef.ModelName,
+                MaxTokens: MemoryExtractionMaxTokens);
+
+            var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
+            var extracted = ParseMemoryExtractions(turn.Text);
+
+            foreach (var item in extracted)
+            {
+                var memory = AgentMemory.Create(userId, AgentType, item.Key, item.Value, item.Importance);
+                await _memoryRepository.UpsertAsync(memory, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (extracted.Count > 0)
+                _logger.LogInformation(
+                    "Agent {AgentType} extracted {Count} memories for user {UserId}",
+                    AgentType, extracted.Count, userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Memory extraction failed for agent {AgentType}, continuing", AgentType);
+        }
+    }
+
+    private static IReadOnlyList<(string Key, string Value, int Importance)> ParseMemoryExtractions(string json)
+    {
+        var cleaned = json.Trim();
+        if (cleaned.StartsWith("```", StringComparison.Ordinal))
+        {
+            var start = cleaned.IndexOf('\n') + 1;
+            var end = cleaned.LastIndexOf("```", StringComparison.Ordinal);
+            if (end > start) cleaned = cleaned[start..end].Trim();
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(cleaned);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return [];
+
+            var results = new List<(string, string, int)>();
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (!item.TryGetProperty("key", out var keyEl) || !item.TryGetProperty("value", out var valueEl))
+                    continue;
+
+                var key = keyEl.GetString();
+                var value = valueEl.GetString();
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+                    continue;
+
+                var importance = item.TryGetProperty("importance", out var impEl) && impEl.TryGetInt32(out var imp)
+                    ? imp
+                    : 5;
+
+                results.Add((key, value, importance));
+            }
+            return results;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    // ── PII redaction ──────────────────────────────────────────────────────
+
+    private string RedactIfEnabled(string text)
+    {
+        if (!_piiRedactor.IsEnabled || string.IsNullOrEmpty(text))
+            return text;
+
+        var redacted = _piiRedactor.Redact(text, out var matchCount);
+        if (matchCount > 0)
+            _logger.LogDebug("PII redacted in {AgentType} input: {Count} patterns matched", AgentType, matchCount);
+
+        return redacted;
+    }
+
+    // ── Retry with exponential backoff ────────────────────────────────────
+
+    private async Task<AgentTurn> SendWithRetryAsync(
+        ILlmProvider provider,
+        AgentConversation conversation,
+        Guid orchestrationTaskId,
+        CancellationToken cancellationToken)
+    {
+        var policy = _retryOptions.Value;
+
+        for (int attempt = 1; attempt <= policy.MaxAttempts; attempt++)
+        {
+            try
+            {
+                return await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!IsTransient(ex, cancellationToken))
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (attempt >= policy.MaxAttempts)
+                    throw new AgentExecutionException(
+                        $"LLM call failed after {policy.MaxAttempts} attempts", ex);
+
+                var delay = CalculateDelay(attempt, policy);
+                _logger.LogWarning(
+                    "LLM call attempt {Attempt} failed (transient) for agent {AgentType}: {Error}. Retrying in {Delay}ms",
+                    attempt, AgentType, ex.Message, delay);
+
+                _eventBus.Publish(orchestrationTaskId, new SseEvent(
+                    "agent_retry",
+                    orchestrationTaskId,
+                    new { agentType = AgentType.ToString(), attempt, delayMs = delay, reason = ex.Message },
+                    DateTimeOffset.UtcNow));
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        throw new AgentExecutionException($"LLM call failed after {policy.MaxAttempts} attempts");
+    }
+
+    private static bool IsTransient(Exception ex, CancellationToken cancellationToken) => ex switch
+    {
+        TaskCanceledException when cancellationToken.IsCancellationRequested => false,
+        HttpRequestException http => (int?)http.StatusCode is 429 or 500 or 502 or 503 or 504,
+        TaskCanceledException => true,
+        TimeoutException => true,
+        _ when ex.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) => true,
+        _ when ex.Message.Contains("overloaded", StringComparison.OrdinalIgnoreCase) => true,
+        _ => false
+    };
+
+    private static int CalculateDelay(int attempt, RetryPolicyOptions policy)
+    {
+        var exponential = (int)(policy.InitialDelayMs * Math.Pow(policy.BackoffMultiplier, attempt - 1));
+        var capped = Math.Min(exponential, policy.MaxDelayMs);
+        var jitter = Random.Shared.Next(-policy.JitterMs, policy.JitterMs);
+        return Math.Max(100, capped + jitter);
     }
 
     private async Task<McpToolResult> InvokeToolAsync(

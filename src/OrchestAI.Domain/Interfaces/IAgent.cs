@@ -6,6 +6,7 @@ public interface IAgent
 {
     Task<AgentExecutionResult> ExecuteAsync(
         Guid orchestrationTaskId,
+        Guid userId,
         string userPrompt,
         CancellationToken cancellationToken = default);
 }

@@ -63,3 +63,49 @@ rather than nesting all three providers under a single `Providers` section, so t
 Railway deployment — keeps working unchanged.  
 **Trigger for revisiting:** A broader config reorganization pass where updating the Railway 
 env var alongside the deploy is already planned.
+
+## ADR-007: Memory extraction uses a separate LLM call
+**Status:** Accepted  
+**Context:** After each sub-agent execution, a lightweight second LLM call (capped at 512 
+output tokens, same model/provider as the agent) extracts memorable facts from the output. 
+This adds a small amount of cost and latency per agent execution. Extraction is best-effort — 
+failures are logged and swallowed, never fail the agent's own result.  
+**Trade-off:** Small, predictable cost increase for a genuine intelligence improvement over 
+repeated sessions with the same user.  
+**Trigger for replacing:** If memory extraction cost becomes significant at scale, switch to 
+a local NLP model or a keyword-extraction heuristic instead of a second LLM round-trip.
+
+## ADR-008: PII redaction is regex-based, not ML-based
+**Status:** Accepted (known limitation)  
+**Context:** `RegexPiiRedactor` covers common structured PII (email, phone, SSN, credit card) 
+plus operator-defined custom regex rules. It does not catch unstructured PII (names, 
+addresses, free-form context clues). Disabled by default (`PiiRedaction:Enabled=false`) so it 
+never adds latency unless explicitly turned on.  
+**Trade-off:** Fast, zero-cost, no external dependency. Misses contextual PII a human or an 
+ML model would catch.  
+**Trigger for replacing:** A healthcare or financial customer requires ML-based PII detection 
+→ integrate Microsoft Presidio or Azure AI Language.
+
+## ADR-009: Resume duplicates StartOrchestrationHandler's dispatch logic rather than sharing it
+**Status:** Accepted (known duplication)  
+**Context:** `ResumeOrchestrationTaskHandler` has its own copies of the sequential/parallel 
+sub-agent dispatch loop and the review-and-finalize tail, instead of extracting a shared 
+`IOrchestrationRunner` service used by both handlers. Extracting one would have required 
+rewriting `StartOrchestrationHandlerTests`' extensive existing coverage to mock the shared 
+service instead of `IAgentFactory`/`IOrchestratorAgent` directly.  
+**Trade-off:** ~60 lines duplicated between the two handlers; a bug fix in one must be mirrored 
+in the other.  
+**Trigger for revisiting:** A third handler needing the same dispatch-and-finalize flow, or the 
+next time either handler's dispatch logic needs a non-trivial change (do the extraction then, 
+updating both test suites together).
+
+## ADR-010: Checkpointing and memory scoped to sub-agents only, not Orchestrator plan/review
+**Status:** Accepted  
+**Context:** `TaskCheckpoint` writes and `AgentMemory` injection/extraction only happen in 
+`AgentBase.ExecuteAsync` (the sub-agent tool loop), not in `RunLlmTurnAsync` (used by 
+`OrchestratorAgent.PlanAsync`/`ReviewAsync`). The Orchestrator's routing JSON and review 
+synthesis are meta-orchestration artifacts, not domain knowledge worth remembering or resuming 
+independently — and checkpointing them would let `ResumeOrchestrationTaskHandler` skip 
+re-running the review, which must always run fresh against whatever agents actually executed.  
+**Trigger for revisiting:** If a future agent type's "planning" output becomes something worth 
+resuming from independently (e.g. an expensive multi-step planning phase).

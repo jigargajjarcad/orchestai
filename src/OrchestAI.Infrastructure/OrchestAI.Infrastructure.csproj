@@ -5,8 +5,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OrchestAI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

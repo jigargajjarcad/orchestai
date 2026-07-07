@@ -13,6 +13,7 @@ using OrchestAI.Infrastructure.Data.Interceptors;
 using OrchestAI.Infrastructure.Events;
 using OrchestAI.Infrastructure.Providers;
 using OrchestAI.Infrastructure.Repositories;
+using OrchestAI.Infrastructure.Security;
 using OrchestAI.Infrastructure.Tools;
 using System.ClientModel;
 
@@ -44,6 +45,8 @@ public static class DependencyInjection
         services.AddScoped<IAgentMessageRepository, AgentMessageRepository>();
         services.AddScoped<ICostLedgerRepository, CostLedgerRepository>();
         services.AddScoped<IMcpToolCallRepository, McpToolCallRepository>();
+        services.AddScoped<ITaskCheckpointRepository, TaskCheckpointRepository>();
+        services.AddScoped<IAgentMemoryRepository, AgentMemoryRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
@@ -51,6 +54,10 @@ public static class DependencyInjection
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
         services.Configure<Dictionary<string, PricingEntry>>(configuration.GetSection("Pricing"));
         services.Configure<ToolOptions>(configuration.GetSection(ToolOptions.SectionName));
+        services.Configure<RetryPolicyOptions>(configuration.GetSection(RetryPolicyOptions.SectionName));
+        services.Configure<PiiRedactionOptions>(configuration.GetSection(PiiRedactionOptions.SectionName));
+
+        services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
 
         var apiKey = configuration["Anthropic:ApiKey"]
             ?? throw new InvalidOperationException(
@@ -88,12 +95,15 @@ public static class DependencyInjection
         services.AddSingleton<FirecrawlTool>();
         services.AddSingleton<PerplexityTool>();
         services.AddSingleton<FileSystemTool>();
+        services.AddSingleton<IDatabaseQueryExecutor, AdoDatabaseQueryExecutor>();
+        services.AddSingleton<DatabaseTool>();
 
         services.AddSingleton<IToolRegistry>(sp => new ToolRegistry(new IMcpTool[]
         {
             sp.GetRequiredService<FirecrawlTool>(),
             sp.GetRequiredService<PerplexityTool>(),
-            sp.GetRequiredService<FileSystemTool>()
+            sp.GetRequiredService<FileSystemTool>(),
+            sp.GetRequiredService<DatabaseTool>()
         }));
 
         services.AddScoped<OrchestratorAgent>();

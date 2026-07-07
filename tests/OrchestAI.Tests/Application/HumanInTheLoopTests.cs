@@ -50,7 +50,7 @@ public sealed class HumanInTheLoopTests
 
         var researchAgentMock = new Mock<IAgent>();
         researchAgentMock
-            .Setup(a => a.ExecuteAsync(taskId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentExecutionResult(Guid.NewGuid(), "Research done.", true, 100, 50, 0.001m));
 
         var agentFactoryMock = new Mock<IAgentFactory>();
@@ -65,12 +65,18 @@ public sealed class HumanInTheLoopTests
             .Callback(() => task.Approve(null))
             .Returns(Task.CompletedTask);
 
+        var checkpointRepositoryMock = new Mock<ITaskCheckpointRepository>();
+        checkpointRepositoryMock
+            .Setup(r => r.DeleteByTaskIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var handler = new StartOrchestrationHandler(
             taskRepositoryMock.Object,
             orchestratorMock.Object,
             agentFactoryMock.Object,
             eventBusMock.Object,
             approvalGatewayMock.Object,
+            checkpointRepositoryMock.Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);
@@ -126,6 +132,7 @@ public sealed class HumanInTheLoopTests
             agentFactoryMock.Object,
             eventBusMock.Object,
             approvalGatewayMock.Object,
+            new Mock<ITaskCheckpointRepository>().Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);

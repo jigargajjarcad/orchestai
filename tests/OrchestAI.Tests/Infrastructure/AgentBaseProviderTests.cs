@@ -16,6 +16,7 @@ namespace OrchestAI.Tests.Infrastructure;
 public sealed class AgentBaseProviderTests
 {
     private static readonly Guid TaskId = Guid.NewGuid();
+    private static readonly Guid UserId = Guid.NewGuid();
     private const string ModelName = "claude-haiku-4-5-20251001";
 
     private readonly Mock<ILlmProvider> _providerMock;
@@ -24,10 +25,14 @@ public sealed class AgentBaseProviderTests
     private readonly Mock<IAgentMessageRepository> _msgRepoMock;
     private readonly Mock<ICostLedgerRepository> _costRepoMock;
     private readonly Mock<IMcpToolCallRepository> _toolCallRepoMock;
+    private readonly Mock<ITaskCheckpointRepository> _checkpointRepoMock;
+    private readonly Mock<IAgentMemoryRepository> _memoryRepoMock;
+    private readonly Mock<IPiiRedactor> _piiRedactorMock;
     private readonly Mock<IOrchestrationEventBus> _eventBusMock;
     private readonly Mock<IToolRegistry> _toolRegistryMock;
     private readonly IOptions<AgentOptions> _agentOptions;
     private readonly IOptions<Dictionary<string, PricingEntry>> _pricingOptions;
+    private readonly IOptions<RetryPolicyOptions> _retryOptions;
 
     public AgentBaseProviderTests()
     {
@@ -41,6 +46,9 @@ public sealed class AgentBaseProviderTests
         _msgRepoMock = new Mock<IAgentMessageRepository>();
         _costRepoMock = new Mock<ICostLedgerRepository>();
         _toolCallRepoMock = new Mock<IMcpToolCallRepository>();
+        _checkpointRepoMock = new Mock<ITaskCheckpointRepository>();
+        _memoryRepoMock = new Mock<IAgentMemoryRepository>();
+        _piiRedactorMock = new Mock<IPiiRedactor>();
         _eventBusMock = new Mock<IOrchestrationEventBus>();
         _toolRegistryMock = new Mock<IToolRegistry>();
 
@@ -53,6 +61,10 @@ public sealed class AgentBaseProviderTests
         {
             [ModelName] = new PricingEntry { InputPerMillion = 0.80m, OutputPerMillion = 4.00m }
         });
+        _retryOptions = Options.Create(new RetryPolicyOptions
+        {
+            MaxAttempts = 3, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
+        });
 
         _execRepoMock.Setup(r => r.AddAsync(It.IsAny<AgentExecution>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -64,6 +76,12 @@ public sealed class AgentBaseProviderTests
             .Returns(Task.CompletedTask);
         _toolCallRepoMock.Setup(r => r.AddAsync(It.IsAny<McpToolCall>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _checkpointRepoMock.Setup(r => r.UpsertAsync(It.IsAny<TaskCheckpoint>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _memoryRepoMock
+            .Setup(r => r.GetRelevantAsync(It.IsAny<Guid>(), It.IsAny<AgentType>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _piiRedactorMock.Setup(r => r.IsEnabled).Returns(false);
     }
 
     private TestAgent BuildAgent()
@@ -74,9 +92,13 @@ public sealed class AgentBaseProviderTests
             _msgRepoMock.Object,
             _costRepoMock.Object,
             _toolCallRepoMock.Object,
+            _checkpointRepoMock.Object,
+            _memoryRepoMock.Object,
+            _piiRedactorMock.Object,
             _eventBusMock.Object,
             _agentOptions,
             _pricingOptions,
+            _retryOptions,
             _toolRegistryMock.Object,
             NullLoggerFactory.Instance);
     }
@@ -90,7 +112,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Task completed successfully.", [], 100, 50));
 
         var agent = BuildAgent();
-        var result = await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
 
         result.Success.Should().BeTrue();
         result.Output.Should().Be("Task completed successfully.");
@@ -107,11 +129,15 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
 
         var agent = BuildAgent();
-        await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+        await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
 
         _providerFactoryMock.Verify(f => f.Resolve("anthropic"), Times.Once);
+        // Scoped to the main agent turn — a background memory-extraction call also hits
+        // SendAsync with the same model, identified here by its distinct system prompt.
         _providerMock.Verify(
-            p => p.SendAsync(It.Is<AgentConversation>(c => c.Model == ModelName), It.IsAny<CancellationToken>()),
+            p => p.SendAsync(
+                It.Is<AgentConversation>(c => c.Model == ModelName && c.SystemPrompt == "You are a test agent."),
+                It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -124,7 +150,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Final answer", [], 100, 50));
 
         var agent = BuildAgent();
-        await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+        await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
 
         _eventBusMock.Verify(
             b => b.Publish(TaskId, It.Is<SseEvent>(e => e.Event == "agent_started")),
@@ -161,13 +187,17 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Done after tool use.", [], 60, 30));
 
         var agent = BuildAgent();
-        var result = await agent.ExecuteAsync(TaskId, "Use a tool", CancellationToken.None);
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Use a tool", CancellationToken.None);
 
         result.Success.Should().BeTrue();
         result.Output.Should().Be("Done after tool use.");
 
+        // Scoped to the main agent loop — a background memory-extraction call also hits
+        // SendAsync, identified here by its distinct system prompt.
         _providerMock.Verify(
-            p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()),
+            p => p.SendAsync(
+                It.Is<AgentConversation>(c => c.SystemPrompt == "You are a test agent."),
+                It.IsAny<CancellationToken>()),
             Times.Exactly(2));
 
         mockTool.Verify(
@@ -195,7 +225,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Done.", [], 10, 5));
 
         var agent = BuildAgent();
-        await agent.ExecuteAsync(TaskId, "Use a tool", CancellationToken.None);
+        await agent.ExecuteAsync(TaskId, UserId, "Use a tool", CancellationToken.None);
 
         _eventBusMock.Verify(
             b => b.Publish(TaskId, It.Is<SseEvent>(e => e.Event == "tool_started")),
@@ -225,7 +255,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Recovered.", [], 10, 5));
 
         var agent = BuildAgent();
-        var result = await agent.ExecuteAsync(TaskId, "Try tool", CancellationToken.None);
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Try tool", CancellationToken.None);
 
         result.Success.Should().BeTrue();
 
@@ -243,7 +273,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
 
         var agent = BuildAgent();
-        await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+        await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
 
         _toolRegistryMock.Verify(
             r => r.GetTools(It.Is<IReadOnlyList<string>>(names => names.Contains("test_tool"))),
@@ -251,18 +281,21 @@ public sealed class AgentBaseProviderTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_LlmProviderThrows_ReturnsFailure()
+    public async Task ExecuteAsync_LlmProviderThrows_NonTransient_ReturnsFailureWithoutRetry()
     {
         _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
         _providerMock
             .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Anthropic API unreachable"));
+            .ThrowsAsync(new InvalidOperationException("invalid api key"));
 
         var agent = BuildAgent();
-        var result = await agent.ExecuteAsync(TaskId, "Do something", CancellationToken.None);
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
 
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Anthropic API unreachable");
+        result.ErrorMessage.Should().Contain("invalid api key");
+        _providerMock.Verify(
+            p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -285,7 +318,7 @@ public sealed class AgentBaseProviderTests
             .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 150, 75));
 
         var agent = BuildAgent();
-        var result = await agent.ExecuteAsync(TaskId, "Test", CancellationToken.None);
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Test", CancellationToken.None);
 
         result.Success.Should().BeTrue();
         result.InputTokens.Should().Be(350);  // 200 + 150
@@ -306,13 +339,18 @@ public sealed class AgentBaseProviderTests
             IAgentMessageRepository msgRepo,
             ICostLedgerRepository costRepo,
             IMcpToolCallRepository toolCallRepo,
+            ITaskCheckpointRepository checkpointRepo,
+            IAgentMemoryRepository memoryRepo,
+            IPiiRedactor piiRedactor,
             IOrchestrationEventBus eventBus,
             IOptions<AgentOptions> agentOptions,
             IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+            IOptions<RetryPolicyOptions> retryOptions,
             IToolRegistry toolRegistry,
             ILoggerFactory loggerFactory)
-            : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, eventBus,
-                   agentOptions, pricingOptions, toolRegistry, loggerFactory)
+            : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, checkpointRepo,
+                   memoryRepo, piiRedactor, eventBus, agentOptions, pricingOptions, retryOptions,
+                   toolRegistry, loggerFactory)
         { }
     }
 }

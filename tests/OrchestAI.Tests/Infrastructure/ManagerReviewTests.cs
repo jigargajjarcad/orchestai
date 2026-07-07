@@ -57,6 +57,13 @@ public sealed class ManagerReviewTests
         {
             [ModelName] = new PricingEntry { InputPerMillion = 0.80m, OutputPerMillion = 4.00m }
         });
+        var retryOptions = Options.Create(new RetryPolicyOptions
+        {
+            MaxAttempts = 3, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
+        });
+
+        var piiRedactorMock = new Mock<IPiiRedactor>();
+        piiRedactorMock.Setup(r => r.IsEnabled).Returns(false);
 
         return new OrchestratorAgent(
             _providerFactoryMock.Object,
@@ -64,9 +71,13 @@ public sealed class ManagerReviewTests
             msgRepoMock.Object,
             costRepoMock.Object,
             new Mock<IMcpToolCallRepository>().Object,
+            new Mock<ITaskCheckpointRepository>().Object,
+            new Mock<IAgentMemoryRepository>().Object,
+            piiRedactorMock.Object,
             _eventBusMock.Object,
             agentOptions,
             pricingOptions,
+            retryOptions,
             new Mock<IToolRegistry>().Object,
             NullLoggerFactory.Instance);
     }

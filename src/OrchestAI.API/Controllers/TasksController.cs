@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using OrchestAI.Application.Commands.ApproveOrchestrationTask;
 using OrchestAI.Application.Commands.CreateOrchestrationTask;
 using OrchestAI.Application.Commands.RejectOrchestrationTask;
+using OrchestAI.Application.Commands.ResumeOrchestrationTask;
 using OrchestAI.Application.Commands.StartOrchestration;
 using OrchestAI.Application.Exceptions;
 using OrchestAI.Application.Queries.GetOrchestrationTask;
@@ -113,6 +114,43 @@ public sealed class TasksController : ControllerBase
         });
 
         return Accepted(new StartOrchestrationResponse(id, []));
+    }
+
+    /// <summary>Resumes a Failed task from its first agent without a saved checkpoint.</summary>
+    [HttpPost("{id:guid}/resume")]
+    [ProducesResponseType(typeof(ResumeOrchestrationTaskResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult ResumeAsync(
+        Guid id,
+        [FromServices] IServiceScopeFactory scopeFactory)
+    {
+        _ = Task.Run(async () =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            try
+            {
+                await mediator.Send(new ResumeOrchestrationTaskCommand(id), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (NotFoundException ex)
+            {
+                _logger.LogWarning("Resume failed — task not found: {TaskId}", ex.EntityId);
+            }
+            catch (ConflictException ex)
+            {
+                _logger.LogWarning("Resume failed — invalid state: {Message}", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error resuming task {TaskId}", id);
+            }
+        });
+
+        // Actual skipped/resuming agent lists are only known once the handler loads
+        // checkpoints — the client learns them from the task_resumed SSE event.
+        return Accepted(new ResumeOrchestrationTaskResponse(id, [], []));
     }
 
     /// <summary>Approves a task that is waiting for human review, allowing agent dispatch to resume.</summary>

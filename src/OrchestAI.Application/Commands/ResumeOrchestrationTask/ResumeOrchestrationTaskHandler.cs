@@ -7,120 +7,95 @@ using OrchestAI.Domain.Events;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 
-namespace OrchestAI.Application.Commands.StartOrchestration;
+namespace OrchestAI.Application.Commands.ResumeOrchestrationTask;
 
-public sealed class StartOrchestrationHandler
-    : IRequestHandler<StartOrchestrationCommand, StartOrchestrationResponse>
+public sealed class ResumeOrchestrationTaskHandler
+    : IRequestHandler<ResumeOrchestrationTaskCommand, ResumeOrchestrationTaskResponse>
 {
     private readonly IOrchestrationTaskRepository _taskRepository;
     private readonly IOrchestratorAgent _orchestratorAgent;
     private readonly IAgentFactory _agentFactory;
-    private readonly IOrchestrationEventBus _eventBus;
-    private readonly IApprovalGateway _approvalGateway;
     private readonly ITaskCheckpointRepository _checkpointRepository;
-    private readonly ILogger<StartOrchestrationHandler> _logger;
+    private readonly IOrchestrationEventBus _eventBus;
+    private readonly ILogger<ResumeOrchestrationTaskHandler> _logger;
 
-    public StartOrchestrationHandler(
+    public ResumeOrchestrationTaskHandler(
         IOrchestrationTaskRepository taskRepository,
         IOrchestratorAgent orchestratorAgent,
         IAgentFactory agentFactory,
-        IOrchestrationEventBus eventBus,
-        IApprovalGateway approvalGateway,
         ITaskCheckpointRepository checkpointRepository,
-        ILogger<StartOrchestrationHandler> logger)
+        IOrchestrationEventBus eventBus,
+        ILogger<ResumeOrchestrationTaskHandler> logger)
     {
         _taskRepository = taskRepository;
         _orchestratorAgent = orchestratorAgent;
         _agentFactory = agentFactory;
-        _eventBus = eventBus;
-        _approvalGateway = approvalGateway;
         _checkpointRepository = checkpointRepository;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
-    public async Task<StartOrchestrationResponse> Handle(
-        StartOrchestrationCommand request,
+    public async Task<ResumeOrchestrationTaskResponse> Handle(
+        ResumeOrchestrationTaskCommand request,
         CancellationToken cancellationToken)
     {
         var task = await _taskRepository
-            .GetByIdAsync(request.TaskId, cancellationToken)
+            .GetByIdWithExecutionsAsync(request.TaskId, cancellationToken)
             .ConfigureAwait(false)
             ?? throw new NotFoundException(nameof(OrchestrationTask), request.TaskId);
 
-        if (task.Status != OrchestrationTaskStatus.Pending)
-            throw new InvalidOperationException(
-                $"Task {request.TaskId} is in '{task.Status}' state and cannot be started.");
+        if (task.Status != OrchestrationTaskStatus.Failed)
+            throw new ConflictException(
+                $"Task {request.TaskId} is in '{task.Status}' state and cannot be resumed — only Failed tasks can be resumed.");
+
+        var planExecution = task.AgentExecutions
+            .Where(e => e.AgentType == AgentType.Orchestrator && e.Status == ExecutionStatus.Completed)
+            .OrderBy(e => e.CreatedAt)
+            .FirstOrDefault()
+            ?? throw new ConflictException(
+                $"Task {request.TaskId} has no completed Orchestrator plan to resume from.");
+
+        if (!OrchestrationPlanParser.TryParse(planExecution.OutputResult ?? string.Empty, out var plan) || plan is null)
+            throw new ConflictException(
+                $"Task {request.TaskId}'s stored orchestration plan could not be parsed — cannot resume.");
+
+        var checkpoints = await _checkpointRepository
+            .GetByTaskIdAsync(request.TaskId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var checkpointedResults = checkpoints.ToDictionary(
+            c => c.AgentType,
+            c => new AgentExecutionResult(c.AgentExecutionId, c.Output, true, c.InputTokens, c.OutputTokens, c.CostUsd));
+
+        var skippedAgents = plan.ExecutionOrder.Where(checkpointedResults.ContainsKey).ToList();
+        var resumingFrom = plan.ExecutionOrder.Where(a => !checkpointedResults.ContainsKey(a)).ToList();
 
         task.MarkRunning();
         await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(request.TaskId, new SseEvent(
-            "task_started",
+            "task_resumed",
             request.TaskId,
-            new { taskId = request.TaskId, status = "Running" },
+            new { taskId = request.TaskId, skippedAgents = skippedAgents.Select(a => a.ToString()).ToList(), resumingFrom = resumingFrom.Select(a => a.ToString()).ToList() },
             DateTimeOffset.UtcNow));
 
-        _logger.LogInformation("Task {TaskId} started, running orchestrator", request.TaskId);
-
-        var plan = await _orchestratorAgent
-            .PlanAsync(request.TaskId, task.UserPrompt, cancellationToken)
-            .ConfigureAwait(false);
-
         _logger.LogInformation(
-            "Orchestrator selected {AgentCount} agents for task {TaskId}: {Agents}",
-            plan.SelectedAgents.Count,
-            request.TaskId,
-            string.Join(", ", plan.SelectedAgents));
-
-        if (task.RequireApproval)
-        {
-            task.RequestApproval();
-            await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
-
-            _eventBus.Publish(request.TaskId, new SseEvent(
-                "approval_required",
-                request.TaskId,
-                new
-                {
-                    taskId = request.TaskId,
-                    plan = plan.Plan,
-                    selectedAgents = plan.SelectedAgents.Select(a => a.ToString()).ToList(),
-                    agentPrompts = plan.AgentPrompts.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value),
-                    executionMode = plan.ExecutionMode.ToString()
-                },
-                DateTimeOffset.UtcNow));
-
-            _logger.LogInformation("Task {TaskId} waiting for human approval", request.TaskId);
-
-            await _approvalGateway.WaitForApprovalAsync(request.TaskId, cancellationToken).ConfigureAwait(false);
-
-            task = await _taskRepository.GetByIdAsync(request.TaskId, cancellationToken).ConfigureAwait(false)
-                ?? throw new NotFoundException(nameof(OrchestrationTask), request.TaskId);
-
-            if (task.ApprovalStatus == TaskApprovalStatus.Rejected)
-            {
-                // RejectOrchestrationTaskHandler already marked the task Failed and published task_failed.
-                _logger.LogInformation("Task {TaskId} rejected — aborting before agent dispatch", request.TaskId);
-                return new StartOrchestrationResponse(request.TaskId, []);
-            }
-
-            _logger.LogInformation("Task {TaskId} approved — resuming agent dispatch", request.TaskId);
-        }
+            "Task {TaskId} resumed — skipping {SkippedCount} checkpointed agents, running {ResumeCount} remaining",
+            request.TaskId, skippedAgents.Count, resumingFrom.Count);
 
         AgentExecutionResult[] results;
 
         if (plan.ExecutionMode == ExecutionMode.Sequential)
         {
-            _logger.LogInformation(
-                "Task {TaskId} using sequential execution across {AgentCount} agents",
-                request.TaskId, plan.ExecutionOrder.Count);
-            results = await RunSequentialAsync(request.TaskId, task.UserId, plan, cancellationToken).ConfigureAwait(false);
+            results = await RunSequentialAsync(request.TaskId, task.UserId, plan, checkpointedResults, cancellationToken)
+                .ConfigureAwait(false);
         }
         else
         {
             var subAgentTasks = plan.ExecutionOrder
-                .Select(agentType => RunSubAgentAsync(
-                    request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType], cancellationToken))
+                .Select(agentType => checkpointedResults.TryGetValue(agentType, out var cached)
+                    ? Task.FromResult(cached)
+                    : RunSubAgentAsync(request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType], cancellationToken))
                 .ToList();
             results = await Task.WhenAll(subAgentTasks).ConfigureAwait(false);
         }
@@ -135,7 +110,7 @@ public sealed class StartOrchestrationHandler
             .ReviewAsync(request.TaskId, task.UserPrompt, plan, results, cancellationToken)
             .ConfigureAwait(false);
 
-        var allResults = results.Append(plan.OrchestratorExecution).Append(reviewResult).ToList();
+        var allResults = results.Append(reviewResult).ToList();
         var synthesizedOutput = reviewResult.Success ? reviewResult.Output : aggregatedOutput;
 
         var totalInputTokens = allResults.Sum(r => r.InputTokens);
@@ -154,8 +129,7 @@ public sealed class StartOrchestrationHandler
                 new { taskId = request.TaskId, totalCostUsd = task.TotalCostUsd, agentCount = results.Length },
                 DateTimeOffset.UtcNow));
 
-            _logger.LogInformation(
-                "Task {TaskId} completed. Cost: ${CostUsd:F4}", request.TaskId, task.TotalCostUsd);
+            _logger.LogInformation("Task {TaskId} completed after resume. Cost: ${CostUsd:F4}", request.TaskId, task.TotalCostUsd);
         }
         else
         {
@@ -169,22 +143,16 @@ public sealed class StartOrchestrationHandler
                 DateTimeOffset.UtcNow));
 
             _logger.LogWarning(
-                "Task {TaskId} failed with {FailedCount} agent failures", request.TaskId, failedResults.Count);
+                "Task {TaskId} failed again after resume with {FailedCount} agent failures", request.TaskId, failedResults.Count);
         }
 
         await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
 
-        return new StartOrchestrationResponse(
-            request.TaskId,
-            results.Select(r => r.AgentExecutionId).ToList().AsReadOnly());
+        return new ResumeOrchestrationTaskResponse(request.TaskId, resumingFrom, skippedAgents);
     }
 
     private async Task<AgentExecutionResult> RunSubAgentAsync(
-        Guid taskId,
-        Guid userId,
-        AgentType agentType,
-        string prompt,
-        CancellationToken cancellationToken)
+        Guid taskId, Guid userId, AgentType agentType, string prompt, CancellationToken cancellationToken)
     {
         try
         {
@@ -203,6 +171,7 @@ public sealed class StartOrchestrationHandler
         Guid taskId,
         Guid userId,
         OrchestrationPlan plan,
+        IReadOnlyDictionary<AgentType, AgentExecutionResult> checkpointedResults,
         CancellationToken cancellationToken)
     {
         var results = new List<AgentExecutionResult>();
@@ -210,6 +179,13 @@ public sealed class StartOrchestrationHandler
 
         foreach (var agentType in plan.ExecutionOrder)
         {
+            if (checkpointedResults.TryGetValue(agentType, out var cached))
+            {
+                results.Add(cached);
+                priorOutput = cached.Output;
+                continue;
+            }
+
             var prompt = BuildSequentialPrompt(plan.AgentPrompts[agentType], priorOutput);
             var result = await RunSubAgentAsync(taskId, userId, agentType, prompt, cancellationToken).ConfigureAwait(false);
             results.Add(result);

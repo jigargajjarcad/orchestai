@@ -14,6 +14,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
     public DbSet<McpToolCall> McpToolCalls => Set<McpToolCall>();
     public DbSet<CostLedger> CostLedger => Set<CostLedger>();
+    public DbSet<TaskCheckpoint> TaskCheckpoints => Set<TaskCheckpoint>();
+    public DbSet<AgentMemory> AgentMemories => Set<AgentMemory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,5 +27,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AgentMessageConfiguration());
         modelBuilder.ApplyConfiguration(new McpToolCallConfiguration());
         modelBuilder.ApplyConfiguration(new CostLedgerConfiguration());
+        modelBuilder.ApplyConfiguration(new TaskCheckpointConfiguration());
+        modelBuilder.ApplyConfiguration(new AgentMemoryConfiguration());
     }
 }

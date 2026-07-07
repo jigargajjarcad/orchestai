@@ -26,14 +26,19 @@ public sealed class CodeAgent : AgentBase
         IAgentMessageRepository agentMessageRepository,
         ICostLedgerRepository costLedgerRepository,
         IMcpToolCallRepository mcpToolCallRepository,
+        ITaskCheckpointRepository checkpointRepository,
+        IAgentMemoryRepository memoryRepository,
+        IPiiRedactor piiRedactor,
         IOrchestrationEventBus eventBus,
         IOptions<AgentOptions> agentOptions,
         IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+        IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
         : base(llmProviderFactory, agentExecutionRepository, agentMessageRepository,
-               costLedgerRepository, mcpToolCallRepository, eventBus,
-               agentOptions, pricingOptions, toolRegistry, loggerFactory)
+               costLedgerRepository, mcpToolCallRepository, checkpointRepository,
+               memoryRepository, piiRedactor, eventBus, agentOptions, pricingOptions,
+               retryOptions, toolRegistry, loggerFactory)
     {
     }
 }

@@ -1,3 +1,6 @@
+using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Models;
+
 namespace OrchestAI.Domain.Entities;
 
 public sealed class McpToolCall
@@ -11,6 +14,9 @@ public sealed class McpToolCall
     public string? OutputResult { get; private set; }
     public bool Success { get; private set; }
     public string? ErrorMessage { get; private set; }
+    public ExecutionErrorCategory? ErrorCategory { get; private set; }
+    public string SpanId { get; private set; } = string.Empty;
+    public string ParentSpanId { get; private set; } = string.Empty;
     public int? DurationMs { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -19,7 +25,8 @@ public sealed class McpToolCall
     public static McpToolCall Create(
         Guid agentExecutionId,
         string toolName,
-        string inputParameters)
+        string inputParameters,
+        string parentSpanId)
     {
         return new McpToolCall
         {
@@ -27,6 +34,8 @@ public sealed class McpToolCall
             AgentExecutionId = agentExecutionId,
             ToolName = toolName,
             InputParameters = inputParameters,
+            SpanId = TraceIdentifiers.NewSpanId(),
+            ParentSpanId = parentSpanId,
             Success = false,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -39,10 +48,11 @@ public sealed class McpToolCall
         DurationMs = durationMs;
     }
 
-    public void RecordFailure(string error, int durationMs)
+    public void RecordFailure(string error, int durationMs, ExecutionErrorCategory category = ExecutionErrorCategory.McpToolError)
     {
         Success = false;
         ErrorMessage = error;
+        ErrorCategory = category;
         DurationMs = durationMs;
     }
 }

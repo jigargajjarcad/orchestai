@@ -114,13 +114,16 @@ public sealed class StartOrchestrationHandler
             _logger.LogInformation(
                 "Task {TaskId} using sequential execution across {AgentCount} agents",
                 request.TaskId, plan.ExecutionOrder.Count);
-            results = await RunSequentialAsync(request.TaskId, task.UserId, plan, cancellationToken).ConfigureAwait(false);
+            results = await RunSequentialAsync(
+                request.TaskId, task.UserId, plan, plan.OrchestratorExecution.SpanId, cancellationToken)
+                .ConfigureAwait(false);
         }
         else
         {
             var subAgentTasks = plan.ExecutionOrder
                 .Select(agentType => RunSubAgentAsync(
-                    request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType], cancellationToken))
+                    request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType],
+                    plan.OrchestratorExecution.SpanId, cancellationToken))
                 .ToList();
             results = await Task.WhenAll(subAgentTasks).ConfigureAwait(false);
         }
@@ -184,12 +187,14 @@ public sealed class StartOrchestrationHandler
         Guid userId,
         AgentType agentType,
         string prompt,
+        string? parentSpanId,
         CancellationToken cancellationToken)
     {
         try
         {
             var agent = _agentFactory.Create(agentType);
-            return await agent.ExecuteAsync(taskId, userId, prompt, cancellationToken).ConfigureAwait(false);
+            return await agent.ExecuteAsync(taskId, userId, prompt, cancellationToken, parentSpanId)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -203,6 +208,7 @@ public sealed class StartOrchestrationHandler
         Guid taskId,
         Guid userId,
         OrchestrationPlan plan,
+        string? parentSpanId,
         CancellationToken cancellationToken)
     {
         var results = new List<AgentExecutionResult>();
@@ -211,7 +217,8 @@ public sealed class StartOrchestrationHandler
         foreach (var agentType in plan.ExecutionOrder)
         {
             var prompt = BuildSequentialPrompt(plan.AgentPrompts[agentType], priorOutput);
-            var result = await RunSubAgentAsync(taskId, userId, agentType, prompt, cancellationToken).ConfigureAwait(false);
+            var result = await RunSubAgentAsync(taskId, userId, agentType, prompt, parentSpanId, cancellationToken)
+                .ConfigureAwait(false);
             results.Add(result);
 
             if (result.Success)

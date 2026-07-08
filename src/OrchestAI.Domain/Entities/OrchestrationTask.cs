@@ -1,5 +1,6 @@
 using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
+using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Domain.Entities;
 
@@ -22,6 +23,8 @@ public sealed class OrchestrationTask : IHasUpdatedAt
     public DateTimeOffset? ApprovalRequestedAt { get; private set; }
     public DateTimeOffset? ApprovedAt { get; private set; }
     public string? ApprovalNote { get; private set; }
+    public string TraceId { get; private set; } = string.Empty;
+    public DateTimeOffset? ResumedAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
@@ -41,12 +44,18 @@ public sealed class OrchestrationTask : IHasUpdatedAt
             UserPrompt = userPrompt,
             Status = OrchestrationTaskStatus.Pending,
             RequireApproval = requireApproval,
+            TraceId = TraceIdentifiers.NewTraceId(),
             TotalInputTokens = 0,
             TotalOutputTokens = 0,
             TotalCostUsd = 0,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    public void MarkResumed()
+    {
+        ResumedAt = DateTimeOffset.UtcNow;
     }
 
     public void MarkRunning()

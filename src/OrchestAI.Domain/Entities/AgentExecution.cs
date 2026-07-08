@@ -1,4 +1,5 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Domain.Entities;
 
@@ -16,6 +17,10 @@ public sealed class AgentExecution
     public int OutputTokens { get; private set; }
     public decimal CostUsd { get; private set; }
     public string? ErrorMessage { get; private set; }
+    public ExecutionErrorCategory? ErrorCategory { get; private set; }
+    public string SpanId { get; private set; } = string.Empty;
+    public string? ParentSpanId { get; private set; }
+    public int MemoriesInjectedCount { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
@@ -26,7 +31,8 @@ public sealed class AgentExecution
     private readonly List<McpToolCall> _toolCalls = [];
     public IReadOnlyCollection<McpToolCall> ToolCalls => _toolCalls.AsReadOnly();
 
-    public static AgentExecution Create(Guid taskId, AgentType agentType, string inputPrompt)
+    public static AgentExecution Create(
+        Guid taskId, AgentType agentType, string inputPrompt, string? parentSpanId = null)
     {
         return new AgentExecution
         {
@@ -35,6 +41,8 @@ public sealed class AgentExecution
             AgentType = agentType,
             Status = ExecutionStatus.Pending,
             InputPrompt = inputPrompt,
+            SpanId = TraceIdentifiers.NewSpanId(),
+            ParentSpanId = parentSpanId,
             InputTokens = 0,
             OutputTokens = 0,
             CostUsd = 0,
@@ -58,10 +66,16 @@ public sealed class AgentExecution
         CompletedAt = DateTimeOffset.UtcNow;
     }
 
-    public void Fail(string error)
+    public void Fail(string error, ExecutionErrorCategory category = ExecutionErrorCategory.Unknown)
     {
         Status = ExecutionStatus.Failed;
         ErrorMessage = error;
+        ErrorCategory = category;
         CompletedAt = DateTimeOffset.UtcNow;
+    }
+
+    public void SetMemoriesInjected(int count)
+    {
+        MemoriesInjectedCount = count;
     }
 }

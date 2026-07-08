@@ -7,5 +7,6 @@ public sealed record AgentExecutionResult(
     int InputTokens,
     int OutputTokens,
     decimal CostUsd,
-    string? ErrorMessage = null
+    string? ErrorMessage = null,
+    string SpanId = ""
 );

@@ -59,6 +59,21 @@ public sealed class ResumeOrchestrationTaskHandler
             throw new ConflictException(
                 $"Task {request.TaskId}'s stored orchestration plan could not be parsed — cannot resume.");
 
+        // The parser has no access to the persisted AgentExecution, so OrchestratorExecution
+        // comes back null — reconstruct it from the loaded plan execution so ReviewAsync can
+        // use its SpanId as the review's parent span.
+        plan = plan with
+        {
+            OrchestratorExecution = new AgentExecutionResult(
+                planExecution.Id,
+                planExecution.OutputResult ?? string.Empty,
+                true,
+                planExecution.InputTokens,
+                planExecution.OutputTokens,
+                planExecution.CostUsd,
+                SpanId: planExecution.SpanId)
+        };
+
         var checkpoints = await _checkpointRepository
             .GetByTaskIdAsync(request.TaskId, cancellationToken)
             .ConfigureAwait(false);
@@ -71,6 +86,7 @@ public sealed class ResumeOrchestrationTaskHandler
         var resumingFrom = plan.ExecutionOrder.Where(a => !checkpointedResults.ContainsKey(a)).ToList();
 
         task.MarkRunning();
+        task.MarkResumed();
         await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(request.TaskId, new SseEvent(
@@ -87,7 +103,8 @@ public sealed class ResumeOrchestrationTaskHandler
 
         if (plan.ExecutionMode == ExecutionMode.Sequential)
         {
-            results = await RunSequentialAsync(request.TaskId, task.UserId, plan, checkpointedResults, cancellationToken)
+            results = await RunSequentialAsync(
+                request.TaskId, task.UserId, plan, checkpointedResults, planExecution.SpanId, cancellationToken)
                 .ConfigureAwait(false);
         }
         else
@@ -95,7 +112,9 @@ public sealed class ResumeOrchestrationTaskHandler
             var subAgentTasks = plan.ExecutionOrder
                 .Select(agentType => checkpointedResults.TryGetValue(agentType, out var cached)
                     ? Task.FromResult(cached)
-                    : RunSubAgentAsync(request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType], cancellationToken))
+                    : RunSubAgentAsync(
+                        request.TaskId, task.UserId, agentType, plan.AgentPrompts[agentType],
+                        planExecution.SpanId, cancellationToken))
                 .ToList();
             results = await Task.WhenAll(subAgentTasks).ConfigureAwait(false);
         }
@@ -152,12 +171,14 @@ public sealed class ResumeOrchestrationTaskHandler
     }
 
     private async Task<AgentExecutionResult> RunSubAgentAsync(
-        Guid taskId, Guid userId, AgentType agentType, string prompt, CancellationToken cancellationToken)
+        Guid taskId, Guid userId, AgentType agentType, string prompt, string? parentSpanId,
+        CancellationToken cancellationToken)
     {
         try
         {
             var agent = _agentFactory.Create(agentType);
-            return await agent.ExecuteAsync(taskId, userId, prompt, cancellationToken).ConfigureAwait(false);
+            return await agent.ExecuteAsync(taskId, userId, prompt, cancellationToken, parentSpanId)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -172,6 +193,7 @@ public sealed class ResumeOrchestrationTaskHandler
         Guid userId,
         OrchestrationPlan plan,
         IReadOnlyDictionary<AgentType, AgentExecutionResult> checkpointedResults,
+        string? parentSpanId,
         CancellationToken cancellationToken)
     {
         var results = new List<AgentExecutionResult>();
@@ -187,7 +209,8 @@ public sealed class ResumeOrchestrationTaskHandler
             }
 
             var prompt = BuildSequentialPrompt(plan.AgentPrompts[agentType], priorOutput);
-            var result = await RunSubAgentAsync(taskId, userId, agentType, prompt, cancellationToken).ConfigureAwait(false);
+            var result = await RunSubAgentAsync(taskId, userId, agentType, prompt, parentSpanId, cancellationToken)
+                .ConfigureAwait(false);
             results.Add(result);
 
             if (result.Success)

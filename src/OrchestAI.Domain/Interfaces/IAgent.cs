@@ -8,5 +8,6 @@ public interface IAgent
         Guid orchestrationTaskId,
         Guid userId,
         string userPrompt,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? parentSpanId = null);
 }

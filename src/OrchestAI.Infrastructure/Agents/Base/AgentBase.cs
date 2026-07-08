@@ -89,11 +89,13 @@ public abstract class AgentBase : IAgent
         Guid userId,
         string userPrompt,
         CancellationToken cancellationToken = default,
-        string? parentSpanId = null)
+        string? parentSpanId = null,
+        Guid? evalRunId = null)
     {
         var safePrompt = RedactIfEnabled(userPrompt);
 
-        var execution = await SetupExecutionAsync(orchestrationTaskId, safePrompt, cancellationToken, parentSpanId)
+        var execution = await SetupExecutionAsync(
+            orchestrationTaskId, safePrompt, cancellationToken, parentSpanId, evalRunId)
             .ConfigureAwait(false);
 
         try
@@ -203,9 +205,10 @@ public abstract class AgentBase : IAgent
         Guid orchestrationTaskId,
         string userPrompt,
         CancellationToken cancellationToken,
-        string? parentSpanId = null)
+        string? parentSpanId = null,
+        Guid? evalRunId = null)
     {
-        var execution = AgentExecution.Create(orchestrationTaskId, AgentType, userPrompt, parentSpanId);
+        var execution = AgentExecution.Create(orchestrationTaskId, AgentType, userPrompt, parentSpanId, evalRunId);
         await _agentExecutionRepository.AddAsync(execution, cancellationToken).ConfigureAwait(false);
 
         execution.Start();
@@ -281,7 +284,9 @@ public abstract class AgentBase : IAgent
             execution.OrchestrationTaskId,
             _agentOptions.Value.Models[AgentType.ToString()],
             inputTokens, outputTokens, costUsd,
-            execution.Id);
+            execution.Id,
+            source: execution.EvalRunId is null ? CostSource.Production : CostSource.Eval,
+            evalRunId: execution.EvalRunId);
         await _costLedgerRepository.AddAsync(ledger, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(execution.OrchestrationTaskId, new SseEvent(

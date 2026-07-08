@@ -1,3 +1,5 @@
+using OrchestAI.Domain.Enums;
+
 namespace OrchestAI.Domain.Entities;
 
 public sealed class CostLedger
@@ -11,6 +13,8 @@ public sealed class CostLedger
     public int InputTokens { get; private set; }
     public int OutputTokens { get; private set; }
     public decimal CostUsd { get; private set; }
+    public CostSource Source { get; private set; }
+    public Guid? EvalRunId { get; private set; }
     public DateTimeOffset RecordedAt { get; private set; }
 
     public OrchestrationTask OrchestrationTask { get; private set; } = null!;
@@ -22,7 +26,9 @@ public sealed class CostLedger
         int inputTokens,
         int outputTokens,
         decimal costUsd,
-        Guid? agentExecutionId = null)
+        Guid? agentExecutionId = null,
+        CostSource source = CostSource.Production,
+        Guid? evalRunId = null)
     {
         return new CostLedger
         {
@@ -33,6 +39,8 @@ public sealed class CostLedger
             InputTokens = inputTokens,
             OutputTokens = outputTokens,
             CostUsd = costUsd,
+            Source = source,
+            EvalRunId = evalRunId,
             RecordedAt = DateTimeOffset.UtcNow
         };
     }

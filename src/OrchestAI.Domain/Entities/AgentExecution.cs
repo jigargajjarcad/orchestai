@@ -20,6 +20,7 @@ public sealed class AgentExecution
     public ExecutionErrorCategory? ErrorCategory { get; private set; }
     public string SpanId { get; private set; } = string.Empty;
     public string? ParentSpanId { get; private set; }
+    public Guid? EvalRunId { get; private set; }
     public int MemoriesInjectedCount { get; private set; }
     public DateTimeOffset? StartedAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
@@ -32,7 +33,8 @@ public sealed class AgentExecution
     public IReadOnlyCollection<McpToolCall> ToolCalls => _toolCalls.AsReadOnly();
 
     public static AgentExecution Create(
-        Guid taskId, AgentType agentType, string inputPrompt, string? parentSpanId = null)
+        Guid taskId, AgentType agentType, string inputPrompt, string? parentSpanId = null,
+        Guid? evalRunId = null)
     {
         return new AgentExecution
         {
@@ -43,6 +45,7 @@ public sealed class AgentExecution
             InputPrompt = inputPrompt,
             SpanId = TraceIdentifiers.NewSpanId(),
             ParentSpanId = parentSpanId,
+            EvalRunId = evalRunId,
             InputTokens = 0,
             OutputTokens = 0,
             CostUsd = 0,

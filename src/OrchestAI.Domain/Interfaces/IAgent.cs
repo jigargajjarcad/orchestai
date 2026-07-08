@@ -9,5 +9,6 @@ public interface IAgent
         Guid userId,
         string userPrompt,
         CancellationToken cancellationToken = default,
-        string? parentSpanId = null);
+        string? parentSpanId = null,
+        Guid? evalRunId = null);
 }

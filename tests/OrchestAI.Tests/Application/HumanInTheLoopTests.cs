@@ -50,7 +50,7 @@ public sealed class HumanInTheLoopTests
 
         var researchAgentMock = new Mock<IAgent>();
         researchAgentMock
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(new AgentExecutionResult(Guid.NewGuid(), "Research done.", true, 100, 50, 0.001m));
 
         var agentFactoryMock = new Mock<IAgentFactory>();

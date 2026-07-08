@@ -140,12 +140,12 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockResearchAgent = new Mock<IAgent>();
         mockResearchAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Research], It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Research], It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(researchResult);
 
         var mockWriterAgent = new Mock<IAgent>();
         mockWriterAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Writer], It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Writer], It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(writerResult);
 
         _agentFactoryMock
@@ -209,7 +209,7 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockCodeAgent = new Mock<IAgent>();
         mockCodeAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Code], It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, plan.AgentPrompts[AgentType.Code], It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(failedResult);
 
         _agentFactoryMock
@@ -266,13 +266,13 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockResearchAgent = new Mock<IAgent>();
         mockResearchAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(researchResult);
 
         var mockWriterAgent = new Mock<IAgent>();
         mockWriterAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .Callback<Guid, Guid, string, CancellationToken, string?>((_, _, prompt, _, _) => capturedWriterPrompt = prompt)
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
+            .Callback<Guid, Guid, string, CancellationToken, string?, Guid?>((_, _, prompt, _, _, _) => capturedWriterPrompt = prompt)
             .ReturnsAsync(writerResult);
 
         _agentFactoryMock.Setup(f => f.Create(AgentType.Research)).Returns(mockResearchAgent.Object);
@@ -322,13 +322,13 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockResearchAgent = new Mock<IAgent>();
         mockResearchAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(failedResearch);
 
         var mockWriterAgent = new Mock<IAgent>();
         mockWriterAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .Callback<Guid, Guid, string, CancellationToken, string?>((_, _, prompt, _, _) => capturedWriterPrompt = prompt)
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
+            .Callback<Guid, Guid, string, CancellationToken, string?, Guid?>((_, _, prompt, _, _, _) => capturedWriterPrompt = prompt)
             .ReturnsAsync(writerResult);
 
         _agentFactoryMock.Setup(f => f.Create(AgentType.Research)).Returns(mockResearchAgent.Object);
@@ -338,7 +338,7 @@ public sealed class StartOrchestrationHandlerTests
 
         // Writer still runs despite research failure
         mockWriterAgent.Verify(
-            a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()), Times.Once);
+            a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()), Times.Once);
 
         // Writer receives only its base prompt — no prior context since research failed
         capturedWriterPrompt.Should().Be(writerBasePrompt);
@@ -379,12 +379,12 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockResearchAgent = new Mock<IAgent>();
         mockResearchAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(researchResult);
 
         var mockDataAgent = new Mock<IAgent>();
         mockDataAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(dataResult);
 
         _agentFactoryMock.Setup(f => f.Create(AgentType.Research)).Returns(mockResearchAgent.Object);
@@ -433,14 +433,14 @@ public sealed class StartOrchestrationHandlerTests
 
         var mockResearchAgent = new Mock<IAgent>();
         mockResearchAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .Callback<Guid, Guid, string, CancellationToken, string?>((_, _, _, _, _) => callOrder.Add(AgentType.Research))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
+            .Callback<Guid, Guid, string, CancellationToken, string?, Guid?>((_, _, _, _, _, _) => callOrder.Add(AgentType.Research))
             .ReturnsAsync(researchResult);
 
         var mockCodeAgent = new Mock<IAgent>();
         mockCodeAgent
-            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
-            .Callback<Guid, Guid, string, CancellationToken, string?>((_, _, _, _, _) => callOrder.Add(AgentType.Code))
+            .Setup(a => a.ExecuteAsync(taskId, DevUserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
+            .Callback<Guid, Guid, string, CancellationToken, string?, Guid?>((_, _, _, _, _, _) => callOrder.Add(AgentType.Code))
             .ReturnsAsync(codeResult);
 
         _agentFactoryMock.Setup(f => f.Create(AgentType.Research)).Returns(mockResearchAgent.Object);

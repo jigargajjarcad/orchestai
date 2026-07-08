@@ -260,7 +260,7 @@ public sealed class TaskCheckpointTests
 
         var writerAgentMock = new Mock<IAgent>();
         writerAgentMock
-            .Setup(a => a.ExecuteAsync(task.Id, task.UserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Setup(a => a.ExecuteAsync(task.Id, task.UserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .ReturnsAsync(new AgentExecutionResult(Guid.NewGuid(), "Written report.", true, 200, 100, 0.002m));
 
         var agentFactoryMock = new Mock<IAgentFactory>();

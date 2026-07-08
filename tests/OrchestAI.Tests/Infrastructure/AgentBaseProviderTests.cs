@@ -350,6 +350,56 @@ public sealed class AgentBaseProviderTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_EvalRunIdPassed_TagsExecutionAndCostLedgerAsEval()
+    {
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
+
+        AgentExecution? capturedExecution = null;
+        _execRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<AgentExecution>(), It.IsAny<CancellationToken>()))
+            .Callback<AgentExecution, CancellationToken>((e, _) => capturedExecution = e)
+            .Returns(Task.CompletedTask);
+
+        CostLedger? capturedLedger = null;
+        _costRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<CostLedger>(), It.IsAny<CancellationToken>()))
+            .Callback<CostLedger, CancellationToken>((l, _) => capturedLedger = l)
+            .Returns(Task.CompletedTask);
+
+        var evalRunId = Guid.NewGuid();
+        var agent = BuildAgent();
+        await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None, evalRunId: evalRunId);
+
+        capturedExecution!.EvalRunId.Should().Be(evalRunId);
+        capturedLedger!.Source.Should().Be(CostSource.Eval);
+        capturedLedger.EvalRunId.Should().Be(evalRunId);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoEvalRunId_TagsCostLedgerAsProduction()
+    {
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 10, 5));
+
+        CostLedger? capturedLedger = null;
+        _costRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<CostLedger>(), It.IsAny<CancellationToken>()))
+            .Callback<CostLedger, CancellationToken>((l, _) => capturedLedger = l)
+            .Returns(Task.CompletedTask);
+
+        var agent = BuildAgent();
+        await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
+
+        capturedLedger!.Source.Should().Be(CostSource.Production);
+        capturedLedger.EvalRunId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_AccumulatesTokensAndCostAcrossIterations()
     {
         const string toolName = "test_tool";

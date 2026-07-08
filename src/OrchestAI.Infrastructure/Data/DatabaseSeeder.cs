@@ -6,6 +6,7 @@ namespace OrchestAI.Infrastructure.Data;
 public sealed class DatabaseSeeder
 {
     public static readonly Guid DevUserId = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+    public static readonly Guid EvalSystemUserId = Guid.Parse("00000000-0000-0000-0000-0000ee7a1000");
 
     private readonly AppDbContext _context;
     private readonly ILogger<DatabaseSeeder> _logger;
@@ -35,6 +36,21 @@ public sealed class DatabaseSeeder
         {
             _logger.LogInformation(
                 "Seeded dev user {UserId} (dev@orchestai.local)", DevUserId);
+        }
+
+        var evalUserRowsAffected = await _context.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "Users" ("Id", "Email", "DisplayName", "CreatedAt", "UpdatedAt")
+            VALUES ({0}, {1}, {2}, {3}, {4})
+            ON CONFLICT ("Id") DO NOTHING
+            """,
+            [EvalSystemUserId, "eval-system@orchestai.local", "Eval System", now, now],
+            cancellationToken).ConfigureAwait(false);
+
+        if (evalUserRowsAffected > 0)
+        {
+            _logger.LogInformation(
+                "Seeded eval system user {UserId} (eval-system@orchestai.local)", EvalSystemUserId);
         }
 
         await SeedModelPricingAsync(now, cancellationToken).ConfigureAwait(false);

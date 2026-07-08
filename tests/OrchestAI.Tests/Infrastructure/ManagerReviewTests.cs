@@ -117,10 +117,10 @@ public sealed class ManagerReviewTests
         review.Output.Should().Be("Final synthesized answer.");
 
         _eventBusMock.Verify(
-            b => b.Publish(TaskId, It.Is<global::OrchestAI.Domain.Events.SseEvent>(e => e.Event == "manager_review_started")),
+            b => b.Publish(TaskId, It.Is<Domain.Events.SseEvent>(e => e.Event == "manager_review_started")),
             Times.Once);
         _eventBusMock.Verify(
-            b => b.Publish(TaskId, It.Is<global::OrchestAI.Domain.Events.SseEvent>(e => e.Event == "manager_review_completed")),
+            b => b.Publish(TaskId, It.Is<Domain.Events.SseEvent>(e => e.Event == "manager_review_completed")),
             Times.Once);
     }
 

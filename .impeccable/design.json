@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-08T00:00:00.000Z",
+  "title": "Design System: OrchestAI",
+  "extensions": {
+    "colorMeta": {
+      "crust": { "role": "neutral", "displayName": "Crust", "canonical": "#11111b", "tonalRamp": ["#0a0a11", "#11111b", "#181825", "#1e1e2e", "#313244", "#585b70", "#6c7086", "#a6adc8"] },
+      "base": { "role": "neutral", "displayName": "Base", "canonical": "#1e1e2e", "tonalRamp": ["#11111b", "#181825", "#1e1e2e", "#292a3d", "#313244", "#45475a", "#585b70", "#6c7086"] },
+      "mantle": { "role": "neutral", "displayName": "Mantle", "canonical": "#181825", "tonalRamp": ["#0a0a11", "#11111b", "#181825", "#1e1e2e", "#313244", "#45475a", "#585b70", "#6c7086"] },
+      "surface0": { "role": "neutral", "displayName": "Surface 0 (borders)", "canonical": "#313244", "tonalRamp": ["#181825", "#1e1e2e", "#282a3d", "#313244", "#3d3f56", "#45475a", "#585b70", "#6c7086"] },
+      "surface2": { "role": "neutral", "displayName": "Surface 2 (dim text)", "canonical": "#585b70", "tonalRamp": ["#313244", "#45475a", "#585b70", "#656980", "#6c7086", "#7f849c", "#9399b2", "#a6adc8"] },
+      "overlay0": { "role": "neutral", "displayName": "Overlay 0 (muted labels)", "canonical": "#6c7086", "tonalRamp": ["#45475a", "#585b70", "#6c7086", "#7f849c", "#9399b2", "#a6adc8", "#bac2de", "#cdd6f4"] },
+      "subtext0": { "role": "neutral", "displayName": "Subtext 0 (secondary text)", "canonical": "#a6adc8", "tonalRamp": ["#585b70", "#6c7086", "#7f849c", "#9399b2", "#a6adc8", "#bac2de", "#cdd6f4", "#eff1f8"] },
+      "text": { "role": "neutral", "displayName": "Text", "canonical": "#cdd6f4", "tonalRamp": ["#7f849c", "#9399b2", "#a6adc8", "#bac2de", "#cdd6f4", "#dbe0f5", "#e8ebfa", "#f4f6fc"] },
+      "trace-blue": { "role": "primary", "displayName": "Trace Blue", "canonical": "oklch(78% 0.11 253)", "tonalRamp": ["#1a2c52", "#264073", "#345697", "#5178c4", "#89b4fa", "#a9c7fb", "#c5dafd", "#e2ecfe"] },
+      "signal-green": { "role": "secondary", "displayName": "Signal Green", "canonical": "oklch(87% 0.11 145)", "tonalRamp": ["#1e3a24", "#2c5433", "#3d7346", "#66a86a", "#a6e3a1", "#c0ebbc", "#d9f4d6", "#eefaed"] },
+      "alert-red": { "role": "secondary", "displayName": "Alert Red", "canonical": "oklch(76% 0.12 8)", "tonalRamp": ["#4a1f28", "#6b2c39", "#943c4d", "#c85870", "#f38ba8", "#f6a8bd", "#f9c5d3", "#fce2e9"] },
+      "beacon-yellow": { "role": "tertiary", "displayName": "Beacon Yellow (Orchestrator)", "canonical": "oklch(91% 0.09 96)", "tonalRamp": ["#4a3f1f", "#6b5a2c", "#947e3c", "#c8ac58", "#f9e2af", "#fbe9c3", "#fdf0d7", "#fef8eb"] },
+      "agent-mauve": { "role": "tertiary", "displayName": "Agent Mauve (Code)", "canonical": "oklch(76% 0.11 313)", "tonalRamp": ["#3a2452", "#523373", "#6f4697", "#9a70c4", "#cba6f7", "#d9c0fb", "#e6d9fc", "#f3ecfe"] },
+      "agent-sky": { "role": "tertiary", "displayName": "Agent Sky (Data)", "canonical": "oklch(85% 0.08 220)", "tonalRamp": ["#1f4552", "#2c6273", "#3c8397", "#59acc0", "#89dceb", "#a8e5f0", "#c6eef5", "#e3f7fa"] },
+      "agent-peach": { "role": "tertiary", "displayName": "Agent Peach (Browser)", "canonical": "oklch(80% 0.10 45)", "tonalRamp": ["#52321f", "#73472c", "#97613c", "#c48b59", "#fab387", "#fbc6a3", "#fddac0", "#feedde"] },
+      "status-running": { "role": "state", "displayName": "Status: Running", "canonical": "#2563eb", "tonalRamp": ["#0f1f4d", "#16296b", "#1d3a8f", "#2449b8", "#2563eb", "#5581ee", "#8ba5f3", "#c1cdf9"] },
+      "status-completed": { "role": "state", "displayName": "Status: Completed", "canonical": "#16a34a", "tonalRamp": ["#0a3319", "#0f4a24", "#146633", "#16853f", "#16a34a", "#4dbd72", "#83d39d", "#bae9c8"] },
+      "status-failed": { "role": "state", "displayName": "Status: Failed", "canonical": "#dc2626", "tonalRamp": ["#450a0a", "#671414", "#8f1d1d", "#b82424", "#dc2626", "#e8595a", "#f28d8e", "#fac2c2"] },
+      "status-pending": { "role": "state", "displayName": "Status: Pending", "canonical": "#6b7280", "tonalRamp": ["#26292e", "#374045", "#4b535a", "#5c646c", "#6b7280", "#8a909a", "#aab0b8", "#cbd0d6"] },
+      "status-warning": { "role": "state", "displayName": "Status: Warning / Retry", "canonical": "#f59e0b", "tonalRamp": ["#4d3305", "#734d08", "#97650b", "#c4850e", "#f59e0b", "#f7b647", "#facf85", "#fce7c2"] }
+    },
+    "typographyMeta": {
+      "heading": { "displayName": "Heading", "purpose": "Page title only, used once per view (\"OrchestAI\")." },
+      "title": { "displayName": "Title", "purpose": "Section-level headers inside a panel." },
+      "body": { "displayName": "Body", "purpose": "Default for prompts, outputs, table cells, descriptions." },
+      "label": { "displayName": "Label", "purpose": "Uppercase section eyebrows and column headers." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Tinted pill showing task/agent execution status (Running, Completed, Failed, Pending, Warning).",
+      "html": "<span class=\"ds-status-badge\">RUNNING</span>",
+      "css": ".ds-status-badge { background: rgba(37, 99, 235, 0.18); color: #2563eb; border: 1px solid rgba(37, 99, 235, 0.55); border-radius: 4px; padding: 2px 10px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Full-width primary action button (e.g. \"Run Agents\").",
+      "html": "<button class=\"ds-btn-primary\">Run Agents</button>",
+      "css": ".ds-btn-primary { width: 100%; padding: 9px 0; border-radius: 6px; border: none; background: #89b4fa; color: #1e1e2e; font-weight: 700; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; cursor: pointer; transition: background 0.15s; } .ds-btn-primary:hover { background: #a9c7fb; } .ds-btn-primary:disabled { background: #313244; color: #6c7086; cursor: not-allowed; } .ds-btn-primary:focus-visible { outline: 2px solid #89b4fa; outline-offset: 2px; }"
+    },
+    {
+      "name": "Panel Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Standard content panel (used throughout Observability views) — base background, surface0 border, 8px radius.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-label\">TOTAL COST</div><div class=\"ds-panel-value\">$0.107263</div></div>",
+      "css": ".ds-panel { background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; padding: 16px 18px; font-family: 'JetBrains Mono', 'Fira Code', monospace; } .ds-panel-label { font-size: 10px; color: #6c7086; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; } .ds-panel-value { font-size: 18px; font-weight: 700; color: #cdd6f4; }"
+    },
+    {
+      "name": "Status-Accented Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Agent execution / approval / manager-review card — the one deliberate exception to the side-stripe-border ban, using a 3px colored left border to attach a status color to the whole card.",
+      "html": "<div class=\"ds-status-card\"><strong class=\"ds-status-card-title\">Research</strong><span class=\"ds-status-badge\">COMPLETED</span></div>",
+      "css": ".ds-status-card { border: 1px solid rgba(22, 163, 74, 0.25); border-left: 3px solid #16a34a; border-radius: 8px; padding: 12px 14px; background: #1e1e2e; font-family: 'JetBrains Mono', 'Fira Code', monospace; display: flex; justify-content: space-between; align-items: center; } .ds-status-card-title { color: #cdd6f4; font-size: 14px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": null,
+      "description": "Standard text/textarea field used in the task submission form.",
+      "html": "<input class=\"ds-input\" placeholder=\"e.g. Research LangGraph\" />",
+      "css": ".ds-input { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid #313244; background: #1e1e2e; color: #cdd6f4; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; outline: none; box-sizing: border-box; } .ds-input::placeholder { color: #6c7086; } .ds-input:focus { border-color: #89b4fa; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Trace Console",
+    "overview": "OrchestAI's frontend is not a dashboard you browse — it's a console you read. Every screen exists to answer one question fast: what happened, why, how much did it cost, how do I reproduce it. The visual language follows from that job directly: monospace throughout (this is a tool that shows raw traces, timestamps, and span IDs — a proportional font would be lying about what the data actually is), a single Catppuccin Mocha dark base with zero elevation, and a deliberately narrow, dense information architecture that packs execution data close together rather than spacing it out for comfort. This system explicitly rejects the generic SaaS dashboard: no gradient hero metrics, no cream/sand card grids, no rounded pastel \"consumer analytics\" look. An engineer debugging a failed multi-agent run at 2am should feel like they're reading htop or a Grafana Tempo trace view, not browsing a Stripe-dashboard-clone.",
+    "keyCharacteristics": [
+      "Monospace-only typography, no serif or humanist sans anywhere",
+      "Flat throughout — zero shadows, depth via background-color layering only",
+      "Dense: small type scale (11–14px for 90% of UI), tight padding, small radii (3–8px)",
+      "Two distinct color roles never blended: soft Catppuccin tones identify what (agent type, structural UI), harder saturated tones identify state (status badges only)"
+    ],
+    "rules": [
+      { "name": "The Two-Palette Rule", "body": "Identity (which agent, which color role in the UI) is always a Catppuccin tone. State (is this run running / done / failed) is always drawn from the harder Status set. Never use Alert Red for a \"Failed\" badge or Status Failed for inline error text.", "section": "colors" },
+      { "name": "The One Accent Rule", "body": "Trace Blue is the only color used for interactive affordances (buttons, links, focus). It appears on a small fraction of any screen; its rarity is what makes it register as \"click here\" rather than decoration.", "section": "colors" },
+      { "name": "The No-Serif Rule", "body": "Nothing in this system is ever set in a serif or humanist sans. If a new screen needs a font decision, the answer is always the existing monospace stack.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces never cast shadows. The only \"elevation\" cue besides background layering is a colored left-border (3px) on status-carrying cards — a deliberate, singular exception to the general no-side-stripe-border rule.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every screen monospace — headings, labels, body, values, all one family.",
+      "Do use the Two-Palette Rule: Catppuccin tones for identity, hard Status tones for state.",
+      "Do use tinted-pill badges (20% alpha bg, 50–60% alpha border, full-opacity text) for any new status indicator, matching the existing badge pattern exactly.",
+      "Do reserve the 3px border-left accent for cards that represent a single dominant status; it is the one deliberate exception to the side-stripe ban below.",
+      "Do keep type sizes in the 11–14px range for standard UI; reserve 18–20px for the single page heading only."
+    ],
+    "donts": [
+      "Don't introduce a gradient, hero metric, or cream/sand card grid — this is a tracing tool, not a marketing-adjacent SaaS dashboard.",
+      "Don't use border-left as a colored accent on anything other than a status-carrying card.",
+      "Don't add a box-shadow anywhere. Depth is background-layering only.",
+      "Don't mix Catppuccin soft tones and hard Status tones on the same semantic concept.",
+      "Don't introduce a second typeface, even for \"just one heading.\"",
+      "Don't reconstruct span parent/child hierarchy from timestamps or visual proximity — it must always be driven by the actual spanId/parentSpanId data, mirroring the backend's own architectural rule (ADR-011)."
+    ]
+  }
+}

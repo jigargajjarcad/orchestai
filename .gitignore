@@ -434,3 +434,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Vendored Claude Code plugin copy (impeccable) — already registered via the
+# marketplace in ~/.claude/plugins; the project-scoped install duplicates it here.
+.claude/settings.json
+.claude/skills/

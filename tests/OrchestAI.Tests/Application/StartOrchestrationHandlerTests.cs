@@ -5,7 +5,6 @@ using OrchestAI.Application.Commands.StartOrchestration;
 using OrchestAI.Application.Exceptions;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
-using OrchestAI.Domain.Events;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 
@@ -221,7 +220,7 @@ public sealed class StartOrchestrationHandlerTests
 
         // Verify task ended in Failed status via the SSE event (avoids Moq reference-type mutation issue)
         _eventBusMock.Verify(
-            b => b.Publish(taskId, It.Is<SseEvent>(e => e.Event == "task_failed")),
+            b => b.Publish(taskId, It.Is<global::OrchestAI.Domain.Events.SseEvent>(e => e.Event == "task_failed")),
             Times.Once);
 
         // Verify UpdateAsync was called at least twice (MarkRunning + MarkFailed)
@@ -394,7 +393,7 @@ public sealed class StartOrchestrationHandlerTests
         await _handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);
 
         _eventBusMock.Verify(
-            b => b.Publish(taskId, It.Is<SseEvent>(e => e.Event == "task_completed")),
+            b => b.Publish(taskId, It.Is<global::OrchestAI.Domain.Events.SseEvent>(e => e.Event == "task_completed")),
             Times.Once);
     }
 

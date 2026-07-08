@@ -239,3 +239,20 @@ concern (order of magnitude: tens of millions of rows).
 at that point, validate the `ActivityTraceId`/`ActivitySpanId` format assumptions against
 whatever backend is targeted (Azure Monitor's OTel ingestion has its own quirks) before
 building the exporter.
+
+### Verified
+Pre-commit pass measured query performance directly rather than trusting the design: seeded
+a fresh 27-span multi-agent task (1 Orchestrator plan → 5 parallel sub-agents × 4 tool calls →
+1 Orchestrator review; 3 levels of real parent-child nesting) plus 30 days × 5 agent types of
+`CostRollups` data, then ran each query 10× through the real MediatR pipeline with `Stopwatch`.
+
+| Query | Target | Median | Max |
+|---|---|---|---|
+| Execution timeline | <500ms | 2.8ms | 14.8ms |
+| Cost dashboard (30d) | <1000ms | 3.5ms | 4.3ms |
+| Comparison | <750ms | 2.0ms | 11.2ms |
+
+The timeline query's N+1 status was checked empirically, not just by code inspection: Postgres
+statement logging enabled, single query confirmed against the 27-span task — the LEFT JOIN
+chain from `GetByIdWithExecutionsMessagesAndToolCallsAsync`'s `Include`/`ThenInclude`, not
+one query per span.

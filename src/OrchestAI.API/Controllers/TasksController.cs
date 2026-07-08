@@ -7,7 +7,10 @@ using OrchestAI.Application.Commands.RejectOrchestrationTask;
 using OrchestAI.Application.Commands.ResumeOrchestrationTask;
 using OrchestAI.Application.Commands.StartOrchestration;
 using OrchestAI.Application.Exceptions;
+using OrchestAI.Application.Queries.GetExecutionSummary;
+using OrchestAI.Application.Queries.GetExecutionTimeline;
 using OrchestAI.Application.Queries.GetOrchestrationTask;
+using OrchestAI.Application.Queries.GetTaskComparison;
 using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.API.Controllers;
@@ -221,6 +224,65 @@ public sealed class TasksController : ControllerBase
                 Status = StatusCodes.Status409Conflict
             });
         }
+    }
+
+    /// <summary>Chronological trace tree (agent executions + tool calls) for a task run.</summary>
+    [HttpGet("{id:guid}/timeline")]
+    [ProducesResponseType(typeof(GetExecutionTimelineResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTimelineAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var response = await _mediator.Send(new GetExecutionTimelineQuery(id), cancellationToken);
+
+        if (response is null)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = $"Orchestration task {id} does not exist.",
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(response);
+    }
+
+    /// <summary>At-a-glance summary card: status, cost, agents, retries, errors, memory/checkpoint use.</summary>
+    [HttpGet("{id:guid}/summary")]
+    [ProducesResponseType(typeof(GetExecutionSummaryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSummaryAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var response = await _mediator.Send(new GetExecutionSummaryQuery(id), cancellationToken);
+
+        if (response is null)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = $"Orchestration task {id} does not exist.",
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(response);
+    }
+
+    /// <summary>Side-by-side comparison of two task runs — prompts, outputs, latency, cost, tokens.</summary>
+    [HttpGet("compare")]
+    [ProducesResponseType(typeof(GetTaskComparisonResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CompareAsync(
+        [FromQuery] Guid firstTaskId, [FromQuery] Guid secondTaskId, CancellationToken cancellationToken)
+    {
+        var response = await _mediator.Send(
+            new GetTaskComparisonQuery(firstTaskId, secondTaskId), cancellationToken);
+
+        if (response is null)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = $"One or both tasks ({firstTaskId}, {secondTaskId}) do not exist.",
+                Status = StatusCodes.Status404NotFound
+            });
+
+        return Ok(response);
     }
 
     /// <summary>SSE stream for real-time task execution events.</summary>

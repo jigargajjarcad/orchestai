@@ -71,6 +71,21 @@ public sealed class OrchestrationTaskRepository : IOrchestrationTaskRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<OrchestrationTask>> GetRecentByUserIdAsync(
+        Guid userId, int limit, CancellationToken cancellationToken = default)
+    {
+        await using var ctx = await _contextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return await ctx.OrchestrationTasks
+            .Where(t => t.UserId == userId)
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task AddAsync(
         OrchestrationTask task,
         CancellationToken cancellationToken = default)

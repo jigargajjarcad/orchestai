@@ -5,7 +5,8 @@ public sealed record AgentConversation(
     IReadOnlyList<ConversationMessage> Messages,
     IReadOnlyList<ToolDefinition> Tools,
     string Model,
-    int MaxTokens)
+    int MaxTokens,
+    double? Temperature = null)
 {
     // Appends the assistant's tool-requesting turn plus the resulting tool outputs in one step.
     // ToolRequests must travel with the assistant message so OpenAI/Azure providers can

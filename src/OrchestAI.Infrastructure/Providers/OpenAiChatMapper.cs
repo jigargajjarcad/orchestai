@@ -14,6 +14,8 @@ internal static class OpenAiChatMapper
         messages.AddRange(conversation.Messages.SelectMany(BuildMessages));
 
         var options = new ChatCompletionOptions { MaxOutputTokenCount = conversation.MaxTokens };
+        if (conversation.Temperature.HasValue)
+            options.Temperature = (float)conversation.Temperature.Value;
         foreach (var tool in conversation.Tools)
             options.Tools.Add(ChatTool.CreateFunctionTool(
                 tool.Name, tool.Description, BinaryData.FromString(tool.InputSchemaJson)));

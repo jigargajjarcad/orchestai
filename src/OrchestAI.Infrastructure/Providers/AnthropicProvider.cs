@@ -30,7 +30,8 @@ public sealed class AnthropicProvider : ILlmProvider
                 System = [new SystemMessage(conversation.SystemPrompt)],
                 Messages = conversation.Messages.Select(BuildMessage).ToList(),
                 Stream = false,
-                Tools = BuildTools(conversation.Tools)
+                Tools = BuildTools(conversation.Tools),
+                Temperature = (decimal?)conversation.Temperature
             }, cancellationToken).ConfigureAwait(false);
 
         var text = response.Content.OfType<TextContent>().LastOrDefault()?.Text ?? string.Empty;

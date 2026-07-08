@@ -19,6 +19,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<AgentRetryAttempt> AgentRetryAttempts => Set<AgentRetryAttempt>();
     public DbSet<CostRollup> CostRollups => Set<CostRollup>();
     public DbSet<ModelPricing> ModelPricing => Set<ModelPricing>();
+    public DbSet<EvalSuite> EvalSuites => Set<EvalSuite>();
+    public DbSet<EvalCase> EvalCases => Set<EvalCase>();
+    public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
+    public DbSet<EvalResult> EvalResults => Set<EvalResult>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,5 +39,9 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AgentRetryAttemptConfiguration());
         modelBuilder.ApplyConfiguration(new CostRollupConfiguration());
         modelBuilder.ApplyConfiguration(new ModelPricingConfiguration());
+        modelBuilder.ApplyConfiguration(new EvalSuiteConfiguration());
+        modelBuilder.ApplyConfiguration(new EvalCaseConfiguration());
+        modelBuilder.ApplyConfiguration(new EvalRunConfiguration());
+        modelBuilder.ApplyConfiguration(new EvalResultConfiguration());
     }
 }

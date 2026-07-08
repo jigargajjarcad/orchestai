@@ -68,6 +68,9 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
             .IsRequired()
             .HasDefaultValue(0);
 
+        builder.Property(e => e.EvalRunId)
+            .HasColumnType("uuid");
+
         builder.Property(e => e.StartedAt)
             .HasColumnType("timestamptz");
 
@@ -94,5 +97,7 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
         builder.HasIndex(e => new { e.AgentType, e.CreatedAt });
 
         builder.HasIndex(e => new { e.Status, e.ErrorCategory });
+
+        builder.HasIndex(e => e.EvalRunId);
     }
 }

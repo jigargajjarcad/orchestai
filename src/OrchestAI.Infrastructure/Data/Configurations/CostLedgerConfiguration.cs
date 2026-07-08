@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OrchestAI.Domain.Entities;
+using OrchestAI.Domain.Enums;
 
 namespace OrchestAI.Infrastructure.Data.Configurations;
 
@@ -21,6 +22,15 @@ public sealed class CostLedgerConfiguration : IEntityTypeConfiguration<CostLedge
             .HasColumnType("uuid");
 
         builder.Property(cl => cl.AgentExecutionId)
+            .HasColumnType("uuid");
+
+        builder.Property(cl => cl.Source)
+            .IsRequired()
+            .HasMaxLength(50)
+            .HasDefaultValue(CostSource.Production)
+            .HasConversion<string>();
+
+        builder.Property(cl => cl.EvalRunId)
             .HasColumnType("uuid");
 
         builder.Property(cl => cl.Model)
@@ -54,5 +64,8 @@ public sealed class CostLedgerConfiguration : IEntityTypeConfiguration<CostLedge
 
         builder.HasIndex(cl => new { cl.OrchestrationTaskId, cl.RecordedAt })
             .IsDescending(false, true);
+
+        builder.HasIndex(cl => cl.Source);
+        builder.HasIndex(cl => cl.EvalRunId);
     }
 }

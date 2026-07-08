@@ -147,6 +147,52 @@ public sealed class AgentBaseProviderTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ModelPricingChangesAfterExecution_HistoricalCostRemainsUnchanged()
+    {
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn("end_turn", "Done", [], 1_000_000, 0));
+
+        var capturedLedgers = new List<CostLedger>();
+        _costRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<CostLedger>(), It.IsAny<CancellationToken>()))
+            .Callback<CostLedger, CancellationToken>((ledger, _) => capturedLedgers.Add(ledger))
+            .Returns(Task.CompletedTask);
+
+        // Price at the time of the first execution: $1.00 per million input tokens.
+        _modelPricingCacheMock
+            .Setup(c => c.GetAsync(ModelName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create(ModelName, 1.00m, 1.00m));
+
+        var agent = BuildAgent();
+        var resultAtOldPrice = await agent.ExecuteAsync(TaskId, UserId, "Do something", CancellationToken.None);
+
+        resultAtOldPrice.CostUsd.Should().Be(1.00m);
+        capturedLedgers.Should().ContainSingle().Which.CostUsd.Should().Be(1.00m);
+
+        // Pricing changes after the fact (e.g. the provider raises prices, or an admin
+        // corrects a typo in ModelPricing) — the already-computed, already-persisted result
+        // must not drift, since AgentExecutionResult/CostLedger hold a plain stored decimal
+        // with no live reference back to ModelPricing.
+        _modelPricingCacheMock
+            .Setup(c => c.GetAsync(ModelName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create(ModelName, 2.00m, 2.00m));
+
+        resultAtOldPrice.CostUsd.Should().Be(1.00m);
+        capturedLedgers[0].CostUsd.Should().Be(1.00m);
+
+        // A fresh computation, by contrast, does pick up the new price — proving this isn't
+        // "pricing never updates," only that historical writes are immutable.
+        var resultAtNewPrice = await agent.ExecuteAsync(TaskId, UserId, "Do something else", CancellationToken.None);
+
+        resultAtNewPrice.CostUsd.Should().Be(2.00m);
+        capturedLedgers.Should().HaveCount(2);
+        capturedLedgers[1].CostUsd.Should().Be(2.00m);
+        capturedLedgers[0].CostUsd.Should().Be(1.00m); // unaffected by the later write
+    }
+
+    [Fact]
     public async Task ExecuteAsync_EndTurnOnFirstCall_PublishesAgentStartedAndCompleted()
     {
         _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([]);

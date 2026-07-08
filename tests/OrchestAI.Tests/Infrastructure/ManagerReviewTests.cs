@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Events;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Agents;
@@ -117,10 +118,10 @@ public sealed class ManagerReviewTests
         review.Output.Should().Be("Final synthesized answer.");
 
         _eventBusMock.Verify(
-            b => b.Publish(TaskId, It.Is<Domain.Events.SseEvent>(e => e.Event == "manager_review_started")),
+            b => b.Publish(TaskId, It.Is<SseEvent>(e => e.Event == "manager_review_started")),
             Times.Once);
         _eventBusMock.Verify(
-            b => b.Publish(TaskId, It.Is<Domain.Events.SseEvent>(e => e.Event == "manager_review_completed")),
+            b => b.Publish(TaskId, It.Is<SseEvent>(e => e.Event == "manager_review_completed")),
             Times.Once);
     }
 

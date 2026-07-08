@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OrchestAI.Domain.Entities;
+using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Data;
@@ -36,7 +37,8 @@ public sealed class CostLedgerRepository : ICostLedgerRepository
         // Join server-side (indexed FKs), then group client-side over the bounded, already-filtered
         // result — avoids relying on provider translation of DateOnly.FromDateTime inside a GroupBy.
         var raw = await ctx.CostLedger
-            .Where(c => c.RecordedAt >= fromUtc && c.RecordedAt < toUtc && c.AgentExecutionId != null)
+            .Where(c => c.RecordedAt >= fromUtc && c.RecordedAt < toUtc
+                && c.AgentExecutionId != null && c.Source == CostSource.Production)
             .Join(ctx.OrchestrationTasks, c => c.OrchestrationTaskId, t => t.Id,
                 (c, t) => new { c.RecordedAt, t.UserId, c.AgentExecutionId, c.Model, c.InputTokens, c.OutputTokens, c.CostUsd })
             .Join(ctx.AgentExecutions, x => x.AgentExecutionId!.Value, e => e.Id,

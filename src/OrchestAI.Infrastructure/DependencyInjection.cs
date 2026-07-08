@@ -7,10 +7,12 @@ using OpenAI;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure.Agents;
 using OrchestAI.Infrastructure.Agents.Base;
+using OrchestAI.Infrastructure.Caching;
 using OrchestAI.Infrastructure.Configuration;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Data.Interceptors;
 using OrchestAI.Infrastructure.Events;
+using OrchestAI.Infrastructure.Observability;
 using OrchestAI.Infrastructure.Providers;
 using OrchestAI.Infrastructure.Repositories;
 using OrchestAI.Infrastructure.Security;
@@ -47,12 +49,16 @@ public static class DependencyInjection
         services.AddScoped<IMcpToolCallRepository, McpToolCallRepository>();
         services.AddScoped<ITaskCheckpointRepository, TaskCheckpointRepository>();
         services.AddScoped<IAgentMemoryRepository, AgentMemoryRepository>();
+        services.AddScoped<IAgentRetryAttemptRepository, AgentRetryAttemptRepository>();
+        services.AddScoped<ICostRollupRepository, CostRollupRepository>();
+        services.AddScoped<IModelPricingRepository, ModelPricingRepository>();
+        services.AddSingleton<IModelPricingCache, ModelPricingCache>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
+        services.AddHostedService<CostRollupBackgroundService>();
 
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
-        services.Configure<Dictionary<string, PricingEntry>>(configuration.GetSection("Pricing"));
         services.Configure<ToolOptions>(configuration.GetSection(ToolOptions.SectionName));
         services.Configure<RetryPolicyOptions>(configuration.GetSection(RetryPolicyOptions.SectionName));
         services.Configure<PiiRedactionOptions>(configuration.GetSection(PiiRedactionOptions.SectionName));

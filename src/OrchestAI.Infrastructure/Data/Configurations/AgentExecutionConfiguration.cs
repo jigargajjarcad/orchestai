@@ -52,6 +52,22 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
 
         builder.Property(e => e.ErrorMessage);
 
+        builder.Property(e => e.ErrorCategory)
+            .HasMaxLength(50)
+            .HasConversion<string>();
+
+        builder.Property(e => e.SpanId)
+            .IsRequired()
+            .HasMaxLength(16)
+            .HasDefaultValueSql("substring(replace(gen_random_uuid()::text, '-', ''), 1, 16)");
+
+        builder.Property(e => e.ParentSpanId)
+            .HasMaxLength(16);
+
+        builder.Property(e => e.MemoriesInjectedCount)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.Property(e => e.StartedAt)
             .HasColumnType("timestamptz");
 
@@ -69,5 +85,14 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(e => e.OrchestrationTaskId);
+
+        builder.HasIndex(e => e.SpanId)
+            .IsUnique();
+
+        builder.HasIndex(e => e.ParentSpanId);
+
+        builder.HasIndex(e => new { e.AgentType, e.CreatedAt });
+
+        builder.HasIndex(e => new { e.Status, e.ErrorCategory });
     }
 }

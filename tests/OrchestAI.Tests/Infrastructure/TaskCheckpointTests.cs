@@ -91,6 +91,11 @@ public sealed class TaskCheckpointTests
             .Setup(r => r.GetRelevantAsync(It.IsAny<Guid>(), It.IsAny<AgentType>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
+        var retryAttemptRepoMock = new Mock<IAgentRetryAttemptRepository>();
+        retryAttemptRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<AgentRetryAttempt>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var piiRedactorMock = new Mock<IPiiRedactor>();
         piiRedactorMock.Setup(r => r.IsEnabled).Returns(false);
 
@@ -102,10 +107,10 @@ public sealed class TaskCheckpointTests
             Models = new Dictionary<string, string> { ["Code"] = $"anthropic/{ModelName}" },
             MaxTokens = new Dictionary<string, int> { ["Code"] = 1024 }
         });
-        var pricingOptions = Options.Create(new Dictionary<string, PricingEntry>
-        {
-            [ModelName] = new PricingEntry { InputPerMillion = 0.80m, OutputPerMillion = 4.00m }
-        });
+        var modelPricingCacheMock = new Mock<IModelPricingCache>();
+        modelPricingCacheMock
+            .Setup(c => c.GetAsync(ModelName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create(ModelName, 0.80m, 4.00m));
         var retryOptions = Options.Create(new RetryPolicyOptions
         {
             MaxAttempts = 1, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
@@ -113,8 +118,9 @@ public sealed class TaskCheckpointTests
 
         var agent = new TestAgent(
             providerFactoryMock.Object, execRepoMock.Object, msgRepoMock.Object, costRepoMock.Object,
-            toolCallRepoMock.Object, checkpointRepoMock.Object, memoryRepoMock.Object, piiRedactorMock.Object,
-            eventBusMock.Object, agentOptions, pricingOptions, retryOptions, toolRegistryMock.Object,
+            toolCallRepoMock.Object, checkpointRepoMock.Object, memoryRepoMock.Object, retryAttemptRepoMock.Object,
+            piiRedactorMock.Object,
+            eventBusMock.Object, agentOptions, modelPricingCacheMock.Object, retryOptions, toolRegistryMock.Object,
             NullLoggerFactory.Instance);
 
         return (agent, new AgentMocks(providerMock, checkpointRepoMock, eventBusMock, toolRegistryMock));
@@ -139,15 +145,16 @@ public sealed class TaskCheckpointTests
             IMcpToolCallRepository toolCallRepo,
             ITaskCheckpointRepository checkpointRepo,
             IAgentMemoryRepository memoryRepo,
+            IAgentRetryAttemptRepository retryAttemptRepo,
             IPiiRedactor piiRedactor,
             IOrchestrationEventBus eventBus,
             IOptions<AgentOptions> agentOptions,
-            IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+            IModelPricingCache modelPricingCache,
             IOptions<RetryPolicyOptions> retryOptions,
             IToolRegistry toolRegistry,
             ILoggerFactory loggerFactory)
             : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, checkpointRepo,
-                   memoryRepo, piiRedactor, eventBus, agentOptions, pricingOptions, retryOptions,
+                   memoryRepo, retryAttemptRepo, piiRedactor, eventBus, agentOptions, modelPricingCache, retryOptions,
                    toolRegistry, loggerFactory)
         { }
     }
@@ -253,7 +260,7 @@ public sealed class TaskCheckpointTests
 
         var writerAgentMock = new Mock<IAgent>();
         writerAgentMock
-            .Setup(a => a.ExecuteAsync(task.Id, task.UserId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.ExecuteAsync(task.Id, task.UserId, It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(new AgentExecutionResult(Guid.NewGuid(), "Written report.", true, 200, 100, 0.002m));
 
         var agentFactoryMock = new Mock<IAgentFactory>();

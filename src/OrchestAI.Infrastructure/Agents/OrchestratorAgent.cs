@@ -72,16 +72,17 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         IMcpToolCallRepository mcpToolCallRepository,
         ITaskCheckpointRepository checkpointRepository,
         IAgentMemoryRepository memoryRepository,
+        IAgentRetryAttemptRepository agentRetryAttemptRepository,
         IPiiRedactor piiRedactor,
         IOrchestrationEventBus eventBus,
         IOptions<AgentOptions> agentOptions,
-        IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+        IModelPricingCache modelPricingCache,
         IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
         : base(llmProviderFactory, agentExecutionRepository, agentMessageRepository,
                costLedgerRepository, mcpToolCallRepository, checkpointRepository,
-               memoryRepository, piiRedactor, eventBus, agentOptions, pricingOptions,
+               memoryRepository, agentRetryAttemptRepository, piiRedactor, eventBus, agentOptions, modelPricingCache,
                retryOptions, toolRegistry, loggerFactory)
     {
     }
@@ -152,7 +153,7 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         catch (Exception ex)
         {
             _logger.LogError(ex, "Orchestrator failed for task {TaskId}", orchestrationTaskId);
-            await FinalizeFailureAsync(execution, ex.Message, cancellationToken).ConfigureAwait(false);
+            await FinalizeFailureAsync(execution, ex, cancellationToken).ConfigureAwait(false);
             throw;
         }
     }
@@ -164,7 +165,8 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         IReadOnlyList<AgentExecutionResult> results,
         CancellationToken cancellationToken = default)
     {
-        var execution = await SetupExecutionAsync(orchestrationTaskId, userPrompt, cancellationToken)
+        var execution = await SetupExecutionAsync(
+            orchestrationTaskId, userPrompt, cancellationToken, plan.OrchestratorExecution.SpanId)
             .ConfigureAwait(false);
 
         try
@@ -209,7 +211,7 @@ public sealed class OrchestratorAgent : AgentBase, IOrchestratorAgent
         catch (Exception ex)
         {
             _logger.LogError(ex, "Manager review failed for task {TaskId}", orchestrationTaskId);
-            return await FinalizeFailureAsync(execution, ex.Message, cancellationToken).ConfigureAwait(false);
+            return await FinalizeFailureAsync(execution, ex, cancellationToken).ConfigureAwait(false);
         }
     }
 

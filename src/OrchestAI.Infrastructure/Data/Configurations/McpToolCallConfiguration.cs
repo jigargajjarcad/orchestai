@@ -37,6 +37,20 @@ public sealed class McpToolCallConfiguration : IEntityTypeConfiguration<McpToolC
 
         builder.Property(tc => tc.ErrorMessage);
 
+        builder.Property(tc => tc.ErrorCategory)
+            .HasMaxLength(50)
+            .HasConversion<string>();
+
+        builder.Property(tc => tc.SpanId)
+            .IsRequired()
+            .HasMaxLength(16)
+            .HasDefaultValueSql("substring(replace(gen_random_uuid()::text, '-', ''), 1, 16)");
+
+        builder.Property(tc => tc.ParentSpanId)
+            .IsRequired()
+            .HasMaxLength(16)
+            .HasDefaultValueSql("substring(replace(gen_random_uuid()::text, '-', ''), 1, 16)");
+
         builder.Property(tc => tc.DurationMs);
 
         builder.Property(tc => tc.CreatedAt)
@@ -48,5 +62,12 @@ public sealed class McpToolCallConfiguration : IEntityTypeConfiguration<McpToolC
             .WithMany(e => e.ToolCalls)
             .HasForeignKey(tc => tc.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(tc => tc.SpanId)
+            .IsUnique();
+
+        builder.HasIndex(tc => tc.ParentSpanId);
+
+        builder.HasIndex(tc => new { tc.Success, tc.ErrorCategory });
     }
 }

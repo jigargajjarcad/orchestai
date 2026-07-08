@@ -27,11 +27,12 @@ public sealed class AgentBaseProviderTests
     private readonly Mock<IMcpToolCallRepository> _toolCallRepoMock;
     private readonly Mock<ITaskCheckpointRepository> _checkpointRepoMock;
     private readonly Mock<IAgentMemoryRepository> _memoryRepoMock;
+    private readonly Mock<IAgentRetryAttemptRepository> _retryAttemptRepoMock;
     private readonly Mock<IPiiRedactor> _piiRedactorMock;
     private readonly Mock<IOrchestrationEventBus> _eventBusMock;
     private readonly Mock<IToolRegistry> _toolRegistryMock;
     private readonly IOptions<AgentOptions> _agentOptions;
-    private readonly IOptions<Dictionary<string, PricingEntry>> _pricingOptions;
+    private readonly Mock<IModelPricingCache> _modelPricingCacheMock;
     private readonly IOptions<RetryPolicyOptions> _retryOptions;
 
     public AgentBaseProviderTests()
@@ -48,6 +49,7 @@ public sealed class AgentBaseProviderTests
         _toolCallRepoMock = new Mock<IMcpToolCallRepository>();
         _checkpointRepoMock = new Mock<ITaskCheckpointRepository>();
         _memoryRepoMock = new Mock<IAgentMemoryRepository>();
+        _retryAttemptRepoMock = new Mock<IAgentRetryAttemptRepository>();
         _piiRedactorMock = new Mock<IPiiRedactor>();
         _eventBusMock = new Mock<IOrchestrationEventBus>();
         _toolRegistryMock = new Mock<IToolRegistry>();
@@ -57,10 +59,10 @@ public sealed class AgentBaseProviderTests
             Models = new Dictionary<string, string> { ["Code"] = $"anthropic/{ModelName}" },
             MaxTokens = new Dictionary<string, int> { ["Code"] = 1024 }
         });
-        _pricingOptions = Options.Create(new Dictionary<string, PricingEntry>
-        {
-            [ModelName] = new PricingEntry { InputPerMillion = 0.80m, OutputPerMillion = 4.00m }
-        });
+        _modelPricingCacheMock = new Mock<IModelPricingCache>();
+        _modelPricingCacheMock
+            .Setup(c => c.GetAsync(ModelName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create(ModelName, 0.80m, 4.00m));
         _retryOptions = Options.Create(new RetryPolicyOptions
         {
             MaxAttempts = 3, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
@@ -81,6 +83,8 @@ public sealed class AgentBaseProviderTests
         _memoryRepoMock
             .Setup(r => r.GetRelevantAsync(It.IsAny<Guid>(), It.IsAny<AgentType>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        _retryAttemptRepoMock.Setup(r => r.AddAsync(It.IsAny<AgentRetryAttempt>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         _piiRedactorMock.Setup(r => r.IsEnabled).Returns(false);
     }
 
@@ -94,10 +98,11 @@ public sealed class AgentBaseProviderTests
             _toolCallRepoMock.Object,
             _checkpointRepoMock.Object,
             _memoryRepoMock.Object,
+            _retryAttemptRepoMock.Object,
             _piiRedactorMock.Object,
             _eventBusMock.Object,
             _agentOptions,
-            _pricingOptions,
+            _modelPricingCacheMock.Object,
             _retryOptions,
             _toolRegistryMock.Object,
             NullLoggerFactory.Instance);
@@ -341,15 +346,16 @@ public sealed class AgentBaseProviderTests
             IMcpToolCallRepository toolCallRepo,
             ITaskCheckpointRepository checkpointRepo,
             IAgentMemoryRepository memoryRepo,
+            IAgentRetryAttemptRepository retryAttemptRepo,
             IPiiRedactor piiRedactor,
             IOrchestrationEventBus eventBus,
             IOptions<AgentOptions> agentOptions,
-            IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+            IModelPricingCache modelPricingCache,
             IOptions<RetryPolicyOptions> retryOptions,
             IToolRegistry toolRegistry,
             ILoggerFactory loggerFactory)
             : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, checkpointRepo,
-                   memoryRepo, piiRedactor, eventBus, agentOptions, pricingOptions, retryOptions,
+                   memoryRepo, retryAttemptRepo, piiRedactor, eventBus, agentOptions, modelPricingCache, retryOptions,
                    toolRegistry, loggerFactory)
         { }
     }

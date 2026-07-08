@@ -53,10 +53,10 @@ public sealed class ManagerReviewTests
             Models = new Dictionary<string, string> { ["Orchestrator"] = $"anthropic/{ModelName}" },
             MaxTokens = new Dictionary<string, int> { ["Orchestrator"] = 1024 }
         });
-        var pricingOptions = Options.Create(new Dictionary<string, PricingEntry>
-        {
-            [ModelName] = new PricingEntry { InputPerMillion = 0.80m, OutputPerMillion = 4.00m }
-        });
+        var modelPricingCacheMock = new Mock<IModelPricingCache>();
+        modelPricingCacheMock
+            .Setup(c => c.GetAsync(ModelName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create(ModelName, 0.80m, 4.00m));
         var retryOptions = Options.Create(new RetryPolicyOptions
         {
             MaxAttempts = 3, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
@@ -64,6 +64,11 @@ public sealed class ManagerReviewTests
 
         var piiRedactorMock = new Mock<IPiiRedactor>();
         piiRedactorMock.Setup(r => r.IsEnabled).Returns(false);
+
+        var retryAttemptRepoMock = new Mock<IAgentRetryAttemptRepository>();
+        retryAttemptRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<AgentRetryAttempt>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         return new OrchestratorAgent(
             _providerFactoryMock.Object,
@@ -73,10 +78,11 @@ public sealed class ManagerReviewTests
             new Mock<IMcpToolCallRepository>().Object,
             new Mock<ITaskCheckpointRepository>().Object,
             new Mock<IAgentMemoryRepository>().Object,
+            retryAttemptRepoMock.Object,
             piiRedactorMock.Object,
             _eventBusMock.Object,
             agentOptions,
-            pricingOptions,
+            modelPricingCacheMock.Object,
             retryOptions,
             new Mock<IToolRegistry>().Object,
             NullLoggerFactory.Instance);

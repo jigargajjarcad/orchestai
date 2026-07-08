@@ -67,6 +67,14 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
 
         builder.Property(t => t.ApprovalNote);
 
+        builder.Property(t => t.TraceId)
+            .IsRequired()
+            .HasMaxLength(32)
+            .HasDefaultValueSql("replace(gen_random_uuid()::text, '-', '')");
+
+        builder.Property(t => t.ResumedAt)
+            .HasColumnType("timestamptz");
+
         builder.Property(t => t.CreatedAt)
             .IsRequired()
             .HasColumnType("timestamptz")
@@ -94,5 +102,8 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
             .IsDescending(false, true);
 
         builder.HasIndex(t => t.Status);
+
+        builder.HasIndex(t => t.TraceId)
+            .IsUnique();
     }
 }

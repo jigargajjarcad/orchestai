@@ -41,10 +41,11 @@ public abstract class AgentBase : IAgent
     protected readonly IMcpToolCallRepository _mcpToolCallRepository;
     protected readonly ITaskCheckpointRepository _checkpointRepository;
     protected readonly IAgentMemoryRepository _memoryRepository;
+    protected readonly IAgentRetryAttemptRepository _agentRetryAttemptRepository;
     protected readonly IPiiRedactor _piiRedactor;
     protected readonly IOrchestrationEventBus _eventBus;
     protected readonly IOptions<AgentOptions> _agentOptions;
-    protected readonly IOptions<Dictionary<string, PricingEntry>> _pricingOptions;
+    protected readonly IModelPricingCache _modelPricingCache;
     protected readonly IOptions<RetryPolicyOptions> _retryOptions;
     protected readonly IToolRegistry _toolRegistry;
     protected readonly ILogger _logger;
@@ -57,10 +58,11 @@ public abstract class AgentBase : IAgent
         IMcpToolCallRepository mcpToolCallRepository,
         ITaskCheckpointRepository checkpointRepository,
         IAgentMemoryRepository memoryRepository,
+        IAgentRetryAttemptRepository agentRetryAttemptRepository,
         IPiiRedactor piiRedactor,
         IOrchestrationEventBus eventBus,
         IOptions<AgentOptions> agentOptions,
-        IOptions<Dictionary<string, PricingEntry>> pricingOptions,
+        IModelPricingCache modelPricingCache,
         IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
         ILoggerFactory loggerFactory)
@@ -72,10 +74,11 @@ public abstract class AgentBase : IAgent
         _mcpToolCallRepository = mcpToolCallRepository;
         _checkpointRepository = checkpointRepository;
         _memoryRepository = memoryRepository;
+        _agentRetryAttemptRepository = agentRetryAttemptRepository;
         _piiRedactor = piiRedactor;
         _eventBus = eventBus;
         _agentOptions = agentOptions;
-        _pricingOptions = pricingOptions;
+        _modelPricingCache = modelPricingCache;
         _retryOptions = retryOptions;
         _toolRegistry = toolRegistry;
         _logger = loggerFactory.CreateLogger(GetType());
@@ -85,11 +88,12 @@ public abstract class AgentBase : IAgent
         Guid orchestrationTaskId,
         Guid userId,
         string userPrompt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? parentSpanId = null)
     {
         var safePrompt = RedactIfEnabled(userPrompt);
 
-        var execution = await SetupExecutionAsync(orchestrationTaskId, safePrompt, cancellationToken)
+        var execution = await SetupExecutionAsync(orchestrationTaskId, safePrompt, cancellationToken, parentSpanId)
             .ConfigureAwait(false);
 
         try
@@ -102,7 +106,7 @@ public abstract class AgentBase : IAgent
                 .Select(BuildToolDefinition)
                 .ToList();
 
-            var systemPrompt = await BuildSystemPromptWithMemoryAsync(userId, cancellationToken)
+            var systemPrompt = await BuildSystemPromptWithMemoryAsync(execution, userId, cancellationToken)
                 .ConfigureAwait(false);
 
             var conversation = new AgentConversation(
@@ -120,12 +124,14 @@ public abstract class AgentBase : IAgent
 
             for (int iteration = 0; iteration < MaxAgenticIterations; iteration++)
             {
-                var turn = await SendWithRetryAsync(provider, conversation, orchestrationTaskId, cancellationToken)
+                var turn = await SendWithRetryAsync(provider, conversation, execution, cancellationToken)
                     .ConfigureAwait(false);
 
                 totalInputTokens += turn.InputTokens;
                 totalOutputTokens += turn.OutputTokens;
-                totalCostUsd += CalculateCost(modelRef.ModelName, turn.InputTokens, turn.OutputTokens);
+                totalCostUsd += await CalculateCostAsync(
+                    modelRef.ModelName, turn.InputTokens, turn.OutputTokens, cancellationToken)
+                    .ConfigureAwait(false);
 
                 if (turn.Text.Length > 0)
                 {
@@ -189,16 +195,17 @@ public abstract class AgentBase : IAgent
         catch (Exception ex)
         {
             _logger.LogError(ex, "Agent {AgentType} execution {ExecutionId} failed", AgentType, execution.Id);
-            return await FinalizeFailureAsync(execution, ex.Message, cancellationToken).ConfigureAwait(false);
+            return await FinalizeFailureAsync(execution, ex, cancellationToken).ConfigureAwait(false);
         }
     }
 
     protected async Task<AgentExecution> SetupExecutionAsync(
         Guid orchestrationTaskId,
         string userPrompt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? parentSpanId = null)
     {
-        var execution = AgentExecution.Create(orchestrationTaskId, AgentType, userPrompt);
+        var execution = AgentExecution.Create(orchestrationTaskId, AgentType, userPrompt, parentSpanId);
         await _agentExecutionRepository.AddAsync(execution, cancellationToken).ConfigureAwait(false);
 
         execution.Start();
@@ -231,12 +238,13 @@ public abstract class AgentBase : IAgent
             .ToList();
 
         var conversation = new AgentConversation(systemPrompt, safeMessages, Tools: [], modelRef.ModelName, maxTokens);
-        var turn = await SendWithRetryAsync(provider, conversation, execution.OrchestrationTaskId, cancellationToken)
+        var turn = await SendWithRetryAsync(provider, conversation, execution, cancellationToken)
             .ConfigureAwait(false);
 
         var inputTokens = turn.InputTokens;
         var outputTokens = turn.OutputTokens;
-        var costUsd = CalculateCost(modelRef.ModelName, inputTokens, outputTokens);
+        var costUsd = await CalculateCostAsync(modelRef.ModelName, inputTokens, outputTokens, cancellationToken)
+            .ConfigureAwait(false);
         var safeText = RedactIfEnabled(turn.Text);
 
         var agentMessage = AgentMessage.Create(execution.Id, MessageRole.Assistant, safeText, sequenceNumber);
@@ -286,24 +294,34 @@ public abstract class AgentBase : IAgent
             "Agent {AgentType} completed execution {ExecutionId}. Tokens: {In}+{Out}, Cost: ${Cost:F6}",
             AgentType, execution.Id, inputTokens, outputTokens, costUsd);
 
-        return new AgentExecutionResult(execution.Id, output, true, inputTokens, outputTokens, costUsd);
+        return new AgentExecutionResult(
+            execution.Id, output, true, inputTokens, outputTokens, costUsd, SpanId: execution.SpanId);
     }
 
     protected async Task<AgentExecutionResult> FinalizeFailureAsync(
         AgentExecution execution,
-        string error,
+        Exception exception,
         CancellationToken cancellationToken)
     {
-        execution.Fail(error);
+        var error = exception.Message;
+        var category = ErrorClassifier.Classify(exception);
+        execution.Fail(error, category);
         await _agentExecutionRepository.UpdateAsync(execution, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(execution.OrchestrationTaskId, new SseEvent(
             "agent_failed",
             execution.OrchestrationTaskId,
-            new { agentExecutionId = execution.Id, agentType = AgentType.ToString(), errorMessage = error },
+            new
+            {
+                agentExecutionId = execution.Id,
+                agentType = AgentType.ToString(),
+                errorMessage = error,
+                errorCategory = category.ToString()
+            },
             DateTimeOffset.UtcNow));
 
-        return new AgentExecutionResult(execution.Id, string.Empty, false, 0, 0, 0m, error);
+        return new AgentExecutionResult(
+            execution.Id, string.Empty, false, 0, 0, 0m, error, SpanId: execution.SpanId);
     }
 
     // ── Checkpointing ──────────────────────────────────────────────────────
@@ -341,7 +359,8 @@ public abstract class AgentBase : IAgent
 
     // ── Agent memory ───────────────────────────────────────────────────────
 
-    private async Task<string> BuildSystemPromptWithMemoryAsync(Guid userId, CancellationToken cancellationToken)
+    private async Task<string> BuildSystemPromptWithMemoryAsync(
+        AgentExecution execution, Guid userId, CancellationToken cancellationToken)
     {
         IReadOnlyList<AgentMemory> memories;
         try
@@ -355,6 +374,8 @@ public abstract class AgentBase : IAgent
             _logger.LogWarning(ex, "Failed to load memory for agent {AgentType}, continuing without it", AgentType);
             return SystemPrompt;
         }
+
+        execution.SetMemoriesInjected(memories.Count);
 
         if (memories.Count == 0)
             return SystemPrompt;
@@ -481,10 +502,11 @@ public abstract class AgentBase : IAgent
     private async Task<AgentTurn> SendWithRetryAsync(
         ILlmProvider provider,
         AgentConversation conversation,
-        Guid orchestrationTaskId,
+        AgentExecution execution,
         CancellationToken cancellationToken)
     {
         var policy = _retryOptions.Value;
+        var orchestrationTaskId = execution.OrchestrationTaskId;
 
         for (int attempt = 1; attempt <= policy.MaxAttempts; attempt++)
         {
@@ -506,6 +528,9 @@ public abstract class AgentBase : IAgent
                 _logger.LogWarning(
                     "LLM call attempt {Attempt} failed (transient) for agent {AgentType}: {Error}. Retrying in {Delay}ms",
                     attempt, AgentType, ex.Message, delay);
+
+                var retryAttempt = AgentRetryAttempt.Create(execution.Id, attempt, delay, ex.Message);
+                await _agentRetryAttemptRepository.AddAsync(retryAttempt, cancellationToken).ConfigureAwait(false);
 
                 _eventBus.Publish(orchestrationTaskId, new SseEvent(
                     "agent_retry",
@@ -563,6 +588,7 @@ public abstract class AgentBase : IAgent
 
         var sw = Stopwatch.StartNew();
         McpToolResult result;
+        ExecutionErrorCategory? exceptionCategory = null;
 
         try
         {
@@ -572,16 +598,19 @@ public abstract class AgentBase : IAgent
         catch (Exception ex)
         {
             result = new McpToolResult(false, string.Empty, ex.Message);
+            exceptionCategory = ErrorClassifier.Classify(ex);
         }
 
         sw.Stop();
         var durationMs = (int)sw.ElapsedMilliseconds;
 
-        var toolCall = McpToolCall.Create(execution.Id, request.Name, inputJson);
+        var toolCall = McpToolCall.Create(execution.Id, request.Name, inputJson, execution.SpanId);
         if (result.Success)
             toolCall.RecordSuccess(result.Output, durationMs);
         else
-            toolCall.RecordFailure(result.ErrorMessage ?? "Unknown error", durationMs);
+            toolCall.RecordFailure(
+                result.ErrorMessage ?? "Unknown error", durationMs,
+                exceptionCategory ?? ExecutionErrorCategory.McpToolError);
 
         await _mcpToolCallRepository.AddAsync(toolCall, cancellationToken).ConfigureAwait(false);
 
@@ -627,9 +656,11 @@ public abstract class AgentBase : IAgent
         return result;
     }
 
-    private decimal CalculateCost(string model, int inputTokens, int outputTokens)
+    private async Task<decimal> CalculateCostAsync(
+        string model, int inputTokens, int outputTokens, CancellationToken cancellationToken)
     {
-        if (!_pricingOptions.Value.TryGetValue(model, out var pricing))
+        var pricing = await _modelPricingCache.GetAsync(model, cancellationToken).ConfigureAwait(false);
+        if (pricing is null)
         {
             _logger.LogWarning("No pricing configured for model '{Model}', cost recorded as zero", model);
             return 0m;

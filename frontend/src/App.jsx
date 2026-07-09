@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import ObservabilityPage from './ObservabilityPage'
+import EvalsPage from './EvalsPage'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
@@ -621,6 +622,16 @@ export default function App() {
           >
             📊 Observability
           </button>
+          <button
+            onClick={() => setView('evals')}
+            style={{
+              background: view === 'evals' ? '#313244' : 'transparent',
+              color: view === 'evals' ? '#cdd6f4' : '#6c7086',
+              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            🎯 Evals
+          </button>
         </nav>
 
         {taskId && view === 'playground' && (
@@ -649,6 +660,8 @@ export default function App() {
         <MemoriesPage onDelete={() => fetchMemoryCounts().then(setMemoryCounts)} />
       ) : view === 'observability' ? (
         <ObservabilityPage />
+      ) : view === 'evals' ? (
+        <EvalsPage />
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 'calc(100vh - 57px)' }}>
 

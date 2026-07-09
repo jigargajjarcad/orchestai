@@ -78,6 +78,15 @@ public sealed class EvalsController : ControllerBase
             var response = await _mediator.Send(command, cancellationToken);
             return CreatedAtAction(nameof(GetSuitesAsync), null, response);
         }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
         catch (ValidationException ex)
         {
             _logger.LogWarning("Validation failed for AddEvalCase: {@Errors}", ex.Errors);
@@ -99,6 +108,15 @@ public sealed class EvalsController : ControllerBase
             var response = await _mediator.Send(
                 new RunEvalSuiteCommand(suiteId, request.SubjectVersion, request.BaselineRunId), cancellationToken);
             return AcceptedAtAction(nameof(GetRunResultsAsync), new { runId = response.EvalRunId }, response);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
         }
         catch (ValidationException ex)
         {
@@ -123,8 +141,20 @@ public sealed class EvalsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetRunResultsAsync(Guid runId, CancellationToken cancellationToken)
     {
-        var response = await _mediator.Send(new GetEvalRunResultsQuery(runId), cancellationToken);
-        return Ok(response);
+        try
+        {
+            var response = await _mediator.Send(new GetEvalRunResultsQuery(runId), cancellationToken);
+            return Ok(response);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
     }
 
     /// <summary>Diffs a run against its explicit baseline run — 400s if no baseline was set.</summary>
@@ -138,6 +168,15 @@ public sealed class EvalsController : ControllerBase
         {
             var response = await _mediator.Send(new GetRegressionReportQuery(runId), cancellationToken);
             return Ok(response);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
         }
         catch (ValidationException ex)
         {

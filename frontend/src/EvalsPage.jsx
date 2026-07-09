@@ -163,6 +163,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
 function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
   const [runs, setRuns] = useState([])
   const [results, setResults] = useState(null)
+  const [resultsError, setResultsError] = useState(null)
   const [regression, setRegression] = useState(null)
   const [regressionError, setRegressionError] = useState(null)
 
@@ -177,12 +178,17 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
   useEffect(() => {
     if (!selectedRunId) return
     setResults(null)
+    setResultsError(null)
     setRegression(null)
     setRegressionError(null)
 
     fetch(`${API_BASE}/eval-runs/${selectedRunId}/results`)
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
+        return res.json()
+      })
       .then(setResults)
+      .catch(err => setResultsError(err.message))
 
     fetch(`${API_BASE}/eval-runs/${selectedRunId}/regression-report`)
       .then(async res => {
@@ -208,6 +214,10 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           ))}
         </select>
       </div>
+
+      {resultsError && (
+        <div style={{ ...panelStyle, color: '#6c7086', fontSize: 12 }}>{resultsError}</div>
+      )}
 
       {results && (
         <div style={panelStyle}>

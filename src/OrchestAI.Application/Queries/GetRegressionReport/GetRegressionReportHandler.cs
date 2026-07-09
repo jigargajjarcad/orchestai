@@ -54,6 +54,7 @@ public sealed class GetRegressionReportHandler : IRequestHandler<GetRegressionRe
         var caseDiffs = currentResults.Select(current =>
         {
             var hasBaseline = baselineByCaseId.TryGetValue(current.EvalCaseId, out var baseline);
+            // Positive delta = current score is worse than baseline (baseline minus current).
             var scoreDelta = hasBaseline ? baseline!.Score - current.Score : (decimal?)null;
             var threshold = thresholdByCaseId.GetValueOrDefault(current.EvalCaseId, 0m);
             var regressed = hasBaseline && scoreDelta > threshold;
@@ -70,6 +71,8 @@ public sealed class GetRegressionReportHandler : IRequestHandler<GetRegressionRe
             "Regression report for run {RunId} vs baseline {BaselineRunId}: {RegressedCount} of {CaseCount} cases regressed",
             currentRun.Id, baselineRun.Id, caseDiffs.Count(d => d.Regressed), caseDiffs.Count);
 
+        // Negative delta = current pass rate is worse than baseline (current minus baseline) —
+        // opposite sign convention from case-level ScoreDelta above, intentional, see both usages before "fixing" this.
         return new GetRegressionReportResponse(
             currentRun.Id, baselineRun.Id, currentPassRate, baselinePassRate,
             currentPassRate - baselinePassRate, caseDiffs);

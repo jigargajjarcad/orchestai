@@ -88,6 +88,30 @@ public sealed class GetRegressionReportHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ScoreDropExactlyEqualsThreshold_DoesNotFlagRegression()
+    {
+        var suite = BuildSuiteWithCase(out var evalCase, regressionThreshold: 0.20m);
+        var baselineRun = EvalRun.Create(suite.Id, "v1", null);
+        var currentRun = EvalRun.Create(suite.Id, "v2", baselineRun.Id);
+
+        var baselineResult = EvalResult.Create(
+            baselineRun.Id, evalCase.Id, null, EvalScorerType.RuleBased, "rule-based-v1", 0.90m, true, "{}");
+        var currentResult = EvalResult.Create(
+            currentRun.Id, evalCase.Id, null, EvalScorerType.RuleBased, "rule-based-v1", 0.70m, false, "{}");
+
+        var (runRepo, suiteRepo, resultRepo) = BuildRepos(
+            currentRun, baselineRun, suite, [currentResult], [baselineResult]);
+        var handler = new GetRegressionReportHandler(
+            runRepo, suiteRepo, resultRepo, NullLogger<GetRegressionReportHandler>.Instance);
+
+        var response = await handler.Handle(new GetRegressionReportQuery(currentRun.Id), CancellationToken.None);
+
+        var diff = response.CaseDiffs.Single();
+        diff.ScoreDelta.Should().Be(0.20m);
+        diff.Regressed.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Handle_CaseHasNoBaselineResult_ReportedAsNewCaseNotRegressed()
     {
         var suite = BuildSuiteWithCase(out var evalCase, regressionThreshold: 0.05m);

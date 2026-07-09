@@ -60,6 +60,24 @@ Rollups are eventually consistent (up to 5 minutes stale) by design. Raw tables 
 consistent-with-a-lag — they're written synchronously in the same transaction as the agent
 execution they describe, so a run's own timeline is queryable the moment it finishes.
 
+## 2a. Eval cost segregation
+
+Week 8 added a `CostSource` discriminator (`Production`/`Eval`) to `CostLedger`, plus a nullable
+`EvalRunId` on both `CostLedger` and `AgentExecution`. Every eval-case invocation the
+`EvalRunBackgroundWorker` runs — and every `LlmJudgeScorer` judge call it triggers — writes its
+`CostLedger` row tagged `Source=Eval`. Production traffic (`StartOrchestrationHandler`,
+`ResumeOrchestrationTaskHandler`) never sets `EvalRunId`, so those rows default to
+`Source=Production`.
+
+**Where it's filtered:** `ICostLedgerRepository.GetDailyAggregatesAsync` — the single method
+behind both `CostRollupBackgroundService` (the 5-minute rollup job) and `GetCostDashboardHandler`'s
+live "today" branch — adds `Where(c => c.Source == CostSource.Production)`. Nothing downstream of
+that method ever sees eval cost; there's no second filter to remember elsewhere. See
+`CostLedgerRepositoryEvalFilterTests` for the test proving a mixed batch of production and eval
+rows aggregates to production-only totals.
+
+Full reasoning: ADR-012 in `DECISIONS.md`.
+
 ## 3. Query
 
 Five MediatR query handlers, each reading whichever layer answers the question fastest:

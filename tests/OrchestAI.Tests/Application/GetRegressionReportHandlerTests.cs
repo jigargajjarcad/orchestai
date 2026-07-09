@@ -161,4 +161,26 @@ public sealed class GetRegressionReportHandlerTests
         response.CurrentPassRate.Should().Be(0.5m);
         response.PassRateDelta.Should().Be(-0.5m);
     }
+
+    [Fact]
+    public async Task Handle_BaselineHasNoResults_ReturnsZeroPassRateWithoutDividingByZero()
+    {
+        var suite = BuildSuiteWithCase(out var evalCase, regressionThreshold: 0.05m);
+        var baselineRun = EvalRun.Create(suite.Id, "v1", null);
+        var currentRun = EvalRun.Create(suite.Id, "v2", baselineRun.Id);
+
+        var currentResult = EvalResult.Create(
+            currentRun.Id, evalCase.Id, null, EvalScorerType.RuleBased, "rule-based-v1", 0.85m, true, "{}");
+
+        var (runRepo, suiteRepo, resultRepo) = BuildRepos(
+            currentRun, baselineRun, suite, [currentResult], []);
+        var handler = new GetRegressionReportHandler(
+            runRepo, suiteRepo, resultRepo, NullLogger<GetRegressionReportHandler>.Instance);
+
+        var response = await handler.Handle(new GetRegressionReportQuery(currentRun.Id), CancellationToken.None);
+
+        response.BaselinePassRate.Should().Be(0m);
+        response.CurrentPassRate.Should().Be(1.0m);
+        response.PassRateDelta.Should().Be(1.0m);
+    }
 }

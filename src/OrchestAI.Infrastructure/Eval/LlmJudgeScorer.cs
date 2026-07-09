@@ -69,9 +69,11 @@ public sealed class LlmJudgeScorer : IEvalScorer
             Temperature: 0.0);
 
         var turn = await provider.SendAsync(conversation, cancellationToken).ConfigureAwait(false);
-        var (score, reasoning) = ParseJudgeResponse(turn.Text);
-        var passed = score >= passThreshold;
 
+        // Cost is incurred the moment the provider call returns, regardless of whether the
+        // judge's response can be parsed afterward — so the ledger write happens BEFORE
+        // ParseJudgeResponse. Otherwise a malformed judge response would throw and the API
+        // call would be billed by the provider but never recorded in our ledger.
         var costUsd = await CalculateCostAsync(modelRef.ModelName, turn.InputTokens, turn.OutputTokens, cancellationToken)
             .ConfigureAwait(false);
 
@@ -84,10 +86,17 @@ public sealed class LlmJudgeScorer : IEvalScorer
             evalRunId: context.EvalRunId);
         await _costLedgerRepository.AddAsync(ledger, cancellationToken).ConfigureAwait(false);
 
+        var (score, reasoning) = ParseJudgeResponse(turn.Text);
+        var passed = score >= passThreshold;
+
         var outputJson = JsonSerializer.Serialize(new { score, reasoning, passThreshold });
         return new EvalScoreResult(score, passed, Version, outputJson);
     }
 
+    // Best-effort — the judge's own response is external LLM output and may be malformed or
+    // missing fields. Never throw here: a thrown exception would propagate out of ScoreAsync
+    // and silently drop this case's result from the eval run. Fall back to a definite failing
+    // score instead, mirroring AgentBase.ParseMemoryExtractions's try/catch(JsonException) pattern.
     private static (decimal Score, string Reasoning) ParseJudgeResponse(string judgeText)
     {
         var cleaned = judgeText.Trim();
@@ -98,10 +107,19 @@ public sealed class LlmJudgeScorer : IEvalScorer
             if (end > start) cleaned = cleaned[start..end].Trim();
         }
 
-        using var doc = JsonDocument.Parse(cleaned);
-        var score = doc.RootElement.GetProperty("score").GetDecimal();
-        var reasoning = doc.RootElement.TryGetProperty("reasoning", out var r) ? r.GetString() ?? "" : "";
-        return (score, reasoning);
+        try
+        {
+            using var doc = JsonDocument.Parse(cleaned);
+            if (!doc.RootElement.TryGetProperty("score", out var scoreEl) || !scoreEl.TryGetDecimal(out var score))
+                return (0m, "failed to parse judge response");
+
+            var reasoning = doc.RootElement.TryGetProperty("reasoning", out var r) ? r.GetString() ?? "" : "";
+            return (score, reasoning);
+        }
+        catch (JsonException)
+        {
+            return (0m, "failed to parse judge response");
+        }
     }
 
     private async Task<decimal> CalculateCostAsync(

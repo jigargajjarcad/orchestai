@@ -118,4 +118,30 @@ public sealed class LlmJudgeScorerTests
         captured.OrchestrationTaskId.Should().Be(orchestrationTaskId);
         captured.AgentExecutionId.Should().BeNull();
     }
+
+    [Fact]
+    public async Task ScoreAsync_JudgeReturnsMalformedResponse_FailsGracefullyButStillRecordsCost()
+    {
+        var (scorer, _, costRepoMock) = Build("This is not JSON at all.");
+        var orchestrationTaskId = Guid.NewGuid();
+        var evalRunId = Guid.NewGuid();
+        var context = new EvalScoringContext(orchestrationTaskId, evalRunId);
+
+        CostLedger? captured = null;
+        costRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<CostLedger>(), It.IsAny<CancellationToken>()))
+            .Callback<CostLedger, CancellationToken>((l, _) => captured = l)
+            .Returns(Task.CompletedTask);
+
+        var result = await scorer.ScoreAsync(BuildCase(), "output", context, CancellationToken.None);
+
+        result.Passed.Should().BeFalse();
+
+        costRepoMock.Verify(
+            r => r.AddAsync(It.IsAny<CostLedger>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        captured.Should().NotBeNull();
+        captured!.Source.Should().Be(CostSource.Eval);
+        captured.EvalRunId.Should().Be(evalRunId);
+    }
 }

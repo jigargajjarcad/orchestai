@@ -256,3 +256,100 @@ The timeline query's N+1 status was checked empirically, not just by code inspec
 statement logging enabled, single query confirmed against the 27-span task — the LEFT JOIN
 chain from `GetByIdWithExecutionsMessagesAndToolCallsAsync`'s `Include`/`ThenInclude`, not
 one query per span.
+
+## ADR-012: Evaluation & Scoring Data Model
+**Status:** Accepted
+
+### Investigation — what ADR-011 already decided vs. what's net-new
+ADR-011 Decision 3 already anticipated this week: *"`EvaluationResults` (Week 8) will FK to
+`AgentExecution.Id` (already a stable PK)."* Confirmed by reading `OrchestrationTask`,
+`AgentExecution`, and their configurations: `TraceId` is an OTel-shaped correlation *string* on
+`OrchestrationTask`, not a primary key — `OrchestrationTask.Id`/`AgentExecution.Id` are the
+stable PKs. `EvalResult.AgentExecutionId` FKs to `AgentExecution.Id` (nullable, no enforced FK
+relationship — see Decision 1), not a literal `TraceId` column, and this same FK shape is what
+Week 9 post-hoc scoring will reuse against production `AgentExecution` rows.
+
+Also confirmed during investigation: nothing in the LLM call pipeline (`AgentConversation`,
+`AnthropicProvider`, the OpenAI-compatible mapper) supported pinning temperature before this
+week — needed because the LLM judge scorer's reproducibility claim below would otherwise be
+fiction. Added end-to-end (`AgentConversation.Temperature`, forwarded to both provider families).
+
+### Decision 1 — Live-execution only this week; post-hoc scoring deferred to Week 9
+`EvalResult.AgentExecutionId` is nullable and has no enforced EF `HasOne`/FK relationship (unlike
+every other FK in this model). This is deliberate: enforcing referential integrity here would
+assume every `EvalResult` traces back to an `AgentExecution` created *for* an eval run, which is
+true this week (the background worker always creates a fresh `OrchestrationTask`/`AgentExecution`
+per case) but stops being true the moment Week 9 adds post-hoc scoring of *production* traces —
+those `AgentExecution` rows have no `EvalRunId` in their own ancestry at all, only an `EvalResult`
+pointing at them from the outside. Building the loose reference now means Week 9 needs zero
+schema migration to support it, exactly the "must work for both live-execution and future
+post-hoc scoring" requirement from the Week 8 spec.
+
+**Why not build post-hoc scoring now:** scoring an arbitrary historical `AgentExecution` needs a
+case-selection mechanism (which past executions match which suite?) that doesn't exist yet and
+would be guessed at, not designed, under this week's time box. Live-execution-only lets the
+scoring/regression machinery ship and be exercised for real before that harder problem is solved.
+
+### Decision 2 — Cost segregation: a `Source` discriminator, not a separate cost table
+`CostLedger` gained `Source` (`Production`/`Eval`) and `EvalRunId` (nullable) rather than a
+parallel `EvalCostLedger` table. Every dashboard/rollup query that reads `CostLedger` already
+funnels through `ICostLedgerRepository.GetDailyAggregatesAsync` (confirmed by reading
+`GetCostDashboardHandler` and `CostRollupBackgroundService` — both call only this one method), so
+adding one `Where(c => c.Source == CostSource.Production)` clause there is the single choke point
+that keeps eval cost out of both the live "today" dashboard view and the background rollup job,
+with no risk of a second code path forgetting to filter.
+
+`EvalRunId` on `CostLedger` (and separately on `AgentExecution`) is threaded through
+`IAgent.ExecuteAsync`'s new optional `evalRunId` parameter, set only by the eval background
+worker. `CostLedger.OrchestrationTaskId` remains `NOT NULL`, so the LLM judge scorer's own cost
+row reuses the `OrchestrationTaskId` of the case invocation it's scoring (carried via
+`EvalScoringContext`) rather than requiring a schema change to make it nullable.
+
+### Decision 3 — LLM judge non-determinism is an accepted limitation, not a bug
+`LlmJudgeScorer` pins every judge call to `Temperature = 0` (`AgentConversation.Temperature`,
+forwarded to both `Anthropic.SDK.Messaging.MessageParameters.Temperature` and
+`OpenAI.Chat.ChatCompletionOptions.Temperature`). This makes judge scores **directionally
+reliable across runs — not bit-exact reproducible**. Temperature 0 sharply reduces sampling
+variance but neither provider guarantees byte-identical output at temperature 0 (model updates,
+provider-side batching/routing, and floating-point non-associativity across hardware all remain
+possible sources of drift). Regression detection therefore compares scores against
+`EvalCase.RegressionThreshold`, a tolerance band, rather than asserting exact equality — the
+threshold isn't just a UX nicety, it's structurally required by this limitation.
+
+### Decision 4 — Baseline promotion is manual and explicit this week
+`EvalRun.BaselineRunId` is set only when the caller of `RunEvalSuiteCommand` passes one — there is
+no "most recently completed run" auto-selection. `GetRegressionReportQuery` throws a
+`ValidationException` (not an empty/zeroed report) when `BaselineRunId` is null, per the spec's
+explicit requirement that a missing baseline fail loudly. Auto-selecting a baseline is deferred
+as a future policy decision once there's real usage data on how teams actually want to pick one
+(most recent completed run? most recent run on a specific branch? a pinned "golden" run?) —
+guessing at that policy now, with zero usage data, is exactly the kind of decision the Week 8
+spec says not to make prematurely.
+
+### Decision 5 — Running a suite costs real money and can hit rate limits (acknowledged, not solved)
+Every eval-suite run is real agent invocations against real LLM providers, at real provider cost
+(tracked and segregated per Decision 2, but not free) — plus the LLM judge's own call, for
+`LlmJudge`-scored cases. Running a suite frequently (e.g., on every commit) will incur real cost
+and, at high enough frequency or suite size, real rate-limit pressure against the same provider
+credentials production traffic uses. Nothing in this week's design throttles, batches, or queues
+eval runs against a shared rate-limit budget — `EvalRunBackgroundWorker` processes one run's cases
+without any concurrency cap or backoff coordination with production traffic. This is a known,
+accepted gap for Week 8, flagged here so it isn't a surprise later, not a problem solved by
+anything in this plan.
+
+### New tables
+- `EvalSuites`, `EvalCases`, `EvalRuns`, `EvalResults` — see Tasks 4–6 for full shape.
+
+### Schema extensions (existing tables)
+- `CostLedger`: `+Source` (`CostSource`, default `Production`), `+EvalRunId` (nullable).
+- `AgentExecution`: `+EvalRunId` (nullable) — the trace/execution record itself, not just the
+  cost row, so "which traces came from eval run X" is answerable independent of cost data.
+
+### Trigger for revisiting
+- The first Week 9 post-hoc-scoring implementation — validate that `EvalResult.AgentExecutionId`
+  being a loose, unenforced reference (Decision 1) is still the right call once a real
+  case-selection mechanism for historical executions exists.
+- The first time eval run frequency causes a real rate-limit incident against production traffic
+  (Decision 5) — that's the trigger to design throttling, not before.
+- The first time someone asks for automatic baseline selection with a specific policy in mind
+  (Decision 4).

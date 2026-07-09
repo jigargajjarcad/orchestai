@@ -43,7 +43,7 @@ public sealed class EvalsController : ControllerBase
         try
         {
             var response = await _mediator.Send(command, cancellationToken);
-            return CreatedAtAction(nameof(GetSuitesAsync), null, response);
+            return CreatedAtAction("GetSuites", null, response);
         }
         catch (ValidationException ex)
         {
@@ -76,7 +76,7 @@ public sealed class EvalsController : ControllerBase
                 suiteId, request.InputPayload.GetRawText(), request.ExpectedCriteria.GetRawText(),
                 request.ScorerType, request.RegressionThreshold, request.Tags);
             var response = await _mediator.Send(command, cancellationToken);
-            return CreatedAtAction(nameof(GetSuitesAsync), null, response);
+            return CreatedAtAction("GetSuites", null, response);
         }
         catch (NotFoundException ex)
         {
@@ -107,7 +107,7 @@ public sealed class EvalsController : ControllerBase
         {
             var response = await _mediator.Send(
                 new RunEvalSuiteCommand(suiteId, request.SubjectVersion, request.BaselineRunId), cancellationToken);
-            return AcceptedAtAction(nameof(GetRunResultsAsync), new { runId = response.EvalRunId }, response);
+            return AcceptedAtAction("GetRunResults", new { runId = response.EvalRunId }, response);
         }
         catch (NotFoundException ex)
         {

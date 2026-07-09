@@ -11,6 +11,7 @@ using OrchestAI.Infrastructure.Caching;
 using OrchestAI.Infrastructure.Configuration;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Data.Interceptors;
+using OrchestAI.Infrastructure.Eval;
 using OrchestAI.Infrastructure.Events;
 using OrchestAI.Infrastructure.Observability;
 using OrchestAI.Infrastructure.Providers;
@@ -53,15 +54,23 @@ public static class DependencyInjection
         services.AddScoped<ICostRollupRepository, CostRollupRepository>();
         services.AddScoped<IModelPricingRepository, ModelPricingRepository>();
         services.AddSingleton<IModelPricingCache, ModelPricingCache>();
+        services.AddScoped<IEvalSuiteRepository, EvalSuiteRepository>();
+        services.AddScoped<IEvalRunRepository, EvalRunRepository>();
+        services.AddScoped<IEvalResultRepository, EvalResultRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
         services.AddHostedService<CostRollupBackgroundService>();
+        // Singleton — the queue is written to by scoped RunEvalSuiteHandler instances and read
+        // by the singleton background worker, so both sides need the same instance.
+        services.AddSingleton<IEvalRunQueue, InMemoryEvalRunQueue>();
+        services.AddHostedService<EvalRunBackgroundWorker>();
 
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
         services.Configure<ToolOptions>(configuration.GetSection(ToolOptions.SectionName));
         services.Configure<RetryPolicyOptions>(configuration.GetSection(RetryPolicyOptions.SectionName));
         services.Configure<PiiRedactionOptions>(configuration.GetSection(PiiRedactionOptions.SectionName));
+        services.Configure<EvalOptions>(configuration.GetSection(EvalOptions.SectionName));
 
         services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
 
@@ -122,6 +131,17 @@ public static class DependencyInjection
         services.AddTransient<BrowserAgent>();
 
         services.AddScoped<IAgentFactory, AgentFactory>();
+
+        // Scoped, not Singleton (deviates from the plan text): LlmJudgeScorer takes
+        // ICostLedgerRepository (Scoped, backed by AppDbContext) directly in its constructor.
+        // A Singleton IEvalScorer would capture that scoped dependency, which ASP.NET Core's
+        // startup validation correctly rejects. Nothing needs these as Singleton — the only
+        // consumer, EvalRunBackgroundWorker, already resolves IEvalScorerFactory from an
+        // IServiceScopeFactory-created scope per run (see EvalRunBackgroundWorker.ProcessRunAsync),
+        // so Scoped here is safe and correct.
+        services.AddScoped<IEvalScorer, RuleBasedScorer>();
+        services.AddScoped<IEvalScorer, LlmJudgeScorer>();
+        services.AddScoped<IEvalScorerFactory, EvalScorerFactory>();
 
         return services;
     }

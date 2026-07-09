@@ -117,6 +117,40 @@ public sealed class EvalRunBackgroundWorkerTests
         captured.AgentExecutionId.Should().Be(failedExecutionId);
     }
 
+    [Fact]
+    public async Task ProcessRunAsync_SuiteFetchThrows_MarksRunFailedWithoutThrowing()
+    {
+        var suiteId = Guid.NewGuid();
+        var run = EvalRun.Create(suiteId, "commit-abc123", baselineRunId: null);
+
+        var suiteRepoMock = new Mock<IEvalSuiteRepository>();
+        suiteRepoMock
+            .Setup(r => r.GetByIdWithCasesAsync(suiteId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("transient DB error"));
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(run.Id, It.IsAny<CancellationToken>())).ReturnsAsync(run);
+        EvalRun? updatedRun = null;
+        runRepoMock
+            .Setup(r => r.UpdateAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()))
+            .Callback<EvalRun, CancellationToken>((r, _) => updatedRun = r)
+            .Returns(Task.CompletedTask);
+
+        var taskRepoMock = new Mock<IOrchestrationTaskRepository>();
+        var agentFactoryMock = new Mock<IAgentFactory>();
+        var resultRepoMock = new Mock<IEvalResultRepository>();
+
+        var worker = BuildWorker(
+            suiteRepoMock.Object, runRepoMock.Object, resultRepoMock.Object, taskRepoMock.Object, agentFactoryMock.Object);
+
+        var act = async () => await worker.ProcessRunAsync(run.Id, CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+        run.Status.Should().Be(EvalRunStatus.Failed);
+        updatedRun.Should().BeSameAs(run);
+        runRepoMock.Verify(r => r.UpdateAsync(It.Is<EvalRun>(r => r.Status == EvalRunStatus.Failed), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static EvalRunBackgroundWorker BuildWorker(
         IEvalSuiteRepository suiteRepo, IEvalRunRepository runRepo, IEvalResultRepository resultRepo,
         IOrchestrationTaskRepository taskRepo, IAgentFactory agentFactory)

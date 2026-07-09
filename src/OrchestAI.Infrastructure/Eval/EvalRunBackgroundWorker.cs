@@ -70,36 +70,45 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
             return;
         }
 
-        var suite = await suiteRepository.GetByIdWithCasesAsync(run.SuiteId, cancellationToken).ConfigureAwait(false);
-        if (suite is null || suite.Cases.Count == 0)
+        try
         {
-            run.MarkFailed(suite is null ? "suite no longer exists" : "suite has no cases");
+            var suite = await suiteRepository.GetByIdWithCasesAsync(run.SuiteId, cancellationToken).ConfigureAwait(false);
+            if (suite is null || suite.Cases.Count == 0)
+            {
+                run.MarkFailed(suite is null ? "suite no longer exists" : "suite has no cases");
+                await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            run.MarkRunning();
             await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
-            return;
+
+            foreach (var evalCase in suite.Cases)
+            {
+                try
+                {
+                    await ProcessCaseAsync(
+                        run, suite, evalCase, taskRepository, agentFactory, scorerFactory, resultRepository,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex, "Eval case {CaseId} in run {RunId} failed unexpectedly, continuing", evalCase.Id, run.Id);
+                }
+            }
+
+            run.MarkCompleted();
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Eval run {RunId} completed ({CaseCount} cases)", run.Id, suite.Cases.Count);
         }
-
-        run.MarkRunning();
-        await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
-
-        foreach (var evalCase in suite.Cases)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            try
-            {
-                await ProcessCaseAsync(
-                    run, suite, evalCase, taskRepository, agentFactory, scorerFactory, resultRepository,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex, "Eval case {CaseId} in run {RunId} failed unexpectedly, continuing", evalCase.Id, run.Id);
-            }
+            run.MarkFailed(ex.Message);
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+            _logger.LogError(ex, "Eval run {RunId} failed unexpectedly outside per-case handling", run.Id);
         }
-
-        run.MarkCompleted();
-        await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
-
-        _logger.LogInformation("Eval run {RunId} completed ({CaseCount} cases)", run.Id, suite.Cases.Count);
     }
 
     private async Task ProcessCaseAsync(

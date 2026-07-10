@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using OrchestAI.Application.Exceptions;
 using OrchestAI.Domain.Entities;
+using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Application.Queries.GetRegressionReport;
@@ -35,6 +36,12 @@ public sealed class GetRegressionReportHandler : IRequestHandler<GetRegressionRe
         var currentRun = await _runRepository.GetByIdAsync(request.EvalRunId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException(nameof(EvalRun), request.EvalRunId);
 
+        if (currentRun.Source != EvalRunSource.LiveSuite || currentRun.SuiteId is not { } suiteId)
+            throw new ValidationException(
+                nameof(currentRun.Source),
+                $"Eval run {currentRun.Id} is a post-hoc run and has no suite — regression reports " +
+                "only apply to live-suite runs.");
+
         if (currentRun.BaselineRunId is not { } baselineRunId)
             throw new ValidationException(
                 nameof(currentRun.BaselineRunId),
@@ -43,24 +50,30 @@ public sealed class GetRegressionReportHandler : IRequestHandler<GetRegressionRe
         var baselineRun = await _runRepository.GetByIdAsync(baselineRunId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException(nameof(EvalRun), baselineRunId);
 
-        var suite = await _suiteRepository.GetByIdWithCasesAsync(currentRun.SuiteId, cancellationToken).ConfigureAwait(false)
-            ?? throw new NotFoundException(nameof(EvalSuite), currentRun.SuiteId);
+        var suite = await _suiteRepository.GetByIdWithCasesAsync(suiteId, cancellationToken).ConfigureAwait(false)
+            ?? throw new NotFoundException(nameof(EvalSuite), suiteId);
         var thresholdByCaseId = suite.Cases.ToDictionary(c => c.Id, c => c.RegressionThreshold);
 
         var currentResults = await _resultRepository.GetByRunIdAsync(currentRun.Id, cancellationToken).ConfigureAwait(false);
         var baselineResults = await _resultRepository.GetByRunIdAsync(baselineRun.Id, cancellationToken).ConfigureAwait(false);
-        var baselineByCaseId = baselineResults.ToDictionary(r => r.EvalCaseId);
+        // Same live-suite invariant as currentResults below — baseline runs reachable from this
+        // handler are always suite-based, so EvalCaseId is never null here.
+        var baselineByCaseId = baselineResults.ToDictionary(r => r.EvalCaseId!.Value);
 
         var caseDiffs = currentResults.Select(current =>
         {
-            var hasBaseline = baselineByCaseId.TryGetValue(current.EvalCaseId, out var baseline);
+            // The Source/SuiteId guard above restricts this handler to live-suite runs, whose
+            // results are always scored against a predefined EvalCase — EvalCaseId is only ever
+            // null for post-hoc (EvalCaseId-less) results, which can't reach this code path.
+            var currentCaseId = current.EvalCaseId!.Value;
+            var hasBaseline = baselineByCaseId.TryGetValue(currentCaseId, out var baseline);
             // Positive delta = current score is worse than baseline (baseline minus current).
             var scoreDelta = hasBaseline ? baseline!.Score - current.Score : (decimal?)null;
-            var threshold = thresholdByCaseId.GetValueOrDefault(current.EvalCaseId, 0m);
+            var threshold = thresholdByCaseId.GetValueOrDefault(currentCaseId, 0m);
             var regressed = hasBaseline && scoreDelta > threshold;
 
             return new CaseRegressionDto(
-                current.EvalCaseId, current.Score, hasBaseline ? baseline!.Score : null,
+                currentCaseId, current.Score, hasBaseline ? baseline!.Score : null,
                 scoreDelta, regressed, IsNewCase: !hasBaseline);
         }).ToList();
 

@@ -72,7 +72,10 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
 
         try
         {
-            var suite = await suiteRepository.GetByIdWithCasesAsync(run.SuiteId, cancellationToken).ConfigureAwait(false);
+            // SuiteId is nullable to support post-hoc (suite-less) runs, but this worker only
+            // processes live-suite runs today — Task 5 of the Week 9 post-hoc plan adds the
+            // branch on run.Source that handles post-hoc runs without a suite.
+            var suite = await suiteRepository.GetByIdWithCasesAsync(run.SuiteId!.Value, cancellationToken).ConfigureAwait(false);
             if (suite is null || suite.Cases.Count == 0)
             {
                 run.MarkFailed(suite is null ? "suite no longer exists" : "suite has no cases");

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OrchestAI.Domain.Enums;
 
 namespace OrchestAI.Domain.Entities;
@@ -34,6 +35,29 @@ public sealed class EvalCase
             ScorerType = scorerType,
             RegressionThreshold = regressionThreshold,
             Tags = tags,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    // Builds a transient, never-persisted EvalCase so post-hoc scoring can reuse IEvalScorer
+    // unchanged when there's no predefined EvalCase to point to — see ADR-013 confirmation #2.
+    // Always LlmJudge: RuleBasedScorer requires machine-checkable ExpectedCriteria tied to a
+    // specific predefined case, which doesn't exist for arbitrary historical traces.
+    public static EvalCase CreateEphemeral(string rubric, decimal? passThreshold)
+    {
+        var criteria = passThreshold.HasValue
+            ? JsonSerializer.Serialize(new { rubric, passThreshold = passThreshold.Value })
+            : JsonSerializer.Serialize(new { rubric });
+
+        return new EvalCase
+        {
+            Id = Guid.Empty,
+            SuiteId = Guid.Empty,
+            InputPayload = string.Empty,
+            ExpectedCriteria = criteria,
+            ScorerType = EvalScorerType.LlmJudge,
+            RegressionThreshold = 0m,
+            Tags = "posthoc-ephemeral",
             CreatedAt = DateTimeOffset.UtcNow
         };
     }

@@ -21,7 +21,6 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .HasColumnType("uuid");
 
         builder.Property(r => r.EvalCaseId)
-            .IsRequired()
             .HasColumnType("uuid");
 
         builder.Property(r => r.AgentExecutionId)
@@ -47,6 +46,9 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .IsRequired()
             .HasColumnType("jsonb");
 
+        builder.Property(r => r.Rubric)
+            .HasColumnType("text");
+
         builder.Property(r => r.ScoredAt)
             .IsRequired()
             .HasColumnType("timestamptz")
@@ -66,5 +68,12 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .IsUnique();
 
         builder.HasIndex(r => r.AgentExecutionId);
+
+        // Idempotency backstop for post-hoc scoring (Week 9) — a given (trace, scorer, version)
+        // is scored at most once across all post-hoc runs. Only applies to post-hoc-origin rows
+        // (EvalCaseId IS NULL); live case-based results never collide here. See ADR-013.
+        builder.HasIndex(r => new { r.AgentExecutionId, r.ScorerType, r.ScorerVersion })
+            .IsUnique()
+            .HasFilter("\"EvalCaseId\" IS NULL AND \"AgentExecutionId\" IS NOT NULL");
     }
 }

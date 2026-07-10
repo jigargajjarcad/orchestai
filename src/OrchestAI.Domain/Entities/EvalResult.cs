@@ -10,27 +10,29 @@ public sealed class EvalResult
 
     public Guid Id { get; private set; }
     public Guid EvalRunId { get; private set; }
-    public Guid EvalCaseId { get; private set; }
+    public Guid? EvalCaseId { get; private set; }
     public Guid? AgentExecutionId { get; private set; }
     public EvalScorerType ScorerType { get; private set; }
     public string ScorerVersion { get; private set; } = string.Empty;
     public decimal Score { get; private set; }
     public bool Passed { get; private set; }
     public string ScorerOutput { get; private set; } = string.Empty;
+    public string? Rubric { get; private set; }
     public DateTimeOffset ScoredAt { get; private set; }
 
     public EvalRun Run { get; private set; } = null!;
-    public EvalCase Case { get; private set; } = null!;
+    public EvalCase? Case { get; private set; }
 
     public static EvalResult Create(
         Guid evalRunId,
-        Guid evalCaseId,
+        Guid? evalCaseId,
         Guid? agentExecutionId,
         EvalScorerType scorerType,
         string scorerVersion,
         decimal score,
         bool passed,
-        string scorerOutput)
+        string scorerOutput,
+        string? rubric = null)
     {
         return new EvalResult
         {
@@ -43,6 +45,7 @@ public sealed class EvalResult
             Score = score,
             Passed = passed,
             ScorerOutput = scorerOutput,
+            Rubric = rubric,
             ScoredAt = DateTimeOffset.UtcNow
         };
     }

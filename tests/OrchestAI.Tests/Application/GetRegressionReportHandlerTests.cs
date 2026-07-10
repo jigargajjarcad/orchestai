@@ -207,4 +207,21 @@ public sealed class GetRegressionReportHandlerTests
         response.CurrentPassRate.Should().Be(1.0m);
         response.PassRateDelta.Should().Be(1.0m);
     }
+
+    [Fact]
+    public async Task Handle_PostHocRun_ThrowsValidation_RegressionOnlyAppliesToLiveSuiteRuns()
+    {
+        var postHocRun = EvalRun.CreatePostHoc("posthoc-1", "rubric", "{}");
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(postHocRun.Id, It.IsAny<CancellationToken>())).ReturnsAsync(postHocRun);
+
+        var handler = new GetRegressionReportHandler(
+            runRepoMock.Object, Mock.Of<IEvalSuiteRepository>(), Mock.Of<IEvalResultRepository>(),
+            NullLogger<GetRegressionReportHandler>.Instance);
+
+        var act = async () => await handler.Handle(new GetRegressionReportQuery(postHocRun.Id), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
 }

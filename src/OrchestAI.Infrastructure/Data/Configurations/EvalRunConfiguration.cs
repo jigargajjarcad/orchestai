@@ -18,8 +18,13 @@ public sealed class EvalRunConfiguration : IEntityTypeConfiguration<EvalRun>
             .HasDefaultValueSql("gen_random_uuid()");
 
         builder.Property(r => r.SuiteId)
-            .IsRequired()
             .HasColumnType("uuid");
+
+        builder.Property(r => r.Source)
+            .IsRequired()
+            .HasMaxLength(50)
+            .HasDefaultValue(EvalRunSource.LiveSuite)
+            .HasConversion<string>();
 
         builder.Property(r => r.TriggeredAt)
             .IsRequired()
@@ -38,6 +43,20 @@ public sealed class EvalRunConfiguration : IEntityTypeConfiguration<EvalRun>
         builder.Property(r => r.SubjectVersion)
             .IsRequired()
             .HasMaxLength(200);
+
+        builder.Property(r => r.Rubric)
+            .HasColumnType("text");
+
+        builder.Property(r => r.SelectionCriteriaJson)
+            .HasColumnType("jsonb");
+
+        builder.Property(r => r.SkippedAlreadyScoredCount)
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(r => r.ForceRescore)
+            .IsRequired()
+            .HasDefaultValue(false);
 
         builder.Property(r => r.ErrorMessage);
 
@@ -59,5 +78,6 @@ public sealed class EvalRunConfiguration : IEntityTypeConfiguration<EvalRun>
 
         builder.HasIndex(r => r.SuiteId);
         builder.HasIndex(r => r.Status);
+        builder.HasIndex(r => r.Source);
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OrchestAI.Domain.Entities;
+using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Data;
@@ -70,11 +71,22 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
             return;
         }
 
+        if (run.Source == EvalRunSource.PostHoc)
+        {
+            // Resolved lazily (only on this branch) rather than alongside the other
+            // GetRequiredService calls above — the live-suite path's test doubles (see
+            // EvalRunBackgroundWorkerTests.BuildWorker) never register IAgentExecutionRepository,
+            // and resolving it unconditionally here would throw for every live-suite run/test.
+            var executionRepository = scope.ServiceProvider.GetRequiredService<IAgentExecutionRepository>();
+            await ProcessPostHocRunAsync(run, runRepository, resultRepository, executionRepository, scorerFactory, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         try
         {
-            // SuiteId is nullable to support post-hoc (suite-less) runs, but this worker only
-            // processes live-suite runs today — Task 5 of the Week 9 post-hoc plan adds the
-            // branch on run.Source that handles post-hoc runs without a suite.
+            // SuiteId is guaranteed non-null here — post-hoc (suite-less) runs are handled by
+            // the branch above before this point is ever reached.
             var suite = await suiteRepository.GetByIdWithCasesAsync(run.SuiteId!.Value, cancellationToken).ConfigureAwait(false);
             if (suite is null || suite.Cases.Count == 0)
             {
@@ -163,5 +175,112 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
         return EvalResult.Create(
             run.Id, evalCase.Id, result.AgentExecutionId, evalCase.ScorerType,
             scoreResult.ScorerVersion, scoreResult.Score, scoreResult.Passed, scoreResult.ScorerOutputJson);
+    }
+
+    private async Task ProcessPostHocRunAsync(
+        EvalRun run,
+        IEvalRunRepository runRepository,
+        IEvalResultRepository resultRepository,
+        IAgentExecutionRepository executionRepository,
+        IEvalScorerFactory scorerFactory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var traceIds = ParseResolvedTraceIds(run.SelectionCriteriaJson!);
+            List<Guid> tracesToScore;
+
+            if (run.ForceRescore)
+            {
+                // Deliberate override — every resolved trace is (re-)scored regardless of prior
+                // results. Nothing here counts as "skipped" (that field means "left unscored");
+                // a prior result is superseded per-trace below instead. See ADR-013 confirmation #3.
+                tracesToScore = traceIds;
+            }
+            else
+            {
+                var alreadyScored = await resultRepository.GetScoredAgentExecutionIdsAsync(
+                    traceIds, EvalScorerType.LlmJudge, LlmJudgeScorer.Version, cancellationToken).ConfigureAwait(false);
+                var alreadyScoredSet = alreadyScored.ToHashSet();
+
+                foreach (var id in traceIds.Where(alreadyScoredSet.Contains))
+                    run.IncrementSkippedCount();
+
+                tracesToScore = traceIds.Where(id => !alreadyScoredSet.Contains(id)).ToList();
+            }
+
+            run.MarkRunning();
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+
+            var scorer = scorerFactory.Resolve(EvalScorerType.LlmJudge);
+            var passThreshold = ParsePassThreshold(run.SelectionCriteriaJson!);
+            var ephemeralCase = EvalCase.CreateEphemeral(run.Rubric!, passThreshold);
+
+            foreach (var executionId in tracesToScore)
+            {
+                try
+                {
+                    var execution = await executionRepository.GetByIdAsync(executionId, cancellationToken).ConfigureAwait(false);
+                    if (execution is null || execution.Status != ExecutionStatus.Completed || execution.OutputResult is null)
+                    {
+                        _logger.LogWarning(
+                            "Post-hoc run {RunId}: trace {ExecutionId} no longer eligible, skipping", run.Id, executionId);
+                        continue;
+                    }
+
+                    if (run.ForceRescore)
+                    {
+                        // Supersede, not append — deletes any prior result for this exact
+                        // (trace, scorer, version) tuple before inserting, so the partial unique
+                        // index from Task 1 is never violated by a deliberate re-score.
+                        await resultRepository.DeletePostHocResultAsync(
+                            executionId, EvalScorerType.LlmJudge, LlmJudgeScorer.Version, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    var context = new EvalScoringContext(execution.OrchestrationTaskId, run.Id);
+                    var scoreResult = await scorer.ScoreAsync(ephemeralCase, execution.OutputResult, context, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    var evalResult = EvalResult.Create(
+                        run.Id, evalCaseId: null, execution.Id, EvalScorerType.LlmJudge,
+                        scoreResult.ScorerVersion, scoreResult.Score, scoreResult.Passed, scoreResult.ScorerOutputJson,
+                        rubric: run.Rubric);
+                    await resultRepository.AddAsync(evalResult, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex, "Post-hoc run {RunId}: trace {ExecutionId} failed unexpectedly, continuing", run.Id, executionId);
+                }
+            }
+
+            run.MarkCompleted();
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Post-hoc run {RunId} completed ({ScoredCount} scored, {SkippedCount} skipped as already-scored, forceRescore={ForceRescore})",
+                run.Id, tracesToScore.Count, run.SkippedAlreadyScoredCount, run.ForceRescore);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            run.MarkFailed(ex.Message);
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+            _logger.LogError(ex, "Post-hoc run {RunId} failed unexpectedly outside per-trace handling", run.Id);
+        }
+    }
+
+    private static List<Guid> ParseResolvedTraceIds(string selectionCriteriaJson)
+    {
+        using var doc = JsonDocument.Parse(selectionCriteriaJson);
+        return doc.RootElement.GetProperty("resolvedTraceIds").EnumerateArray().Select(e => e.GetGuid()).ToList();
+    }
+
+    private static decimal? ParsePassThreshold(string selectionCriteriaJson)
+    {
+        using var doc = JsonDocument.Parse(selectionCriteriaJson);
+        return doc.RootElement.TryGetProperty("passThreshold", out var el) && el.ValueKind != JsonValueKind.Null
+            ? el.GetDecimal()
+            : null;
     }
 }

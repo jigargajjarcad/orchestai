@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OrchestAI.Domain.Entities;
+using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Data;
@@ -66,5 +67,40 @@ public sealed class AgentExecutionRepository : IAgentExecutionRepository
             .Select(e => new AgentExecutionErrorStat(e.Id, e.AgentType, e.Status, e.ErrorCategory, e.CreatedAt))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<TraceSelectionResult> SelectForPostHocScoringAsync(
+        DateTimeOffset? from, DateTimeOffset? to, AgentType? agentType,
+        IReadOnlyCollection<Guid>? explicitTraceIds, int limit, CancellationToken cancellationToken = default)
+    {
+        await using var ctx = await _contextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var query = ctx.AgentExecutions.Where(e => e.Status == ExecutionStatus.Completed);
+
+        if (explicitTraceIds is { Count: > 0 })
+        {
+            query = query.Where(e => explicitTraceIds.Contains(e.Id));
+        }
+        else
+        {
+            if (from.HasValue) query = query.Where(e => e.CreatedAt >= from.Value);
+            if (to.HasValue) query = query.Where(e => e.CreatedAt <= to.Value);
+        }
+
+        if (agentType.HasValue)
+            query = query.Where(e => e.AgentType == agentType.Value);
+
+        var totalMatched = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        var ids = await query
+            .OrderBy(e => e.CreatedAt)
+            .Take(limit)
+            .Select(e => e.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new TraceSelectionResult(ids, totalMatched);
     }
 }

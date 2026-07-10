@@ -228,19 +228,22 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
                         continue;
                     }
 
+                    var context = new EvalScoringContext(execution.OrchestrationTaskId, run.Id);
+                    var scoreResult = await scorer.ScoreAsync(ephemeralCase, execution.OutputResult, context, cancellationToken)
+                        .ConfigureAwait(false);
+
                     if (run.ForceRescore)
                     {
                         // Supersede, not append — deletes any prior result for this exact
                         // (trace, scorer, version) tuple before inserting, so the partial unique
-                        // index from Task 1 is never violated by a deliberate re-score.
+                        // index from Task 1 is never violated by a deliberate re-score. Scoring
+                        // happens first (above) so a transient LLM failure leaves the stale prior
+                        // result intact instead of deleting it and then failing to replace it —
+                        // see Task 5 review finding.
                         await resultRepository.DeletePostHocResultAsync(
                             executionId, EvalScorerType.LlmJudge, LlmJudgeScorer.Version, cancellationToken)
                             .ConfigureAwait(false);
                     }
-
-                    var context = new EvalScoringContext(execution.OrchestrationTaskId, run.Id);
-                    var scoreResult = await scorer.ScoreAsync(ephemeralCase, execution.OutputResult, context, cancellationToken)
-                        .ConfigureAwait(false);
 
                     var evalResult = EvalResult.Create(
                         run.Id, evalCaseId: null, execution.Id, EvalScorerType.LlmJudge,

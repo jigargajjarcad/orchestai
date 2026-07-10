@@ -44,6 +44,31 @@ public sealed class EvalRunBackgroundWorkerPostHocTests
         return new LlmJudgeScorer(factoryMock.Object, pricingCacheMock.Object, costRepoMock.Object, options);
     }
 
+    private static LlmJudgeScorer BuildThrowingJudgeScorer(Mock<ICostLedgerRepository> costRepoMock)
+    {
+        var providerMock = new Mock<ILlmProvider>();
+        providerMock.Setup(p => p.ProviderId).Returns("anthropic");
+        providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("transient LLM failure"));
+
+        var factoryMock = new Mock<ILlmProviderFactory>();
+        factoryMock.Setup(f => f.Resolve("anthropic")).Returns(providerMock.Object);
+
+        var pricingCacheMock = new Mock<IModelPricingCache>();
+        pricingCacheMock
+            .Setup(c => c.GetAsync("claude-haiku-4-5-20251001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ModelPricing.Create("claude-haiku-4-5-20251001", 0.80m, 4.00m));
+
+        var options = Options.Create(new EvalOptions
+        {
+            JudgeModel = "anthropic/claude-haiku-4-5-20251001",
+            DefaultJudgePassThreshold = 0.7m
+        });
+
+        return new LlmJudgeScorer(factoryMock.Object, pricingCacheMock.Object, costRepoMock.Object, options);
+    }
+
     private static EvalRunBackgroundWorker BuildWorker(
         IEvalRunRepository runRepo, IEvalResultRepository resultRepo, IAgentExecutionRepository executionRepo,
         LlmJudgeScorer judgeScorer)
@@ -220,5 +245,48 @@ public sealed class EvalRunBackgroundWorkerPostHocTests
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<EvalScorerType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "ForceRescore bypasses the idempotency pre-check entirely — it doesn't need to know what was already scored");
+    }
+
+    [Fact]
+    public async Task ProcessRunAsync_ForceRescoreTrue_ScorerThrows_DoesNotDeletePriorResult()
+    {
+        var taskId = Guid.NewGuid();
+        var execution = AgentExecution.Create(taskId, AgentType.Research, "prompt");
+        execution.Start();
+        execution.Complete("output", 10, 5, 0.01m);
+
+        var criteriaJson = System.Text.Json.JsonSerializer.Serialize(new { resolvedTraceIds = new[] { execution.Id } });
+        var run = EvalRun.CreatePostHoc("posthoc-1", "was the tool call appropriate?", criteriaJson, forceRescore: true);
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(run.Id, It.IsAny<CancellationToken>())).ReturnsAsync(run);
+        runRepoMock.Setup(r => r.UpdateAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var resultRepoMock = new Mock<IEvalResultRepository>();
+        resultRepoMock
+            .Setup(r => r.DeletePostHocResultAsync(
+                It.IsAny<Guid>(), It.IsAny<EvalScorerType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        resultRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<EvalResult>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var executionRepoMock = new Mock<IAgentExecutionRepository>();
+        executionRepoMock.Setup(r => r.GetByIdAsync(execution.Id, It.IsAny<CancellationToken>())).ReturnsAsync(execution);
+
+        var costRepoMock = new Mock<ICostLedgerRepository>();
+        var judgeScorer = BuildThrowingJudgeScorer(costRepoMock);
+
+        var worker = BuildWorker(runRepoMock.Object, resultRepoMock.Object, executionRepoMock.Object, judgeScorer);
+
+        await worker.ProcessRunAsync(run.Id, CancellationToken.None);
+
+        resultRepoMock.Verify(
+            r => r.DeletePostHocResultAsync(
+                It.IsAny<Guid>(), It.IsAny<EvalScorerType>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "scoring happens before delete — a scorer failure must leave the stale prior result intact, not delete it first");
+        resultRepoMock.Verify(r => r.AddAsync(It.IsAny<EvalResult>(), It.IsAny<CancellationToken>()), Times.Never);
+        run.Status.Should().Be(EvalRunStatus.Completed, "the per-trace try/catch swallows the scorer's exception and the run still completes");
     }
 }

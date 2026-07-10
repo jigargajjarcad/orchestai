@@ -50,6 +50,12 @@ public sealed class GetRegressionReportHandler : IRequestHandler<GetRegressionRe
         var baselineRun = await _runRepository.GetByIdAsync(baselineRunId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException(nameof(EvalRun), baselineRunId);
 
+        if (baselineRun.Source != EvalRunSource.LiveSuite)
+            throw new ValidationException(
+                nameof(currentRun.BaselineRunId),
+                $"Eval run {currentRun.Id}'s baseline ({baselineRun.Id}) is a post-hoc run — " +
+                "post-hoc runs have no suite cases and can't serve as a regression baseline.");
+
         var suite = await _suiteRepository.GetByIdWithCasesAsync(suiteId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException(nameof(EvalSuite), suiteId);
         var thresholdByCaseId = suite.Cases.ToDictionary(c => c.Id, c => c.RegressionThreshold);

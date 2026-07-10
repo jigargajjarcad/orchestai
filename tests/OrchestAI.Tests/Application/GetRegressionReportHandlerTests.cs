@@ -224,4 +224,24 @@ public sealed class GetRegressionReportHandlerTests
 
         await act.Should().ThrowAsync<ValidationException>();
     }
+
+    [Fact]
+    public async Task Handle_PostHocBaselineRun_ThrowsValidation_InsteadOfUnwrappingNullEvalCaseId()
+    {
+        var suite = EvalSuite.Create("Suite", "desc", AgentType.Research);
+        var postHocBaselineRun = EvalRun.CreatePostHoc("posthoc-1", "rubric", "{}");
+        var currentRun = EvalRun.Create(suite.Id, "v2", postHocBaselineRun.Id);
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(currentRun.Id, It.IsAny<CancellationToken>())).ReturnsAsync(currentRun);
+        runRepoMock.Setup(r => r.GetByIdAsync(postHocBaselineRun.Id, It.IsAny<CancellationToken>())).ReturnsAsync(postHocBaselineRun);
+
+        var handler = new GetRegressionReportHandler(
+            runRepoMock.Object, Mock.Of<IEvalSuiteRepository>(), Mock.Of<IEvalResultRepository>(),
+            NullLogger<GetRegressionReportHandler>.Instance);
+
+        var act = async () => await handler.Handle(new GetRegressionReportQuery(currentRun.Id), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
+using OrchestAI.Application.Configuration;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure.Agents;
 using OrchestAI.Infrastructure.Agents.Base;

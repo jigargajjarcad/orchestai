@@ -5,7 +5,7 @@ using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
-using OrchestAI.Infrastructure.Configuration;
+using OrchestAI.Application.Configuration;
 using OrchestAI.Infrastructure.Eval;
 
 namespace OrchestAI.Tests.Infrastructure;

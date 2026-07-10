@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OrchestAI.Domain\OrchestAI.Domain.csproj" />
+    <ProjectReference Include="..\OrchestAI.Application\OrchestAI.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

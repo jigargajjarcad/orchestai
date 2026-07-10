@@ -9,6 +9,8 @@ using OrchestAI.Application.Queries.GetEvalRunResults;
 using OrchestAI.Application.Queries.GetEvalRuns;
 using OrchestAI.Application.Queries.GetEvalSuites;
 using OrchestAI.Application.Queries.GetRegressionReport;
+using OrchestAI.Application.Commands.RequestPostHocScoring;
+using OrchestAI.Application.Queries.GetPostHocScoringSummary;
 using OrchestAI.Domain.Enums;
 
 namespace OrchestAI.API.Controllers;
@@ -32,6 +34,10 @@ public sealed class EvalsController : ControllerBase
         decimal RegressionThreshold, string Tags = "");
 
     public sealed record TriggerEvalRunRequest(string SubjectVersion, Guid? BaselineRunId);
+
+    public sealed record RequestPostHocScoringRequest(
+        DateTimeOffset? DateFrom, DateTimeOffset? DateTo, AgentType? AgentType, IReadOnlyList<Guid>? TraceIds,
+        EvalScorerType ScorerType, string Rubric, decimal? PassThreshold, int MaxTraces, bool ForceRescore = false);
 
     /// <summary>Creates a new eval suite targeting one agent type.</summary>
     [HttpPost]
@@ -181,6 +187,60 @@ public sealed class EvalsController : ControllerBase
         catch (ValidationException ex)
         {
             _logger.LogWarning("Validation failed for GetRegressionReport: {@Errors}", ex.Errors);
+            return ValidationProblem(new ValidationProblemDetails(
+                ex.Errors.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)));
+        }
+    }
+
+    /// <summary>Requests post-hoc scoring of historical AgentExecution traces (Week 9) — judge-only, no re-execution.</summary>
+    [HttpPost("/api/v1/post-hoc-scoring")]
+    [ProducesResponseType(typeof(RequestPostHocScoringResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RequestPostHocScoringAsync(
+        [FromBody] RequestPostHocScoringRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _mediator.Send(
+                new RequestPostHocScoringCommand(
+                    request.DateFrom, request.DateTo, request.AgentType, request.TraceIds,
+                    request.ScorerType, request.Rubric, request.PassThreshold, request.MaxTraces,
+                    request.ForceRescore),
+                cancellationToken);
+            return AcceptedAtAction("GetPostHocScoringSummary", new { runId = response.EvalRunId }, response);
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogWarning("Validation failed for RequestPostHocScoring: {@Errors}", ex.Errors);
+            return ValidationProblem(new ValidationProblemDetails(
+                ex.Errors.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)));
+        }
+    }
+
+    /// <summary>Gets pass rate / score distribution for a completed post-hoc scoring run.</summary>
+    [HttpGet("/api/v1/eval-runs/{runId:guid}/posthoc-summary")]
+    [ProducesResponseType(typeof(GetPostHocScoringSummaryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetPostHocScoringSummaryAsync(Guid runId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _mediator.Send(new GetPostHocScoringSummaryQuery(runId), cancellationToken);
+            return Ok(response);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = ex.Message,
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogWarning("Validation failed for GetPostHocScoringSummary: {@Errors}", ex.Errors);
             return ValidationProblem(new ValidationProblemDetails(
                 ex.Errors.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)));
         }

@@ -5,6 +5,7 @@ EXPOSE 8080
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+COPY ["global.json", "."]
 COPY ["src/OrchestAI.API/OrchestAI.API.csproj", "src/OrchestAI.API/"]
 COPY ["src/OrchestAI.Application/OrchestAI.Application.csproj", "src/OrchestAI.Application/"]
 COPY ["src/OrchestAI.Domain/OrchestAI.Domain.csproj", "src/OrchestAI.Domain/"]

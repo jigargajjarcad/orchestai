@@ -1,0 +1,10 @@
+bin/
+obj/
+**/bin/
+**/obj/
+.git/
+.vs/
+.idea/
+.claude/worktrees/
+frontend/node_modules/
+frontend/dist/

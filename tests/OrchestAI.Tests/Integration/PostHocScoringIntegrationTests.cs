@@ -115,6 +115,17 @@ public sealed class PostHocScoringIntegrationTests
         var run = await runRepository.GetByIdAsync(triggerResponse.EvalRunId, CancellationToken.None);
         run!.Status.Should().Be(EvalRunStatus.Completed);
 
+        // Direct assertion on the persisted CostLedger rows themselves: both historical
+        // executions share one OrchestrationTask (task.Id), and LlmJudgeScorer tags its cost
+        // rows with context.OrchestrationTaskId (the trace's own task), so both judge cost rows
+        // land under task.Id. This proves Source=Eval segregation directly, rather than only
+        // inferring it from the aggregate below being empty (which is also excluded via the
+        // AgentExecutionId != null check, so that assertion alone can't prove Source works).
+        var costLedgerRows = await costLedgerRepository.GetByTaskIdAsync(task.Id, CancellationToken.None);
+        costLedgerRows.Should().HaveCount(2, "one judge cost row per scored trace");
+        costLedgerRows.Should().OnlyContain(c => c.Source == CostSource.Eval);
+        costLedgerRows.Should().OnlyContain(c => c.AgentExecutionId == null);
+
         var costRows = await costLedgerRepository.GetDailyAggregatesAsync(
             DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow), CancellationToken.None);
         costRows.Should().BeEmpty("post-hoc judge cost is tagged Source=Eval and must not reach the production cost dashboard");

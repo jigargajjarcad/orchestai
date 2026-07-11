@@ -226,14 +226,31 @@ was itself the point of deciding it now rather than after Week 8 needs it.
 - `McpToolCall`: `+SpanId`, `+ParentSpanId`, `+ErrorCategory` (nullable).
 
 ### Retention
-Raw execution data (`AgentExecution`, `AgentMessage`, `McpToolCall`, `CostLedger`,
-`AgentRetryAttempts`) proposed at 30 days before archival/deletion — this is a genuinely
-unbounded-growth table set otherwise. `CostRollups` (aggregates) kept indefinitely — they're
-small (one row per day/user/agent/model) and are the long-term "cost over time" record once
-raw detail ages out. **This is a decision needed, not yet implemented in Week 7** — no
-deletion job ships this week; flagging it here per the spec's explicit instruction not to
-leave it unbounded silently. Revisit before raw-table row counts become a real operational
-concern (order of magnitude: tens of millions of rows).
+**Status: Decided (updated pre-Week-10).** Raw telemetry — `AgentExecution`, `AgentMessage`,
+`McpToolCall`, `AgentRetryAttempts`, `CostLedger`, and the Week 8/9 eval tables (`EvalRun`,
+`EvalResult`) — is retained **indefinitely** during the pre-adoption development phase (no
+external tenants yet, single-operator usage). No deletion/archival job ships as part of this
+decision; this replaces the earlier "30 days, undecided" placeholder from Week 7 with an
+explicit choice not to build retention machinery before there's a real reason to.
+
+**Trigger to revisit (either condition, whichever comes first):**
+1. Raw-table row counts approach the order of magnitude flagged in Week 7 — tens of millions of
+   rows — where unindexed growth starts affecting query latency or storage cost materially.
+2. The first external tenant is onboarded. Multi-tenant retention has different legal/cost
+   pressures (data-deletion requests, per-tenant storage attribution) than single-operator
+   development data, so the policy should be redesigned at that point, not extended as-is.
+
+`CostRollups` (and any future daily/aggregate rollup tables) remain retained indefinitely
+**regardless of which trigger fires** — they're small (one row per day/user/agent/model), and
+are the long-term "cost/quality over time" record precisely because raw detail is expected to
+eventually age out from under them.
+
+**Why decide now instead of building the deletion job:** guessing at a retention window (30
+days? 90?) with zero usage data or tenant-model clarity would be the same kind of premature
+policy commitment ADR-012 Decision 4 explicitly avoided for baseline auto-selection — the
+correct trigger conditions are now defined, but the actual archival/deletion mechanism is
+deferred until one of them fires, at which point real data volume and tenancy shape will
+inform the design instead of speculation.
 
 **Trigger for revisiting Decision 1/2 together:** the first real OTLP exporter integration —
 at that point, validate the `ActivityTraceId`/`ActivitySpanId` format assumptions against

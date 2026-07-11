@@ -40,7 +40,7 @@ const buttonStyle = {
 }
 
 function SubNav({ subView, setSubView }) {
-  const tabs = [['suites', 'Suites'], ['run', 'Run'], ['results', 'Results']]
+  const tabs = [['suites', 'Suites'], ['run', 'Run'], ['results', 'Results'], ['posthoc', 'Post-Hoc']]
   return (
     <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #1e1e2e', paddingBottom: 12 }}>
       {tabs.map(([key, label]) => (
@@ -293,6 +293,147 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
   )
 }
 
+function PostHocView() {
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [agentType, setAgentType] = useState('')
+  const [rubric, setRubric] = useState('')
+  const [maxTraces, setMaxTraces] = useState(100)
+  const [forceRescore, setForceRescore] = useState(false)
+  const [error, setError] = useState(null)
+  const [runId, setRunId] = useState(null)
+  const [summary, setSummary] = useState(null)
+  const [summaryError, setSummaryError] = useState(null)
+
+  const agentTypes = ['Orchestrator', 'Research', 'Writer', 'Code', 'Data', 'Browser']
+
+  const submit = () => {
+    setError(null)
+    setSummary(null)
+    setSummaryError(null)
+    fetch(`${API_BASE}/post-hoc-scoring`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dateFrom: dateFrom ? new Date(dateFrom).toISOString() : null,
+        dateTo: dateTo ? new Date(dateTo).toISOString() : null,
+        agentType: agentType || null,
+        traceIds: null,
+        scorerType: 'LlmJudge',
+        rubric,
+        passThreshold: null,
+        maxTraces: Number(maxTraces),
+        forceRescore,
+      }),
+    })
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
+        return res.json()
+      })
+      .then(data => setRunId(data.evalRunId))
+      .catch(err => setError(err.message))
+  }
+
+  const refreshSummary = () => {
+    if (!runId) return
+    setSummaryError(null)
+    fetch(`${API_BASE}/eval-runs/${runId}/posthoc-summary`)
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
+        return res.json()
+      })
+      .then(setSummary)
+      .catch(err => setSummaryError(err.message))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={panelStyle}>
+        <div style={labelStyle}>Score historical traces — judge-only, no re-execution</div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <div style={labelStyle}>From</div>
+            <input type="datetime-local" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={selectStyle} />
+          </div>
+          <div>
+            <div style={labelStyle}>To</div>
+            <input type="datetime-local" value={dateTo} onChange={e => setDateTo(e.target.value)} style={selectStyle} />
+          </div>
+          <div>
+            <div style={labelStyle}>Agent type</div>
+            <select value={agentType} onChange={e => setAgentType(e.target.value)} style={selectStyle}>
+              <option value="">Any</option>
+              {agentTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={labelStyle}>Max traces</div>
+            <input
+              type="number" value={maxTraces} onChange={e => setMaxTraces(e.target.value)}
+              style={{ ...selectStyle, width: 90 }}
+            />
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <div style={labelStyle}>Rubric</div>
+          <textarea
+            value={rubric}
+            onChange={e => setRubric(e.target.value)}
+            placeholder="e.g. Was the tool call appropriate given the user's request?"
+            rows={3}
+            style={{ ...selectStyle, width: '100%', resize: 'vertical' }}
+          />
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: '#cdd6f4' }}>
+          <input type="checkbox" checked={forceRescore} onChange={e => setForceRescore(e.target.checked)} />
+          Force re-score (supersedes any prior post-hoc score for the same trace instead of skipping it)
+        </label>
+        <button onClick={submit} disabled={!rubric || !dateFrom || !dateTo} style={{ ...buttonStyle, marginTop: 10 }}>
+          Submit post-hoc scoring request
+        </button>
+        {error && <p style={{ color: '#f38ba8', fontSize: 12, marginTop: 10 }}>{error}</p>}
+      </div>
+
+      {runId && (
+        <div style={panelStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={labelStyle}>Run {runId.slice(0, 8)}…</div>
+            <button onClick={refreshSummary} style={buttonStyle}>Refresh summary</button>
+          </div>
+          {summaryError && <p style={{ color: '#6c7086', fontSize: 12 }}>{summaryError}</p>}
+          {summary && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 13, color: '#cdd6f4' }}>
+                Status: {summary.status} — {summary.scoredCount} scored, {summary.skippedAlreadyScoredCount} skipped
+                (already scored)
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#cdd6f4', marginTop: 6 }}>
+                {(summary.passRate * 100).toFixed(0)}% pass rate ({summary.passedCount}/{summary.scoredCount})
+              </div>
+              <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#6c7086', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 8px' }}>Score range</th>
+                    <th style={{ padding: '4px 8px' }}>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.scoreDistribution.map(b => (
+                    <tr key={b.range} style={{ borderTop: '1px solid #313244' }}>
+                      <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{b.range}</td>
+                      <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{b.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function EvalsPage() {
   const [subView, setSubView] = useState('suites')
   const [suites, setSuites] = useState([])
@@ -327,6 +468,7 @@ export default function EvalsPage() {
           onSelectRun={setSelectedRunId}
         />
       )}
+      {subView === 'posthoc' && <PostHocView />}
     </div>
   )
 }

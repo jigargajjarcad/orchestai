@@ -353,3 +353,140 @@ anything in this plan.
   (Decision 5) — that's the trigger to design throttling, not before.
 - The first time someone asks for automatic baseline selection with a specific policy in mind
   (Decision 4).
+
+## ADR-013: Post-Hoc Scoring
+
+**Status:** Accepted
+
+### Investigation — what ADR-012 already anticipated
+ADR-012 Decision 1 deliberately left `EvalResult.AgentExecutionId` nullable with no enforced FK,
+specifically so post-hoc scoring of production `AgentExecution` rows would need zero schema
+migration on that column. Confirmed true: no change to `AgentExecutionId` was needed this week.
+Everything else — `EvalResult.EvalCaseId` being non-nullable, `EvalRun.SuiteId` being
+non-nullable, `IEvalScorer.ScoreAsync` requiring a full `EvalCase` — was net-new work.
+
+### Confirmation #1 — `EvalResult.EvalCaseId` nullability
+Confirmed by reading `EvalResult.cs` and `EvalResultConfiguration.cs`: `EvalCaseId` was `Guid`
+(non-nullable, `.IsRequired()`, unique-indexed with `EvalRunId`). Migrated to `Guid?`. A null
+`EvalCaseId` now means "this result came from post-hoc scoring against a rubric, not a
+predefined case" — the same signal `GetScoredAgentExecutionIdsAsync` (Task 3) uses to scope its
+idempotency lookup to post-hoc-origin rows only.
+
+### Confirmation #2 — Post-hoc scoring is judge-only
+`RuleBasedScorer` requires a machine-checkable `ExpectedCriteria` (`ExactMatch`/`Regex`/
+`JsonSchema`) authored against a specific predefined case's expected output. Arbitrary historical
+production traces have no such predefined expectation — inventing one after the fact would be
+guessing at what the trace *should* have produced, not scoring what it *did* produce. `LlmJudge`,
+by contrast, already only reads a free-text `rubric` from `ExpectedCriteria` and was designed
+around "does this satisfy a general standard," which is exactly what post-hoc grading needs
+("was the tool call appropriate," "was the output well-formed").
+
+**Decision:** `RequestPostHocScoringCommand` rejects any `ScorerType` other than `LlmJudge` with
+a `ValidationException` naming this ADR. Rather than changing `IEvalScorer.ScoreAsync`'s
+signature (which would touch both scorers and every existing Week 8 test), a new
+`EvalCase.CreateEphemeral(rubric, passThreshold)` factory builds a transient, never-persisted
+`EvalCase` carrying the same `{"rubric": ..., "passThreshold": ...}` JSON shape `LlmJudgeScorer`
+already parses — so the interface and the scorer are reused completely unchanged.
+
+### Confirmation #3 — Idempotency, plus a distinct, deliberate re-score path
+Two behaviors, not one, per the spec's explicit either/or: **default** is skip — re-running a
+post-hoc request against the same trace with the same scorer + `scorer_version` is a no-op for
+that trace, counted in `EvalRun.SkippedAlreadyScoredCount`. **Deliberate override** is
+`RequestPostHocScoringCommand.ForceRescore` (bool, default `false`) — without this, there would
+be no way to correct a bad judge score (e.g. a flaky judge call, or a prompt tweak that didn't
+bump `LlmJudgeScorer.Version`) short of manual DB surgery.
+
+The two paths cannot share the same enforcement mechanism naively: the idempotency backstop is a
+**database-level unique index** on `EvalResults (AgentExecutionId, ScorerType, ScorerVersion)
+WHERE EvalCaseId IS NULL`. If `ForceRescore` just skipped the app-level pre-check and inserted a
+second row for an already-scored trace, that insert would violate the index and throw. So
+`ForceRescore` is defined as **supersede, not append**: `EvalRunBackgroundWorker.ProcessPostHocRunAsync`,
+when `run.ForceRescore` is true, does not consult `GetScoredAgentExecutionIdsAsync` at all (it
+doesn't need to know what's already scored — it's rescoring everything in scope regardless), and
+before each insert calls the new `IEvalResultRepository.DeletePostHocResultAsync(agentExecutionId,
+scorerType, scorerVersion)` to remove any prior result for that exact tuple first. This keeps the
+unique index a real, always-enforced invariant — "at most one *current* post-hoc result per
+trace+scorer+version" — instead of relaxing it, and avoids double-counting a re-scored trace in
+`GetPostHocScoringSummaryQuery`'s pass rate (Task 6).
+
+`ForceRescore` is a first-class `EvalRun` column (not buried in `SelectionCriteriaJson`) because
+it's a behavior switch the worker branches on, not descriptive audit metadata.
+
+### Confirmation #4 — Bounding cost exposure
+Two enforcement layers, both required: (1) `EvalOptions.MaxPostHocTracesPerRequestCeiling`
+(default 500) is a hard, config-level ceiling no single request's `MaxTraces` can exceed; (2)
+`RequestPostHocScoringHandler` requires either an explicit date range or an explicit trace-ID
+list — `AgentType` alone is rejected as a sole filter because it doesn't bound the result set in
+time. If the actual match count exceeds the caller's `MaxTraces`, the handler throws rather than
+silently scoring only the first `MaxTraces` matches — a silent truncation would let a caller
+believe they scored "last month's traffic" when they actually scored an arbitrary time-ordered
+slice of it.
+
+### Decision 5 — Trace selection resolves to a concrete ID list at request time, not lazily at worker time
+`RequestPostHocScoringHandler` calls `IAgentExecutionRepository.SelectForPostHocScoringAsync`
+once, and persists the *resolved* `AgentExecutionId` list on `EvalRun.SelectionCriteriaJson` —
+the background worker never re-runs the date-range/agent-type query itself. This makes a given
+`EvalRunId`'s scope reproducible (re-processing the same run after a crash/restart always touches
+the same traces) and keeps the `MaxTraces` cap enforcement a single choke point, rather than a
+check that could pass at request time and then drift if new production traces land in the same
+date range before the worker drains the queue.
+
+### Decision 6 — `EvalRun.Source` discriminator, not a separate run table
+Added `EvalRunSource { LiveSuite, PostHoc }` to `EvalRun` and made `SuiteId` nullable — same
+"discriminator column, not a parallel table" shape as `CostLedger.Source` from ADR-012 Decision
+2, for the same reason: every consumer of `EvalRun` (background worker, regression report,
+results/summary queries) already reads through the same repository methods, so one `Source`
+check at each of those call sites is the single place that needs to know the difference, instead
+of two full parallel schemas that could drift.
+
+`GetRegressionReportQuery` explicitly rejects `Source != LiveSuite` runs — a regression report
+diffs against a baseline run, and post-hoc runs have neither a suite nor a baseline concept this
+week (see non-goals).
+
+### Decision 7 — Post-hoc scorer type is implicit, not stored per-run
+Because confirmation #2 makes post-hoc scoring always `LlmJudge` this week, `EvalRun` does not
+store a per-run scorer type — `ProcessPostHocRunAsync` resolves `EvalScorerType.LlmJudge`
+directly. **Trigger for revisiting:** the first time a second post-hoc-eligible scorer type is
+added — at that point `EvalRun` needs its own scorer-type column rather than a hardcoded
+assumption.
+
+### Implementation notes
+Two real deviations surfaced during implementation that this ADR's design didn't anticipate,
+both plumbing rather than a change to any decision above.
+
+`RequestPostHocScoringHandler` (Task 4) needs `EvalOptions.MaxPostHocTracesPerRequestCeiling`
+(Confirmation #4) from inside `OrchestAI.Application`, but `EvalOptions` originally lived in
+`OrchestAI.Infrastructure.Configuration` — the only existing consumer, `LlmJudgeScorer`, is
+itself inside Infrastructure, so the type had never needed to cross the Application/Infrastructure
+boundary before. Reading all four `.csproj` files confirmed this codebase's actual dependency
+graph has `Application` and `Infrastructure` as siblings that both depend on `Domain` and never on
+each other; making the handler compile as originally drafted would have required a first-of-its-
+kind `Application → Infrastructure` reference, inverting this project's Clean Architecture
+layering. Instead, `EvalOptions` was relocated to `OrchestAI.Application.Configuration`, and a new
+`Infrastructure → Application` project reference was added in its place — non-cyclic
+(`Domain ← Application ← Infrastructure ← API` remains a valid DAG) and consistent with the
+direction API already depends on both. `LlmJudgeScorer` and its tests were updated to the new
+namespace; no scoring or validation logic changed.
+
+Separately, Task 9's frontend post-hoc scoring form submits `scorerType`/`agentType` as JSON
+strings (`"LlmJudge"`, `"Research"`), but `OrchestAI.API`'s `Program.cs` registered
+`AddControllers()` with no JSON options configured, and System.Text.Json's default enum handling
+deserializes only from the numeric underlying value. Every real HTTP request the frontend could
+send would therefore fail model binding with a `JsonException` before ever reaching the MediatR
+handler — invisible to this week's (and last week's) unit tests, which construct C# command
+objects directly and never round-trip through JSON. The fix was a global
+`JsonStringEnumConverter` registered on `AddControllers().AddJsonOptions(...)`, chosen over a
+per-enum `[JsonConverter]` attribute so every current and future enum-typed request/response
+field is covered uniformly. This also transparently fixed an identical, previously-latent bug on
+`AddEvalCaseRequest.ScorerType` in `EvalsController`, which had the same defect but had never been
+exercised with a string-valued `scorerType` over real HTTP. `JsonStringEnumConverter`'s default
+constructor still accepts raw integer values on deserialize, so the change is additive and safe
+against every existing frontend consumer of enum-typed fields (all already treat them as strings).
+
+### Trigger for revisiting
+- The first time `ForceRescore` is used against a large trace set — today it re-scores every
+  resolved trace unconditionally (no partial "only rescore the ones that changed" mode); revisit
+  if that becomes a real cost concern once there's usage data.
+- The first post-hoc-eligible `IEvalScorer` other than `LlmJudge` (Decision 7).
+- The first real post-hoc batch large enough that `MaxPostHocTracesPerRequestCeiling`'s default
+  of 500 becomes a genuine throughput bottleneck rather than a safety rail.

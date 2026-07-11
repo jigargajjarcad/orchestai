@@ -78,6 +78,30 @@ rows aggregates to production-only totals.
 
 Full reasoning: ADR-012 in `DECISIONS.md`.
 
+## 2b. Post-hoc scoring
+
+Week 9 added `EvalRun.Source` (`LiveSuite`/`PostHoc`). `EvalResult` rows now originate from two
+sources, told apart by `eval_run.source` (via the `EvalRunId` FK) together with
+`EvalResult.EvalCaseId`:
+
+- **Live suite execution** (Week 8): `EvalRun.Source = LiveSuite`, `EvalResult.EvalCaseId` is a
+  real `EvalCase` FK, `EvalResult.Rubric` is null.
+- **Post-hoc scoring** (Week 9): `EvalRun.Source = PostHoc`, `EvalResult.EvalCaseId` is null,
+  `EvalResult.Rubric` holds the free-text judge rubric applied to that run's traces.
+
+Post-hoc scoring never re-invokes an agent — `EvalRunBackgroundWorker.ProcessPostHocRunAsync`
+reads `AgentExecution.OutputResult` directly from rows that already exist (production traffic or
+past eval runs) and scores them with `LlmJudgeScorer` against a rubric instead of a predefined
+`EvalCase`. Judge cost still flows through the same `Source=Eval`/`EvalRunId`-tagged `CostLedger`
+path as Week 8 — no second cost-tagging code path was introduced.
+
+Re-running a post-hoc request against an already-scored trace is a no-op by default (tracked in
+`EvalRun.SkippedAlreadyScoredCount`). `EvalRun.ForceRescore` is the deliberate override — it
+supersedes (delete-then-insert) rather than appends, so a trace never accumulates more than one
+current post-hoc result.
+
+Full reasoning: ADR-013 in `DECISIONS.md`.
+
 ## 3. Query
 
 Five MediatR query handlers, each reading whichever layer answers the question fastest:

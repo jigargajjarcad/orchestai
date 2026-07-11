@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
     <PackageReference Include="OpenAI" Version="2.12.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
@@ -33,6 +34,7 @@
     <ProjectReference Include="..\..\src\OrchestAI.Application\OrchestAI.Application.csproj" />
     <ProjectReference Include="..\..\src\OrchestAI.Domain\OrchestAI.Domain.csproj" />
     <ProjectReference Include="..\..\src\OrchestAI.Infrastructure\OrchestAI.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\OrchestAI.API\OrchestAI.API.csproj" />
   </ItemGroup>
 
 </Project>

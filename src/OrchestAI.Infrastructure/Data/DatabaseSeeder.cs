@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using OrchestAI.Domain.Entities;
 
 namespace OrchestAI.Infrastructure.Data;
 
@@ -20,6 +21,15 @@ public sealed class DatabaseSeeder
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         await _context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+
+        // The default/system tenant (Tenant.DefaultTenantId) is seeded by the AddTenantIsolation
+        // migration itself (ON CONFLICT DO NOTHING against a well-known fixed GUID), not here —
+        // SeedAsync only ever inserts dev-convenience rows (Users, ModelPricing) that are safe to
+        // skip in production. Referenced here, not redeclared, so this stays the single choke
+        // point for the GUID (see DESIGN_PRINCIPLES.md's single-choke-point principle).
+        _logger.LogDebug(
+            "Default tenant {TenantId} is provisioned by the AddTenantIsolation migration, not SeedAsync",
+            Tenant.DefaultTenantId);
 
         var now = DateTimeOffset.UtcNow;
 

@@ -4,15 +4,19 @@ using OrchestAI.Domain.Entities;
 
 namespace OrchestAI.Infrastructure.Data.Configurations;
 
-// Minimal stub — Task 6 owns the full migration/column/index configuration for this table
-// (including the CK_ApiKeys_TenantId_NotDefault check constraint). This exists only so
-// Task 4's AppDbContext.OnModelCreating (which references TenantConfiguration/ApiKeyConfiguration)
-// compiles standalone, ahead of Task 6's execution.
 public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
 {
     public void Configure(EntityTypeBuilder<ApiKey> builder)
     {
-        builder.ToTable("ApiKeys");
+        // Schema-level backstop for the "default tenant can never authenticate" invariant
+        // (Global Constraints, ADR-014 confirmation #8): CreateApiKeyHandler (Task 8) rejects
+        // this at the application layer, but a CHECK constraint means the guarantee holds even
+        // against a raw SQL insert, a future code path that bypasses the handler, or a bug in
+        // the handler itself — the DB refuses the row unconditionally, not "as long as every
+        // caller remembers to check." See Tenant.DefaultTenantId (Task 1).
+        builder.ToTable("ApiKeys", t => t.HasCheckConstraint(
+            "CK_ApiKeys_TenantId_NotDefault",
+            "\"TenantId\" <> '00000000-0000-0000-0000-000000000001'"));
 
         builder.HasKey(k => k.Id);
 
@@ -26,13 +30,14 @@ public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
 
         builder.Property(k => k.PublicKeyId)
             .IsRequired()
-            .HasMaxLength(100);
+            .HasMaxLength(64);
 
         builder.Property(k => k.HashedSecret)
-            .IsRequired();
+            .IsRequired()
+            .HasMaxLength(200);
 
         builder.Property(k => k.DisplayName)
-            .HasMaxLength(255);
+            .HasMaxLength(200);
 
         builder.Property(k => k.CreatedAt)
             .IsRequired()
@@ -53,9 +58,7 @@ public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
             .HasForeignKey(k => k.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(k => k.PublicKeyId)
-            .IsUnique();
-
+        builder.HasIndex(k => k.PublicKeyId).IsUnique();
         builder.HasIndex(k => k.TenantId);
     }
 }

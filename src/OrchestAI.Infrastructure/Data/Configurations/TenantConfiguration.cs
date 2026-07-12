@@ -5,10 +5,6 @@ using OrchestAI.Domain.Enums;
 
 namespace OrchestAI.Infrastructure.Data.Configurations;
 
-// Minimal stub — Task 6 owns the full migration/column/index configuration for this table
-// (including the default-tenant seed and any additional constraints). This exists only so
-// Task 4's AppDbContext.OnModelCreating (which references TenantConfiguration/ApiKeyConfiguration)
-// compiles standalone, ahead of Task 6's execution.
 public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
 {
     public void Configure(EntityTypeBuilder<Tenant> builder)
@@ -23,7 +19,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
 
         builder.Property(t => t.Name)
             .IsRequired()
-            .HasMaxLength(255);
+            .HasMaxLength(200);
 
         builder.Property(t => t.Slug)
             .IsRequired()
@@ -43,7 +39,6 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.SuspendedAt)
             .HasColumnType("timestamptz");
 
-        builder.HasIndex(t => t.Slug)
-            .IsUnique();
+        builder.HasIndex(t => t.Slug).IsUnique();
     }
 }

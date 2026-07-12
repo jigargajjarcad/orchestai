@@ -19,6 +19,15 @@ public sealed class ApiKey
 
     public Tenant Tenant { get; private set; } = null!;
 
+    // ApiKey is deliberately NOT ITenantScoped (see Task 13's ExpectedGloballySharedTypes) and
+    // Create() deliberately DOES take tenantId — this is one of exactly two named exceptions to
+    // the Global Constraints' "no factory ever takes TenantId" rule (the other is
+    // CostRollup.Create, Task 12). This is not a design regression: Create() is only ever
+    // reachable via the admin-secret-gated CreateApiKeyHandler (Task 8), never a tenant-
+    // authenticated request, and there is no ambient tenant scope during that call for an
+    // interceptor to stamp from in the first place — the operator explicitly designating which
+    // tenant a new key belongs to IS the operation, not a value that should be inferred from
+    // request context.
     public static ApiKey Create(Guid tenantId, string publicKeyId, string hashedSecret, string? displayName = null)
     {
         return new ApiKey

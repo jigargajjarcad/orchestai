@@ -33,16 +33,18 @@ public static class DependencyInjection
         services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
 
         services.AddSingleton<UpdatedAtInterceptor>();
+        services.AddSingleton<TenantScopingInterceptor>();
 
         services.AddDbContextFactory<AppDbContext>((sp, options) =>
         {
-            var interceptor = sp.GetRequiredService<UpdatedAtInterceptor>();
+            var updatedAtInterceptor = sp.GetRequiredService<UpdatedAtInterceptor>();
+            var tenantScopingInterceptor = sp.GetRequiredService<TenantScopingInterceptor>();
 
             options.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection"),
                 npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
 
-            options.AddInterceptors(interceptor);
+            options.AddInterceptors(updatedAtInterceptor, tenantScopingInterceptor);
         });
 
         services.AddScoped<DatabaseSeeder>();

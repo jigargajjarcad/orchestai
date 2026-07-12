@@ -16,6 +16,10 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(r => r.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(r => r.EvalRunId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -63,6 +67,8 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .WithMany()
             .HasForeignKey(r => r.EvalCaseId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => new { r.EvalRunId, r.EvalCaseId })
             .IsUnique();

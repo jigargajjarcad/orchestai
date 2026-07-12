@@ -3,11 +3,12 @@ using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class AgentMemory : IHasUpdatedAt
+public sealed class AgentMemory : IHasUpdatedAt, ITenantScoped
 {
     private AgentMemory() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid UserId { get; private set; }
     public AgentType AgentType { get; private set; }
     public string Key { get; private set; } = string.Empty;

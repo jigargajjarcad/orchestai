@@ -17,6 +17,10 @@ public sealed class CostLedgerConfiguration : IEntityTypeConfiguration<CostLedge
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(cl => cl.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(cl => cl.OrchestrationTaskId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -64,6 +68,8 @@ public sealed class CostLedgerConfiguration : IEntityTypeConfiguration<CostLedge
 
         builder.HasIndex(cl => new { cl.OrchestrationTaskId, cl.RecordedAt })
             .IsDescending(false, true);
+
+        builder.HasIndex(cl => cl.TenantId);
 
         builder.HasIndex(cl => cl.Source);
         builder.HasIndex(cl => cl.EvalRunId);

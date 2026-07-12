@@ -16,6 +16,10 @@ public sealed class AgentMemoryConfiguration : IEntityTypeConfiguration<AgentMem
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(m => m.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(m => m.UserId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -53,6 +57,8 @@ public sealed class AgentMemoryConfiguration : IEntityTypeConfiguration<AgentMem
             .WithMany()
             .HasForeignKey(m => m.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(m => m.TenantId);
 
         builder.HasIndex(m => new { m.UserId, m.AgentType, m.Key })
             .IsUnique();

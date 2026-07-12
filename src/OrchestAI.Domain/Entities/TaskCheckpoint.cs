@@ -1,12 +1,14 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class TaskCheckpoint
+public sealed class TaskCheckpoint : ITenantScoped
 {
     private TaskCheckpoint() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid OrchestrationTaskId { get; private set; }
     public AgentType AgentType { get; private set; }
     public Guid AgentExecutionId { get; private set; }

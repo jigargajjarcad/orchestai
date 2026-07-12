@@ -1,15 +1,17 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
 // One row per (Date, UserId, AgentType, Model). Populated by CostRollupAggregationService —
 // see ADR-011. Recomputed (not incrementally accumulated) on every aggregation tick so a
 // re-run of the job for the same day is idempotent.
-public sealed class CostRollup
+public sealed class CostRollup : ITenantScoped
 {
     private CostRollup() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public DateOnly Date { get; private set; }
     public Guid UserId { get; private set; }
     public AgentType AgentType { get; private set; }

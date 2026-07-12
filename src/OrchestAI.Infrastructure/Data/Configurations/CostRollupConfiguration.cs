@@ -16,6 +16,10 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(r => r.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(r => r.Date)
             .IsRequired()
             .HasColumnType("date");
@@ -57,6 +61,8 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
 
         builder.HasIndex(r => new { r.Date, r.UserId, r.AgentType, r.Model })
             .IsUnique();
+
+        builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => new { r.UserId, r.Date });
     }

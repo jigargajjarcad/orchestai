@@ -16,6 +16,10 @@ public sealed class AgentRetryAttemptConfiguration : IEntityTypeConfiguration<Ag
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(r => r.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(r => r.AgentExecutionId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -38,6 +42,8 @@ public sealed class AgentRetryAttemptConfiguration : IEntityTypeConfiguration<Ag
             .WithMany()
             .HasForeignKey(r => r.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => r.AgentExecutionId);
     }

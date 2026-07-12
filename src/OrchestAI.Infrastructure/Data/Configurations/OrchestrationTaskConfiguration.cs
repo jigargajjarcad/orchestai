@@ -17,6 +17,10 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(t => t.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(t => t.UserId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -100,6 +104,8 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
 
         builder.HasIndex(t => new { t.UserId, t.CreatedAt })
             .IsDescending(false, true);
+
+        builder.HasIndex(t => t.TenantId);
 
         builder.HasIndex(t => t.Status);
 

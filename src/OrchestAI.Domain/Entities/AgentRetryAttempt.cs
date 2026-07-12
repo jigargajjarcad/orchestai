@@ -1,10 +1,13 @@
+using OrchestAI.Domain.Interfaces;
+
 namespace OrchestAI.Domain.Entities;
 
-public sealed class AgentRetryAttempt
+public sealed class AgentRetryAttempt : ITenantScoped
 {
     private AgentRetryAttempt() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid AgentExecutionId { get; private set; }
     public int AttemptNumber { get; private set; }
     public int DelayMs { get; private set; }

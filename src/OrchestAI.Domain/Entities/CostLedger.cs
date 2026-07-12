@@ -1,12 +1,14 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class CostLedger
+public sealed class CostLedger : ITenantScoped
 {
     private CostLedger() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid OrchestrationTaskId { get; private set; }
     public Guid? AgentExecutionId { get; private set; }
     public string Model { get; private set; } = string.Empty;

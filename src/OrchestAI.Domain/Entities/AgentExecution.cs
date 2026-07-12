@@ -1,13 +1,15 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class AgentExecution
+public sealed class AgentExecution : ITenantScoped
 {
     private AgentExecution() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid OrchestrationTaskId { get; private set; }
     public AgentType AgentType { get; private set; }
     public ExecutionStatus Status { get; private set; }

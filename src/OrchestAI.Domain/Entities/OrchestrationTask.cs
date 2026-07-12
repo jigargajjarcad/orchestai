@@ -4,11 +4,12 @@ using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class OrchestrationTask : IHasUpdatedAt
+public sealed class OrchestrationTask : IHasUpdatedAt, ITenantScoped
 {
     private OrchestrationTask() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid UserId { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public string UserPrompt { get; private set; } = string.Empty;

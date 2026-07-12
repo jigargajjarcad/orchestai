@@ -18,6 +18,7 @@ using OrchestAI.Infrastructure.Observability;
 using OrchestAI.Infrastructure.Providers;
 using OrchestAI.Infrastructure.Repositories;
 using OrchestAI.Infrastructure.Security;
+using OrchestAI.Infrastructure.Tenancy;
 using OrchestAI.Infrastructure.Tools;
 using System.ClientModel;
 
@@ -29,6 +30,8 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
+
         services.AddSingleton<UpdatedAtInterceptor>();
 
         services.AddDbContextFactory<AppDbContext>((sp, options) =>

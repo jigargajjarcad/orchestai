@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -14,6 +13,7 @@ using OrchestAI.Application.Configuration;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Eval;
 using OrchestAI.Infrastructure.Repositories;
+using OrchestAI.Infrastructure.Tenancy;
 using OrchestAI.Tests.Infrastructure;
 
 namespace OrchestAI.Tests.Integration;
@@ -24,17 +24,29 @@ namespace OrchestAI.Tests.Integration;
 // EvalResult rows — no mocked repositories anywhere in this test.
 public sealed class PostHocScoringIntegrationTests
 {
-    private static PooledDbContextFactory<AppDbContext> BuildFactory(string dbName)
+    private static (IDbContextFactory<AppDbContext> Factory, AsyncLocalCurrentTenantAccessor Accessor) BuildFactory(string dbName)
     {
+        var accessor = new AsyncLocalCurrentTenantAccessor();
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
-        return new PooledDbContextFactory<AppDbContext>(options);
+        // See TenantQueryFilterTests.TestDbContextFactory: PooledDbContextFactory<TContext> has
+        // no hook for AppDbContext's new ICurrentTenantAccessor dependency, so this test uses the
+        // shared minimal IDbContextFactory<AppDbContext> instead.
+        return (new TestDbContextFactory(options, accessor), accessor);
     }
 
     [Fact]
     public async Task FullFlow_SeededHistoricalTraces_ProducesEvalResultsWithNullCaseIdAndRubric()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
+        // This test predates tenant scoping (Task 10) and TenantScopingInterceptor (Task 5, not
+        // yet on this branch). Every ITenantScoped entity in this flow — seeded AgentExecution
+        // rows and the EvalRun/EvalResult/CostLedger rows the real handler/worker create deep
+        // inside the call chain — keeps its Guid.Empty TenantId default. Scoping the ambient
+        // tenant to Guid.Empty for the whole flow (it flows through every await via AsyncLocal)
+        // makes Task 4's new query filter transparent to this test without reaching into
+        // production code to stamp anything.
+        using var tenantScope = accessor.SetTenant(Guid.Empty);
 
         var user = TestUserFactory.Create("posthoc-integration@test.local");
         var task = OrchestrationTask.Create(user.Id, "production task", "prompt");

@@ -61,11 +61,42 @@ public sealed class TenantScopingInterceptorTests
 
         var task = OrchestrationTask.Create(user.Id, "title", "prompt");
         ctx.OrchestrationTasks.Add(task);
+        var taskId = task.Id;
 
         var act = async () => await ctx.SaveChangesAsync();
 
         await act.Should().ThrowAsync<TenantContextViolationException>(
             "no ambient tenant is set, so persisting a new tenant-scoped entity must be rejected, never silently defaulted");
+
+        await using var verifyCtx = await factory.CreateDbContextAsync();
+        var persisted = await verifyCtx.OrchestrationTasks
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == taskId);
+        persisted.Should().BeNull(
+            "the failed SaveChangesAsync must not have persisted the rejected entity, regardless of query filters");
+    }
+
+    [Fact]
+    public async Task SaveChanges_NewEntityWithMismatchedPreSetTenantId_ThrowsAndDoesNotOverwrite()
+    {
+        var (factory, accessor) = BuildFactory(Guid.NewGuid().ToString());
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var user = TestUserFactory.Create("interceptor-presetmismatch@test.local");
+
+        using (accessor.SetTenant(tenantId))
+        {
+            await using var ctx = await factory.CreateDbContextAsync();
+            ctx.Users.Add(user);
+            var task = OrchestrationTask.Create(user.Id, "title", "prompt");
+            ctx.OrchestrationTasks.Add(task);
+            ctx.Entry(task).Property("TenantId").CurrentValue = otherTenantId;
+
+            var act = async () => await ctx.SaveChangesAsync();
+
+            await act.Should().ThrowAsync<TenantContextViolationException>(
+                "a new entity with a pre-set TenantId that mismatches the ambient tenant must be rejected, never overwritten");
+        }
     }
 
     [Fact]

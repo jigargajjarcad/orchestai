@@ -1,5 +1,6 @@
 // frontend/src/EvalsPage.jsx
 import { useState, useEffect } from 'react'
+import { authenticatedFetch } from './apiKey'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 
@@ -101,7 +102,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
 
   useEffect(() => {
     if (!selectedSuiteId) return
-    fetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
+    authenticatedFetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
       .then(res => res.json())
       .then(data => setRuns(data.runs))
       .catch(() => setRuns([]))
@@ -113,7 +114,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
 
   const trigger = () => {
     setError(null)
-    fetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`, {
+    authenticatedFetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -169,7 +170,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
 
   useEffect(() => {
     if (!selectedSuiteId) return
-    fetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
+    authenticatedFetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
       .then(res => res.json())
       .then(data => setRuns(data.runs))
       .catch(() => setRuns([]))
@@ -182,7 +183,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
     setRegression(null)
     setRegressionError(null)
 
-    fetch(`${API_BASE}/eval-runs/${selectedRunId}/results`)
+    authenticatedFetch(`${API_BASE}/eval-runs/${selectedRunId}/results`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
         return res.json()
@@ -190,7 +191,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
       .then(setResults)
       .catch(err => setResultsError(err.message))
 
-    fetch(`${API_BASE}/eval-runs/${selectedRunId}/regression-report`)
+    authenticatedFetch(`${API_BASE}/eval-runs/${selectedRunId}/regression-report`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json()).title ?? 'No baseline set for this run')
         return res.json()
@@ -311,7 +312,7 @@ function PostHocView() {
     setError(null)
     setSummary(null)
     setSummaryError(null)
-    fetch(`${API_BASE}/post-hoc-scoring`, {
+    authenticatedFetch(`${API_BASE}/post-hoc-scoring`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -337,7 +338,7 @@ function PostHocView() {
   const refreshSummary = () => {
     if (!runId) return
     setSummaryError(null)
-    fetch(`${API_BASE}/eval-runs/${runId}/posthoc-summary`)
+    authenticatedFetch(`${API_BASE}/eval-runs/${runId}/posthoc-summary`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
         return res.json()
@@ -441,7 +442,7 @@ export default function EvalsPage() {
   const [selectedRunId, setSelectedRunId] = useState(null)
 
   useEffect(() => {
-    fetch(`${API_BASE}/eval-suites`)
+    authenticatedFetch(`${API_BASE}/eval-suites`)
       .then(res => res.json())
       .then(data => setSuites(data.suites))
       .catch(() => setSuites([]))

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { authenticatedFetch } from './apiKey'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
@@ -201,7 +202,7 @@ function TimelineView({ tasks }) {
     if (!taskId) return
     setData(null)
     setError(null)
-    fetch(`${API_BASE}/tasks/${taskId}/timeline`)
+    authenticatedFetch(`${API_BASE}/tasks/${taskId}/timeline`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
       .catch(err => setError(err.message))
@@ -258,7 +259,7 @@ function SummaryView({ tasks }) {
     if (!taskId) return
     setData(null)
     setError(null)
-    fetch(`${API_BASE}/tasks/${taskId}/summary`)
+    authenticatedFetch(`${API_BASE}/tasks/${taskId}/summary`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
       .catch(err => setError(err.message))
@@ -362,7 +363,7 @@ function DashboardView() {
 
   useEffect(() => {
     setError(null)
-    fetch(`${API_BASE}/users/${DEV_USER_ID}/observability/cost-dashboard?from=${from}&to=${to}`)
+    authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/observability/cost-dashboard?from=${from}&to=${to}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
       .catch(err => setError(err.message))
@@ -480,7 +481,7 @@ function ErrorRatesView() {
 
   useEffect(() => {
     setError(null)
-    fetch(`${API_BASE}/users/${DEV_USER_ID}/observability/error-rates?from=${from}&to=${to}`)
+    authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/observability/error-rates?from=${from}&to=${to}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
       .catch(err => setError(err.message))
@@ -550,7 +551,7 @@ function CompareView({ tasks }) {
     if (!firstId || !secondId) return
     setData(null)
     setError(null)
-    fetch(`${API_BASE}/tasks/compare?firstTaskId=${firstId}&secondTaskId=${secondId}`)
+    authenticatedFetch(`${API_BASE}/tasks/compare?firstTaskId=${firstId}&secondTaskId=${secondId}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
       .catch(err => setError(err.message))
@@ -581,7 +582,7 @@ export default function ObservabilityPage() {
   const [tasks, setTasks] = useState([])
 
   useEffect(() => {
-    fetch(`${API_BASE}/users/${DEV_USER_ID}/tasks?limit=30`)
+    authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/tasks?limit=30`)
       .then(res => res.ok ? res.json() : [])
       .then(setTasks)
       .catch(() => setTasks([]))

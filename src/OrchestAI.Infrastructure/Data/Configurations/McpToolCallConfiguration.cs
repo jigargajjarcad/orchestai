@@ -67,6 +67,11 @@ public sealed class McpToolCallConfiguration : IEntityTypeConfiguration<McpToolC
             .HasForeignKey(tc => tc.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(tc => tc.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(tc => tc.TenantId);
 
         builder.HasIndex(tc => tc.SpanId)

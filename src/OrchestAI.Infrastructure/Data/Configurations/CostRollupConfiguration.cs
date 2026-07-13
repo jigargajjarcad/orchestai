@@ -59,6 +59,11 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
             .HasColumnType("timestamptz")
             .HasDefaultValueSql("NOW()");
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(r => r.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(r => new { r.Date, r.UserId, r.AgentType, r.Model })
             .IsUnique();
 

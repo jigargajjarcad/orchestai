@@ -58,6 +58,11 @@ public sealed class AgentMemoryConfiguration : IEntityTypeConfiguration<AgentMem
             .HasForeignKey(m => m.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(m => m.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(m => m.TenantId);
 
         builder.HasIndex(m => new { m.UserId, m.AgentType, m.Key })

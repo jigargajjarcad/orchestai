@@ -51,6 +51,11 @@ public sealed class EvalCaseConfiguration : IEntityTypeConfiguration<EvalCase>
             .HasColumnType("timestamptz")
             .HasDefaultValueSql("NOW()");
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(c => c.TenantId);
 
         builder.HasIndex(c => c.SuiteId);

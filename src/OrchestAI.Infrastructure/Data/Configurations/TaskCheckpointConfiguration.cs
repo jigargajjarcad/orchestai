@@ -59,6 +59,11 @@ public sealed class TaskCheckpointConfiguration : IEntityTypeConfiguration<TaskC
             .HasForeignKey(c => c.OrchestrationTaskId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(c => c.TenantId);
 
         builder.HasIndex(c => new { c.OrchestrationTaskId, c.AgentType })

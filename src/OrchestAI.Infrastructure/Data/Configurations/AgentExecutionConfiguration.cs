@@ -91,6 +91,11 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
             .HasForeignKey(e => e.OrchestrationTaskId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(e => e.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(e => e.TenantId);
 
         builder.HasIndex(e => e.OrchestrationTaskId);

@@ -45,6 +45,11 @@ public sealed class AgentMessageConfiguration : IEntityTypeConfiguration<AgentMe
             .HasForeignKey(m => m.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(m => m.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(m => m.TenantId);
     }
 }

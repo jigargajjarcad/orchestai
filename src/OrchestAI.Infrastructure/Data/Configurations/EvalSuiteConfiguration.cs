@@ -42,6 +42,11 @@ public sealed class EvalSuiteConfiguration : IEntityTypeConfiguration<EvalSuite>
             .HasForeignKey(c => c.SuiteId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(s => s.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(s => s.TenantId);
 
         builder.HasIndex(s => s.TargetAgentType);

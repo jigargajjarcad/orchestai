@@ -68,6 +68,11 @@ public sealed class EvalResultConfiguration : IEntityTypeConfiguration<EvalResul
             .HasForeignKey(r => r.EvalCaseId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(r => r.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => new { r.EvalRunId, r.EvalCaseId })

@@ -95,4 +95,32 @@ public sealed class TenantBackfillIntegrationTests
         exception.Which.SqlState.Should().Be("23514", "23514 is Postgres's check_violation error code");
         exception.Which.ConstraintName.Should().Be("CK_ApiKeys_TenantId_NotDefault");
     }
+
+    [Fact]
+    public async Task Insert_WithNonExistentTenantId_ThrowsForeignKeyViolation()
+    {
+        // Proves the 13 tenant-scoped tables are FK-constrained (ON DELETE RESTRICT) to Tenants,
+        // not merely indexed — a raw INSERT referencing a TenantId that doesn't exist in Tenants
+        // must be rejected by the database itself (Task 6 follow-up: AddTenantForeignKeys migration).
+        //
+        // CostRollups is used (rather than OrchestrationTasks) because its only foreign key is
+        // TenantId -> Tenants — its UserId column has no FK constraint. OrchestrationTasks also has
+        // FK_OrchestrationTasks_Users_UserId, and with an empty Users table in this environment a
+        // random UserId would violate that constraint first, making the test pass for the wrong
+        // reason (a Users FK violation, not the Tenants FK violation this test targets).
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            """
+            INSERT INTO "CostRollups" ("Id", "Date", "UserId", "AgentType", "Model", "TenantId")
+            VALUES (gen_random_uuid(), CURRENT_DATE, gen_random_uuid(), 'should-never-persist', 'should-never-persist', gen_random_uuid())
+            """, connection);
+
+        var act = async () => await cmd.ExecuteNonQueryAsync();
+
+        var exception = await act.Should().ThrowAsync<PostgresException>();
+        exception.Which.SqlState.Should().Be("23503", "23503 is Postgres's foreign_key_violation error code");
+        exception.Which.ConstraintName.Should().Be("FK_CostRollups_Tenants_TenantId");
+    }
 }

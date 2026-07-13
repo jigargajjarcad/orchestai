@@ -66,6 +66,11 @@ public sealed class CostLedgerConfiguration : IEntityTypeConfiguration<CostLedge
             .HasForeignKey(cl => cl.AgentExecutionId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(cl => cl.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(cl => new { cl.OrchestrationTaskId, cl.RecordedAt })
             .IsDescending(false, true);
 

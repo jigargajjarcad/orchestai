@@ -80,6 +80,11 @@ public sealed class EvalRunConfiguration : IEntityTypeConfiguration<EvalRun>
             .HasForeignKey(r => r.BaselineRunId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(r => r.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => r.SuiteId);

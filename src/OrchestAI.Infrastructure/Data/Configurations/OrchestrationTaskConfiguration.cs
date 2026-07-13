@@ -102,6 +102,11 @@ public sealed class OrchestrationTaskConfiguration : IEntityTypeConfiguration<Or
             .HasForeignKey(e => e.OrchestrationTaskId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(t => t.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(t => new { t.UserId, t.CreatedAt })
             .IsDescending(false, true);
 

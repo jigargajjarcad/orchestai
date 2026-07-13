@@ -33,6 +33,12 @@ public sealed class RunEvalSuiteHandler : IRequestHandler<RunEvalSuiteCommand, R
         if (string.IsNullOrWhiteSpace(request.SubjectVersion))
             throw new ValidationException(nameof(request.SubjectVersion), "SubjectVersion is required.");
 
+        if (request.BaselineRunId is { } baselineRunId)
+        {
+            _ = await _runRepository.GetByIdAsync(baselineRunId, cancellationToken).ConfigureAwait(false)
+                ?? throw new NotFoundException(nameof(EvalRun), baselineRunId);
+        }
+
         var run = EvalRun.Create(suite.Id, request.SubjectVersion, request.BaselineRunId);
         await _runRepository.AddAsync(run, cancellationToken).ConfigureAwait(false);
         await _queue.EnqueueAsync(run.Id, cancellationToken).ConfigureAwait(false);

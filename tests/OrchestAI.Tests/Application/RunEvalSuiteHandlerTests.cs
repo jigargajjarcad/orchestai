@@ -75,4 +75,29 @@ public sealed class RunEvalSuiteHandlerTests
 
         await act.Should().ThrowAsync<ValidationException>();
     }
+
+    [Fact]
+    public async Task Handle_BaselineRunIdBelongingToAnotherTenant_ThrowsNotFound()
+    {
+        // Simulates the tenant-filtered repository's real behavior: a foreign-tenant
+        // BaselineRunId resolves to null via GetByIdAsync, exactly as it would once the global
+        // query filter (Task 4) is live against a real AppDbContext scoped to a different tenant.
+        var suite = EvalSuite.Create("Suite", "desc", AgentType.Research);
+        var foreignBaselineRunId = Guid.NewGuid();
+
+        var suiteRepoMock = new Mock<IEvalSuiteRepository>();
+        suiteRepoMock.Setup(r => r.GetByIdAsync(suite.Id, It.IsAny<CancellationToken>())).ReturnsAsync(suite);
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(foreignBaselineRunId, It.IsAny<CancellationToken>())).ReturnsAsync((EvalRun?)null);
+
+        var handler = new RunEvalSuiteHandler(suiteRepoMock.Object, runRepoMock.Object, Mock.Of<IEvalRunQueue>(), NullLogger<RunEvalSuiteHandler>.Instance);
+
+        var act = async () => await handler.Handle(
+            new RunEvalSuiteCommand(suite.Id, "v1", foreignBaselineRunId), CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+        runRepoMock.Verify(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no EvalRun should be created when the requested baseline can't be verified");
+    }
 }

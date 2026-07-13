@@ -45,6 +45,9 @@ public sealed class ApiKeyHasher : IApiKeyHasher
 
     public bool Verify(string rawSecret, string hashedSecret)
     {
+        if (hashedSecret is null)
+            return false;
+
         byte[] storedBytes;
         try
         {

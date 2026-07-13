@@ -90,6 +90,17 @@ public sealed class ApiKeyHasherTests
     }
 
     [Fact]
+    public void Verify_NullStoredHash_ReturnsFalseInsteadOfThrowing()
+    {
+        var hasher = new ApiKeyHasher();
+
+        var act = () => hasher.Verify("some-secret", null!);
+
+        act.Should().NotThrow();
+        hasher.Verify("some-secret", null!).Should().BeFalse();
+    }
+
+    [Fact]
     public void Hash_IsDeterministic()
     {
         var hasher = new ApiKeyHasher();

@@ -176,6 +176,71 @@ public sealed class TenantScopingInterceptorTests
         }
     }
 
+    /// <summary>
+    /// Documents a known, accepted limitation rather than testing a fix: the Modified-branch
+    /// tamper check (OriginalValue != CurrentValue) only detects a changed TenantId when the
+    /// mutation happens in-context, on an entity already tracked by the SAME DbContext (see
+    /// <see cref="SaveChanges_ExistingEntity_TenantIdCannotBeChanged"/>). For the disconnected
+    /// ctx.Set&lt;T&gt;().Update(entity) pattern every repository in this codebase uses, EF
+    /// seeds OriginalValue as a copy of whatever CurrentValue already is on the CLR object at
+    /// attach time — so a TenantId tampered with BEFORE Update() is called is invisible to
+    /// this check, no matter what value it held beforehand. This is currently inert (TenantId
+    /// has a private setter on every ITenantScoped entity, and the only factory methods that
+    /// ever set it — ApiKey.Create, CostRollup.Create — never flow through this path), so the
+    /// gap is accepted rather than hardened with an extra fresh-DB-read round-trip. This test
+    /// exists purely to give that gap a deliberate, visible signal: if a future change adds a
+    /// public/internal TenantId setter, or someone attempts to "fix" this path, this assertion
+    /// is the trip-wire that should fail and demand a decision — not a silent behavior change
+    /// with zero test coverage either way.
+    /// </summary>
+    [Fact]
+    public async Task SaveChanges_DetachedEntityWithTamperedTenantId_DoesNotThrow_DocumentingKnownLimitation()
+    {
+        var (factory, accessor) = BuildFactory(Guid.NewGuid().ToString());
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var user = TestUserFactory.Create("interceptor-detached-tamper@test.local");
+
+        Guid taskId;
+        using (accessor.SetTenant(tenantId))
+        {
+            await using var ctx = await factory.CreateDbContextAsync();
+            ctx.Users.Add(user);
+            var task = OrchestrationTask.Create(user.Id, "title", "prompt");
+            ctx.OrchestrationTasks.Add(task);
+            await ctx.SaveChangesAsync();
+            taskId = task.Id;
+        }
+
+        using (accessor.SetTenant(tenantId))
+        {
+            // Fetch in one context (context A), then tamper with TenantId directly on the CLR
+            // object via reflection BEFORE attaching it to a different context (context B) via
+            // Update() — this is what reproduces the actual gap. Tampering via
+            // ctx.Entry(...).Property("TenantId").CurrentValue AFTER Update() would NOT
+            // reproduce it: that only mutates the tracked CurrentValue, leaving the
+            // attach-time OriginalValue snapshot (the real prior value) in place, and the
+            // existing tamper check would correctly catch that (see
+            // SaveChanges_ExistingEntity_TenantIdCannotBeChanged). The gap only manifests when
+            // the tampered value is already on the object at the moment Update() runs, because
+            // that's the instant EF seeds OriginalValue as a copy of CurrentValue.
+            await using var fetchCtx = await factory.CreateDbContextAsync();
+            var detachedTask = await fetchCtx.OrchestrationTasks.SingleAsync(t => t.Id == taskId);
+            detachedTask.WithTestTenant(otherTenantId);
+
+            await using var updateCtx = await factory.CreateDbContextAsync();
+            updateCtx.OrchestrationTasks.Update(detachedTask);
+
+            var act = async () => await updateCtx.SaveChangesAsync();
+
+            await act.Should().NotThrowAsync(
+                "this documents the accepted limitation: OriginalValue is seeded from " +
+                "CurrentValue at disconnected-Update() attach time, so a TenantId tampered " +
+                "with before Update() is called is invisible to this check — see the KNOWN " +
+                "LIMITATION comment in TenantScopingInterceptor.EnforceTenantScoping");
+        }
+    }
+
     [Fact]
     public async Task SaveChanges_NonTenantScopedEntity_IsUnaffected()
     {

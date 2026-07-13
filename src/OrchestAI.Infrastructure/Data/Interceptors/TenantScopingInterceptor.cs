@@ -78,6 +78,32 @@ public sealed class TenantScopingInterceptor : SaveChangesInterceptor
                 // TenantScopingInterceptorTests.SaveChanges_ExistingEntity_TenantIdCannotBeChanged
                 // exercises, where the entity was tracked from a real DB fetch and its TenantId
                 // was then overwritten in place.
+                //
+                // KNOWN LIMITATION — read before touching this check: it only detects a changed
+                // TenantId for an entity that was already being tracked in THIS SAME DbContext
+                // before the change (fetched and mutated in-context, no intervening Update()
+                // call). For the disconnected ctx.Set<T>().Update(entity) pattern above — this
+                // codebase's standard repository convention, fetch in context A, Update() in
+                // context B — EF seeds OriginalValue as a copy of whatever CurrentValue already is
+                // on the CLR object at attach time, not from the real database row. So
+                // OriginalValue != CurrentValue can never be true for that path, regardless of
+                // what TenantId was set to before Update() was called: this check is a structural
+                // no-op there. See
+                // TenantScopingInterceptorTests.SaveChanges_DetachedEntityWithTamperedTenantId_DoesNotThrow_DocumentingKnownLimitation,
+                // which pins this down as an accepted, tested gap rather than an unnoticed one.
+                //
+                // This is safe ONLY because nothing today can present a tampered TenantId to the
+                // disconnected-Update() path in the first place: TenantId has a private setter on
+                // every ITenantScoped entity, and the only factory methods that ever set it
+                // (ApiKey.Create, CostRollup.Create — both already reviewed under ADR-014) never
+                // flow through this Modified/disconnected-Update() branch. In other words, this
+                // defense is conditional on the private-setter invariant holding across every
+                // ITenantScoped entity forever — it is not an independently-enforced runtime
+                // guarantee for the disconnected-update case. Adding a public/internal setter to
+                // any ITenantScoped.TenantId, or introducing a new factory/mutation path that sets
+                // it post-construction, would silently reopen this gap; re-verify against the
+                // fresh-DB-read hardening option (rejected here on cost grounds — an extra
+                // round-trip per tenant-scoped update) if that assumption ever changes.
                 var currentValue = (Guid)(tenantProperty.CurrentValue ?? Guid.Empty);
                 var originalValue = (Guid)(tenantProperty.OriginalValue ?? Guid.Empty);
 

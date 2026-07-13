@@ -7,5 +7,13 @@ namespace OrchestAI.Domain.Interfaces;
 // TenantId" attack surface at the design level, not just at runtime-check level.
 public interface ITenantScoped
 {
+    // Every implementation MUST declare this as `{ get; private set; }` (or stricter) — never
+    // a public/internal setter, and never a Create(...) parameter. This privacy is load-bearing:
+    // TenantScopingInterceptor's tamper check relies on nothing but EF materialization and the
+    // interceptor itself ever being able to place a value here, and the interceptor's own
+    // KNOWN LIMITATION comment (EnforceTenantScoping, Modified branch) explains exactly what
+    // silently breaks for the disconnected-Update() repository pattern if that stops being
+    // true. Adding a setter to any implementing entity requires revisiting ADR-014's
+    // interceptor section first, not just a review of that one entity.
     Guid TenantId { get; }
 }

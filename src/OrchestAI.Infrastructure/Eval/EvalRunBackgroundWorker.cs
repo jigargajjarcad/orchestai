@@ -19,13 +19,16 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
 {
     private readonly IEvalRunQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ICurrentTenantAccessor _tenantAccessor;
     private readonly ILogger<EvalRunBackgroundWorker> _logger;
 
     public EvalRunBackgroundWorker(
-        IEvalRunQueue queue, IServiceScopeFactory scopeFactory, ILogger<EvalRunBackgroundWorker> logger)
+        IEvalRunQueue queue, IServiceScopeFactory scopeFactory, ICurrentTenantAccessor tenantAccessor,
+        ILogger<EvalRunBackgroundWorker> logger)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
+        _tenantAccessor = tenantAccessor;
         _logger = logger;
     }
 
@@ -33,10 +36,10 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            Guid evalRunId;
+            EvalRunQueueItem item;
             try
             {
-                evalRunId = await _queue.DequeueAsync(stoppingToken).ConfigureAwait(false);
+                item = await _queue.DequeueAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -45,11 +48,15 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
 
             try
             {
-                await ProcessRunAsync(evalRunId, stoppingToken).ConfigureAwait(false);
+                // Restores the ambient tenant BEFORE any tenant-scoped repository call —
+                // ProcessRunAsync's very first line fetches the EvalRun itself, which is
+                // ITenantScoped, so the scope must already be active by the time it's called.
+                using var tenantScope = _tenantAccessor.SetTenant(item.TenantId);
+                await ProcessRunAsync(item.EvalRunId, stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Eval run {RunId} processing failed unexpectedly", evalRunId);
+                _logger.LogError(ex, "Eval run {RunId} processing failed unexpectedly", item.EvalRunId);
             }
         }
     }
@@ -63,11 +70,23 @@ public sealed class EvalRunBackgroundWorker : BackgroundService
         var taskRepository = scope.ServiceProvider.GetRequiredService<IOrchestrationTaskRepository>();
         var agentFactory = scope.ServiceProvider.GetRequiredService<IAgentFactory>();
         var scorerFactory = scope.ServiceProvider.GetRequiredService<IEvalScorerFactory>();
+        var tenantRepository = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
 
         var run = await runRepository.GetByIdAsync(evalRunId, cancellationToken).ConfigureAwait(false);
         if (run is null)
         {
             _logger.LogWarning("Eval run {RunId} not found, skipping", evalRunId);
+            return;
+        }
+
+        var tenant = await tenantRepository.GetByIdAsync(run.TenantId, cancellationToken).ConfigureAwait(false);
+        if (tenant is null || tenant.Status != TenantStatus.Active)
+        {
+            run.MarkFailed(tenant is null
+                ? "Owning tenant no longer exists."
+                : "Tenant was suspended after this run was enqueued.");
+            await runRepository.UpdateAsync(run, cancellationToken).ConfigureAwait(false);
+            _logger.LogWarning("Eval run {RunId} rejected — tenant {TenantId} is not active", run.Id, run.TenantId);
             return;
         }
 

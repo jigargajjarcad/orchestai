@@ -26,7 +26,7 @@ public sealed class RunEvalSuiteHandlerTests
             .Returns(Task.CompletedTask);
 
         var queueMock = new Mock<IEvalRunQueue>();
-        queueMock.Setup(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        queueMock.Setup(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var handler = new RunEvalSuiteHandler(
             suiteRepoMock.Object, runRepoMock.Object, queueMock.Object, NullLogger<RunEvalSuiteHandler>.Instance);
@@ -38,7 +38,7 @@ public sealed class RunEvalSuiteHandlerTests
         captured!.Status.Should().Be(EvalRunStatus.Pending);
         captured.SubjectVersion.Should().Be("commit-abc123");
         response.EvalRunId.Should().Be(captured.Id);
-        queueMock.Verify(q => q.EnqueueAsync(captured.Id, It.IsAny<CancellationToken>()), Times.Once);
+        queueMock.Verify(q => q.EnqueueAsync(captured.Id, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

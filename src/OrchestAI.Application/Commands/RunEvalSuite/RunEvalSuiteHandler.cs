@@ -41,7 +41,7 @@ public sealed class RunEvalSuiteHandler : IRequestHandler<RunEvalSuiteCommand, R
 
         var run = EvalRun.Create(suite.Id, request.SubjectVersion, request.BaselineRunId);
         await _runRepository.AddAsync(run, cancellationToken).ConfigureAwait(false);
-        await _queue.EnqueueAsync(run.Id, cancellationToken).ConfigureAwait(false);
+        await _queue.EnqueueAsync(run.Id, run.TenantId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Enqueued eval run {RunId} for suite {SuiteId} (subject={SubjectVersion}, baseline={BaselineRunId})",

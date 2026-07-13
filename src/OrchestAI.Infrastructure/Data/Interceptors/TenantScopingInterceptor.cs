@@ -60,10 +60,30 @@ public sealed class TenantScopingInterceptor : SaveChangesInterceptor
 
                 tenantProperty.CurrentValue = tenantId;
             }
-            else if (entry.State is EntityState.Modified && tenantProperty.IsModified)
+            else if (entry.State is EntityState.Modified)
             {
-                throw new TenantContextViolationException(
-                    $"TenantId on an existing {entry.Entity.GetType().Name} must never change after creation.");
+                // Deliberately compares OriginalValue against CurrentValue rather than trusting
+                // tenantProperty.IsModified: every repository in this codebase uses
+                // IDbContextFactory (a fresh DbContext per call), so the standard "fetch in one
+                // context, mutate the CLR object, then ctx.Set<T>().Update(entity) in a new
+                // context" pattern attaches a previously-untracked entity graph. EF Core's
+                // Update() marks EVERY scalar property IsModified=true on such a graph (it has no
+                // baseline to diff against) — including TenantId, even when its value is
+                // identical to what's already persisted. Trusting IsModified here would reject
+                // every legitimate status update (EvalRun.MarkRunning/Completed/Failed,
+                // OrchestrationTask transitions, etc.) the instant tenant scoping went live.
+                // OriginalValue still equals CurrentValue in that false-positive case (EF seeds
+                // both from the same CLR value at attach time), so this comparison only trips for
+                // an actual attempted change — e.g. the in-context tampering
+                // TenantScopingInterceptorTests.SaveChanges_ExistingEntity_TenantIdCannotBeChanged
+                // exercises, where the entity was tracked from a real DB fetch and its TenantId
+                // was then overwritten in place.
+                var currentValue = (Guid)(tenantProperty.CurrentValue ?? Guid.Empty);
+                var originalValue = (Guid)(tenantProperty.OriginalValue ?? Guid.Empty);
+
+                if (currentValue != originalValue)
+                    throw new TenantContextViolationException(
+                        $"TenantId on an existing {entry.Entity.GetType().Name} must never change after creation.");
             }
         }
     }

@@ -132,6 +132,51 @@ public sealed class TenantScopingInterceptorTests
     }
 
     [Fact]
+    public async Task SaveChanges_DetachedEntityUpdatedViaRepositoryPattern_DoesNotFalsePositive()
+    {
+        // Every repository in this codebase (EvalRunRepository, OrchestrationTaskRepository,
+        // AgentExecutionRepository, ApiKeyRepository, ...) uses IDbContextFactory — a fresh
+        // DbContext per call — so a normal "fetch, mutate the CLR object, then
+        // ctx.Set<T>().Update(entity)" status-update flow always attaches a previously-untracked
+        // entity graph. EF Core's Update() marks EVERY scalar property (including the unchanged
+        // TenantId) as IsModified=true in that case, since it has no original snapshot to diff
+        // against. This test proves that no longer trips the interceptor's tamper check.
+        var (factory, accessor) = BuildFactory(Guid.NewGuid().ToString());
+        var tenantId = Guid.NewGuid();
+        var user = TestUserFactory.Create("interceptor-detached-update@test.local");
+
+        Guid taskId;
+        using (accessor.SetTenant(tenantId))
+        {
+            await using var ctx = await factory.CreateDbContextAsync();
+            ctx.Users.Add(user);
+            var task = OrchestrationTask.Create(user.Id, "title", "prompt");
+            ctx.OrchestrationTasks.Add(task);
+            await ctx.SaveChangesAsync();
+            taskId = task.Id;
+        }
+
+        using (accessor.SetTenant(tenantId))
+        {
+            // Simulates OrchestrationTaskRepository.UpdateAsync exactly: a fresh context, a
+            // detached entity instance (fetched via a separate context, mirroring the repository
+            // pattern), attached and marked Modified via Update() — not mutated in place on an
+            // already-tracked instance.
+            await using var fetchCtx = await factory.CreateDbContextAsync();
+            var detachedTask = await fetchCtx.OrchestrationTasks.SingleAsync(t => t.Id == taskId);
+
+            await using var updateCtx = await factory.CreateDbContextAsync();
+            detachedTask.MarkRunning();
+            updateCtx.OrchestrationTasks.Update(detachedTask);
+
+            var act = async () => await updateCtx.SaveChangesAsync();
+
+            await act.Should().NotThrowAsync(
+                "TenantId's value is unchanged — only EF's disconnected-update tracking flagged it as dirty, which must not be treated as a real tenant change");
+        }
+    }
+
+    [Fact]
     public async Task SaveChanges_NonTenantScopedEntity_IsUnaffected()
     {
         var (factory, accessor) = BuildFactory(Guid.NewGuid().ToString());

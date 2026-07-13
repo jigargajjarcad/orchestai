@@ -89,7 +89,7 @@ public sealed class RequestPostHocScoringExplicitTraceIdsCrossTenantTests
             .Setup(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var queueMock = new Mock<IEvalRunQueue>();
-        queueMock.Setup(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        queueMock.Setup(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         var options = Options.Create(new EvalOptions { MaxPostHocTracesPerRequestCeiling = 500 });
 
         var handler = new RequestPostHocScoringHandler(

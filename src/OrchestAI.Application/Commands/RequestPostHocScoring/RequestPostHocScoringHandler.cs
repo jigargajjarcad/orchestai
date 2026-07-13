@@ -88,7 +88,7 @@ public sealed class RequestPostHocScoringHandler
         var subjectVersion = $"posthoc-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
         var run = EvalRun.CreatePostHoc(subjectVersion, request.Rubric, selectionCriteriaJson, request.ForceRescore);
         await _runRepository.AddAsync(run, cancellationToken).ConfigureAwait(false);
-        await _queue.EnqueueAsync(run.Id, cancellationToken).ConfigureAwait(false);
+        await _queue.EnqueueAsync(run.Id, run.TenantId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Enqueued post-hoc scoring run {RunId} for {TraceCount} traces (agentType={AgentType})",

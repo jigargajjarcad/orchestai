@@ -90,6 +90,16 @@ public sealed class PostHocScoringIntegrationTests
         services.AddSingleton<IAgentExecutionRepository>(executionRepository);
         services.AddSingleton<IAgentFactory>(Mock.Of<IAgentFactory>());
 
+        // This test predates tenant scoping and runs entirely under the Guid.Empty sentinel
+        // tenant (see the comment above) — there's no real Tenant row to look up, so the
+        // Task 11 suspension check needs a stub that reports any tenant as active rather than
+        // a real ITenantRepository against an empty Tenants table.
+        var tenantRepoMock = new Mock<ITenantRepository>();
+        tenantRepoMock
+            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Tenant.Create("Test Tenant", "test-tenant"));
+        services.AddSingleton<ITenantRepository>(tenantRepoMock.Object);
+
         var providerMock = new Mock<ILlmProvider>();
         providerMock.Setup(p => p.ProviderId).Returns("anthropic");
         providerMock
@@ -114,7 +124,7 @@ public sealed class PostHocScoringIntegrationTests
 
         var worker = new EvalRunBackgroundWorker(
             Mock.Of<IEvalRunQueue>(), provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<EvalRunBackgroundWorker>.Instance);
+            accessor, NullLogger<EvalRunBackgroundWorker>.Instance);
 
         await worker.ProcessRunAsync(triggerResponse.EvalRunId, CancellationToken.None);
 

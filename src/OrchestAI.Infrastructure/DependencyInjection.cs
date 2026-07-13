@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.Configure<EvalOptions>(configuration.GetSection(EvalOptions.SectionName));
 
         services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
+        services.AddSingleton<IApiKeyHasher, ApiKeyHasher>();
 
         var apiKey = configuration["Anthropic:ApiKey"]
             ?? throw new InvalidOperationException(

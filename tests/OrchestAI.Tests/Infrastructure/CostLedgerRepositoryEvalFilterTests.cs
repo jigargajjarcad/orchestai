@@ -56,7 +56,7 @@ public sealed class CostLedgerRepositoryEvalFilterTests
             await seedCtx.SaveChangesAsync();
         }
 
-        var repository = new CostLedgerRepository(factory);
+        var repository = new CostLedgerRepository(factory, accessor);
         var aggregates = await repository.GetDailyAggregatesAsync(today, today, CancellationToken.None);
 
         aggregates.Should().ContainSingle();

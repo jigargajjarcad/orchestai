@@ -58,13 +58,11 @@ public sealed class TenantScopedEntitiesTests
         ledger.TenantId.Should().Be(Guid.Empty);
     }
 
-    [Fact]
-    public void CostRollup_ImplementsITenantScoped_DefaultsToEmpty()
-    {
-        var rollup = CostRollup.Create(DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), AgentType.Research, "model", 10, 5, 0.01m, 1);
-        (rollup as ITenantScoped).Should().NotBeNull();
-        rollup.TenantId.Should().Be(Guid.Empty);
-    }
+    // CostRollup is deliberately excluded from this class: its Create(...) is one of exactly two
+    // named exceptions (alongside ApiKey.Create, also excluded here — see ApiKeyTests.cs) to
+    // "TenantId is never settable via any public factory." CostRollup.Create takes an explicit
+    // tenantId parameter by design (Task 12 / ADR-014 confirmation #5b), so it does not default
+    // to Guid.Empty the way every other entity in this file does.
 
     [Fact]
     public void McpToolCall_ImplementsITenantScoped_DefaultsToEmpty()

@@ -36,6 +36,16 @@ public sealed class TenantScopingInterceptor : SaveChangesInterceptor
     {
         if (context is null) return;
 
+        // Narrow, audited bypass for CostRollupBackgroundService (Task 12) — the ONE job that
+        // legitimately writes many different tenants' ITenantScoped rows in a single SaveChanges
+        // batch, with each row's TenantId already derived from an authoritative SQL join rather
+        // than trusted from a caller. This is a separate, independent AsyncLocal<bool> checked
+        // before any of the Added/Modified logic below runs — it does not alter, weaken, or
+        // short-circuit that logic for any other caller; it only skips it entirely for this one
+        // flagged scope. See ADR-014 confirmation #5b and
+        // ICurrentTenantAccessor.IsSystemWriteScope.
+        if (_tenantAccessor.IsSystemWriteScope) return;
+
         foreach (var entry in context.ChangeTracker.Entries<ITenantScoped>())
         {
             var tenantProperty = entry.Property(nameof(ITenantScoped.TenantId));

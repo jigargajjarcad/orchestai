@@ -113,7 +113,7 @@ public sealed class PostHocScoringIntegrationTests
             .Setup(c => c.GetAsync("claude-haiku-4-5-20251001", It.IsAny<CancellationToken>()))
             .ReturnsAsync(ModelPricing.Create("claude-haiku-4-5-20251001", 0.80m, 4.00m));
 
-        var costLedgerRepository = new CostLedgerRepository(factory);
+        var costLedgerRepository = new CostLedgerRepository(factory, accessor);
         var judgeOptions = Options.Create(new EvalOptions
         {
             JudgeModel = "anthropic/claude-haiku-4-5-20251001", DefaultJudgePassThreshold = 0.7m

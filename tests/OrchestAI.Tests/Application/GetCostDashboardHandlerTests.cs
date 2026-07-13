@@ -30,7 +30,7 @@ public sealed class GetCostDashboardHandlerTests
         var from = today.AddDays(-10);
         var to = today.AddDays(-5);
 
-        var rollup = CostRollup.Create(from, UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001", 100, 50, 0.001m, 1);
+        var rollup = CostRollup.Create(from, Guid.NewGuid(), UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001", 100, 50, 0.001m, 1);
         _rollupRepositoryMock
             .Setup(r => r.GetByDateRangeAsync(from, to, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([rollup]);
@@ -51,14 +51,14 @@ public sealed class GetCostDashboardHandlerTests
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = today.AddDays(-5);
 
-        var rollup = CostRollup.Create(from, UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001", 100, 50, 0.001m, 1);
+        var rollup = CostRollup.Create(from, Guid.NewGuid(), UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001", 100, 50, 0.001m, 1);
         _rollupRepositoryMock
             .Setup(r => r.GetByDateRangeAsync(from, today.AddDays(-1), UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([rollup]);
 
         var otherUser = Guid.NewGuid();
-        var liveForUser = new CostLedgerAggregate(today, UserId, AgentType.Writer, "anthropic/claude-haiku-4-5-20251001", 30, 20, 0.0005m, 1);
-        var liveForOtherUser = new CostLedgerAggregate(today, otherUser, AgentType.Writer, "anthropic/claude-haiku-4-5-20251001", 999, 999, 9.99m, 1);
+        var liveForUser = new CostLedgerAggregate(today, Guid.Empty, UserId, AgentType.Writer, "anthropic/claude-haiku-4-5-20251001", 30, 20, 0.0005m, 1);
+        var liveForOtherUser = new CostLedgerAggregate(today, Guid.Empty, otherUser, AgentType.Writer, "anthropic/claude-haiku-4-5-20251001", 999, 999, 9.99m, 1);
         _ledgerRepositoryMock
             .Setup(r => r.GetDailyAggregatesAsync(today, today, It.IsAny<CancellationToken>()))
             .ReturnsAsync([liveForUser, liveForOtherUser]);

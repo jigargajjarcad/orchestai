@@ -7,6 +7,7 @@ using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Observability;
+using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.Tests.Infrastructure;
 
@@ -18,13 +19,14 @@ public sealed class CostRollupBackgroundServiceTests
     public async Task RunOnceAsync_NoPriorRollups_AggregatesLastThirtyDaysAndUpserts()
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var tenantId = Guid.NewGuid();
         var aggregate = new CostLedgerAggregate(
-            today, UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001",
+            today, tenantId, UserId, AgentType.Research, "anthropic/claude-haiku-4-5-20251001",
             InputTokens: 100, OutputTokens: 50, CostUsd: 0.001m, ExecutionCount: 2);
 
         var ledgerRepoMock = new Mock<ICostLedgerRepository>();
         ledgerRepoMock
-            .Setup(r => r.GetDailyAggregatesAsync(
+            .Setup(r => r.GetDailyAggregatesForRollupAsync(
                 It.Is<DateOnly>(d => d == today.AddDays(-30)), today, It.IsAny<CancellationToken>()))
             .ReturnsAsync([aggregate]);
 
@@ -36,17 +38,20 @@ public sealed class CostRollupBackgroundServiceTests
             .Setup(r => r.UpsertAsync(It.IsAny<CostRollup>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object);
+        var accessor = new AsyncLocalCurrentTenantAccessor();
+        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object, accessor);
 
         await service.RunOnceAsync(CancellationToken.None);
 
         rollupRepoMock.Verify(
             r => r.UpsertAsync(
                 It.Is<CostRollup>(c =>
-                    c.Date == today && c.UserId == UserId && c.AgentType == AgentType.Research
+                    c.Date == today && c.TenantId == tenantId && c.UserId == UserId && c.AgentType == AgentType.Research
                     && c.InputTokens == 100 && c.OutputTokens == 50 && c.ExecutionCount == 2),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        accessor.IsSystemWriteScope.Should().BeFalse(
+            "the system-write scope must be scoped to the duration of RunOnceAsync only, restored after it returns");
     }
 
     [Fact]
@@ -57,7 +62,7 @@ public sealed class CostRollupBackgroundServiceTests
 
         var ledgerRepoMock = new Mock<ICostLedgerRepository>();
         ledgerRepoMock
-            .Setup(r => r.GetDailyAggregatesAsync(
+            .Setup(r => r.GetDailyAggregatesForRollupAsync(
                 It.Is<DateOnly>(d => d == lastRolledUp.AddDays(-2)), today, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
@@ -66,12 +71,13 @@ public sealed class CostRollupBackgroundServiceTests
             .Setup(r => r.GetLastRolledUpDateAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(lastRolledUp);
 
-        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object);
+        var accessor = new AsyncLocalCurrentTenantAccessor();
+        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object, accessor);
 
         await service.RunOnceAsync(CancellationToken.None);
 
         ledgerRepoMock.Verify(
-            r => r.GetDailyAggregatesAsync(lastRolledUp.AddDays(-2), today, It.IsAny<CancellationToken>()),
+            r => r.GetDailyAggregatesForRollupAsync(lastRolledUp.AddDays(-2), today, It.IsAny<CancellationToken>()),
             Times.Once);
         rollupRepoMock.Verify(
             r => r.UpsertAsync(It.IsAny<CostRollup>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -84,7 +90,7 @@ public sealed class CostRollupBackgroundServiceTests
 
         var ledgerRepoMock = new Mock<ICostLedgerRepository>();
         ledgerRepoMock
-            .Setup(r => r.GetDailyAggregatesAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetDailyAggregatesForRollupAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var rollupRepoMock = new Mock<ICostRollupRepository>();
@@ -92,15 +98,47 @@ public sealed class CostRollupBackgroundServiceTests
             .Setup(r => r.GetLastRolledUpDateAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((DateOnly?)null);
 
-        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object);
+        var accessor = new AsyncLocalCurrentTenantAccessor();
+        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object, accessor);
 
         var act = async () => await service.RunOnceAsync(CancellationToken.None);
 
         await act.Should().NotThrowAsync();
     }
 
+    [Fact]
+    public async Task RunOnceAsync_WhileFetchingAggregates_IsSystemWriteScopeIsTrue()
+    {
+        // Proves RunOnceAsync wraps its entire per-tick operation in the system-write scope —
+        // not just the final SaveChanges — since GetDailyAggregatesForRollupAsync's own
+        // production guard (CostLedgerRepository) depends on the scope being active for the
+        // whole call, not just the write at the end.
+        bool? observedDuringFetch = null;
+        var accessor = new AsyncLocalCurrentTenantAccessor();
+
+        var ledgerRepoMock = new Mock<ICostLedgerRepository>();
+        ledgerRepoMock
+            .Setup(r => r.GetDailyAggregatesForRollupAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                observedDuringFetch = accessor.IsSystemWriteScope;
+                return Task.FromResult<IReadOnlyList<CostLedgerAggregate>>(Array.Empty<CostLedgerAggregate>());
+            });
+
+        var rollupRepoMock = new Mock<ICostRollupRepository>();
+        rollupRepoMock
+            .Setup(r => r.GetLastRolledUpDateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
+
+        var service = BuildService(ledgerRepoMock.Object, rollupRepoMock.Object, accessor);
+
+        await service.RunOnceAsync(CancellationToken.None);
+
+        observedDuringFetch.Should().BeTrue();
+    }
+
     private static CostRollupBackgroundService BuildService(
-        ICostLedgerRepository ledgerRepo, ICostRollupRepository rollupRepo)
+        ICostLedgerRepository ledgerRepo, ICostRollupRepository rollupRepo, ICurrentTenantAccessor tenantAccessor)
     {
         var services = new ServiceCollection();
         services.AddSingleton(ledgerRepo);
@@ -109,6 +147,7 @@ public sealed class CostRollupBackgroundServiceTests
 
         return new CostRollupBackgroundService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            tenantAccessor,
             NullLogger<CostRollupBackgroundService>.Instance);
     }
 }

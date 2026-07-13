@@ -21,12 +21,15 @@ public sealed class CostRollupBackgroundService : BackgroundService
     private static readonly int MaxCatchUpDays = 30;
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ICurrentTenantAccessor _tenantAccessor;
     private readonly ILogger<CostRollupBackgroundService> _logger;
 
     public CostRollupBackgroundService(
-        IServiceScopeFactory scopeFactory, ILogger<CostRollupBackgroundService> logger)
+        IServiceScopeFactory scopeFactory, ICurrentTenantAccessor tenantAccessor,
+        ILogger<CostRollupBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
+        _tenantAccessor = tenantAccessor;
         _logger = logger;
     }
 
@@ -56,6 +59,11 @@ public sealed class CostRollupBackgroundService : BackgroundService
 
     internal async Task RunOnceAsync(CancellationToken cancellationToken)
     {
+        // This job legitimately aggregates and writes every tenant's rows in one pass — the one
+        // audited, narrow exception to normal tenant scoping. See ADR-014 confirmation #5b and
+        // ICurrentTenantAccessor.IsSystemWriteScope.
+        using var systemScope = _tenantAccessor.BeginSystemWriteScope();
+
         using var scope = _scopeFactory.CreateScope();
         var costLedgerRepository = scope.ServiceProvider.GetRequiredService<ICostLedgerRepository>();
         var costRollupRepository = scope.ServiceProvider.GetRequiredService<ICostRollupRepository>();
@@ -71,13 +79,13 @@ public sealed class CostRollupBackgroundService : BackgroundService
             : earliestCatchUp;
 
         var aggregates = await costLedgerRepository
-            .GetDailyAggregatesAsync(from, today, cancellationToken)
+            .GetDailyAggregatesForRollupAsync(from, today, cancellationToken)
             .ConfigureAwait(false);
 
         foreach (var aggregate in aggregates)
         {
             var rollup = CostRollup.Create(
-                aggregate.Date, aggregate.UserId, aggregate.AgentType, aggregate.Model,
+                aggregate.Date, aggregate.TenantId, aggregate.UserId, aggregate.AgentType, aggregate.Model,
                 aggregate.InputTokens, aggregate.OutputTokens, aggregate.CostUsd, aggregate.ExecutionCount);
             await costRollupRepository.UpsertAsync(rollup, cancellationToken).ConfigureAwait(false);
         }

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Configuration;
 
-namespace OrchestAI.Infrastructure.Tenancy;
+namespace OrchestAI.API.Filters;
 
 // Gates the admin-bootstrap controller (Tenant/ApiKey creation) — deliberately separate from
 // the tenant API-key auth middleware (Task 9). An ordinary tenant must never be able to create

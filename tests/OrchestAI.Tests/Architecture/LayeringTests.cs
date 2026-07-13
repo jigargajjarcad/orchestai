@@ -67,6 +67,25 @@ public sealed class LayeringTests
             FailureDetail(result, "Infrastructure must not reference API"));
     }
 
+    // Added after Task 8's RequireAdminSecretFilter (an IAsyncActionFilter) shipped inside
+    // Infrastructure.Tenancy, which forced a FrameworkReference to Microsoft.AspNetCore.App onto
+    // an otherwise plain class library. Infrastructure_DoesNotDependOnApi (above) would never have
+    // caught this — the filter had no project reference to OrchestAI.API, only to ASP.NET Core
+    // MVC types directly. This test closes that specific detection gap: MVC-specific glue
+    // (IActionFilter, controllers, model binding, etc.) belongs in the API layer, never
+    // Infrastructure, regardless of whether it happens to reference OrchestAI.API itself.
+    [Fact]
+    public void Infrastructure_DoesNotDependOnAspNetCoreMvc()
+    {
+        var result = Types.InAssembly(InfrastructureAssembly)
+            .Should()
+            .NotHaveDependencyOn("Microsoft.AspNetCore.Mvc")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            FailureDetail(result, "Infrastructure must not reference ASP.NET Core MVC types (IActionFilter, controllers, etc.) — that's API-layer business, not persistence/cross-cutting infrastructure"));
+    }
+
     // Confirms the layers actually used above resolve to distinct assemblies (Domain,
     // Application, Infrastructure, API) — if a future refactor merged two layers into one
     // assembly, the dependency checks above would trivially "pass" by having nothing to find,

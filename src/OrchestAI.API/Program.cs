@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OrchestAI.API.Filters;
 using OrchestAI.Application;
 using OrchestAI.Infrastructure;
 using OrchestAI.Infrastructure.Data;
@@ -28,6 +29,11 @@ try
     builder.Services.AddControllers()
         .AddJsonOptions(options =>
             options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
+    // Gates AdminController via [ServiceFilter(typeof(RequireAdminSecretFilter))] — registered
+    // here rather than in AddInfrastructure because the filter is MVC-specific glue (API layer),
+    // not persistence/cross-cutting infrastructure.
+    builder.Services.AddScoped<RequireAdminSecretFilter>();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>

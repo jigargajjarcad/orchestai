@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
-using OrchestAI.Infrastructure.Tenancy;
+using OrchestAI.API.Filters;
 
-namespace OrchestAI.Tests.Infrastructure;
+namespace OrchestAI.Tests.API;
 
 public sealed class RequireAdminSecretFilterTests
 {

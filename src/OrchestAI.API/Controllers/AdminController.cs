@@ -1,11 +1,11 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using OrchestAI.API.Filters;
 using OrchestAI.Application.Commands.CreateApiKey;
 using OrchestAI.Application.Commands.CreateTenant;
 using OrchestAI.Application.Commands.RevokeApiKey;
 using OrchestAI.Application.Commands.SuspendTenant;
 using OrchestAI.Application.Exceptions;
-using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.API.Controllers;
 

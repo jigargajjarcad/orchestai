@@ -2041,12 +2041,12 @@ git commit -m "feat: add IApiKeyHasher with constant-time secret verification"
 - Create: `src/OrchestAI.Application/Commands/CreateTenant/{CreateTenantCommand,CreateTenantHandler,CreateTenantResponse}.cs`
 - Create: `src/OrchestAI.Application/Commands/CreateApiKey/{CreateApiKeyCommand,CreateApiKeyHandler,CreateApiKeyResponse}.cs`
 - Create: `src/OrchestAI.Application/Commands/RevokeApiKey/{RevokeApiKeyCommand,RevokeApiKeyHandler,RevokeApiKeyResponse}.cs`
-- Create: `src/OrchestAI.Infrastructure/Tenancy/RequireAdminSecretFilter.cs`
+- Create: `src/OrchestAI.API/Filters/RequireAdminSecretFilter.cs`
 - Create: `src/OrchestAI.API/Controllers/AdminController.cs`
 - Modify: `src/OrchestAI.Infrastructure/DependencyInjection.cs` (register repositories + filter)
 - Modify: `src/OrchestAI.API/appsettings.json` / `appsettings.Development.json` (add empty `Admin:BootstrapSecret` placeholder key so the setting is discoverable, never a real value committed)
 - Test: Create `tests/OrchestAI.Tests/Application/CreateTenantHandlerTests.cs`, `CreateApiKeyHandlerTests.cs`, `RevokeApiKeyHandlerTests.cs`
-- Test: Create `tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs`
+- Test: Create `tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs`
 
 **Interfaces:**
 - Produces: `ITenantRepository { GetByIdAsync, GetBySlugAsync, AddAsync, UpdateAsync }`; `IApiKeyRepository { GetByIdAsync, GetByPublicKeyIdAsync, AddAsync, UpdateAsync }`; `CreateTenantCommand(string Name, string Slug)`; `CreateApiKeyCommand(Guid TenantId, string? DisplayName)` → returns the raw key **exactly once**, rejects `Tenant.DefaultTenantId`; `RevokeApiKeyCommand(Guid ApiKeyId)`; `SuspendTenantCommand(Guid TenantId)` (Step 13); `RequireAdminSecretFilter : IAsyncActionFilter` — checks `X-Admin-Secret` header against `Admin:BootstrapSecret` config via constant-time comparison, 503 if unconfigured, 401 if missing/wrong.
@@ -2225,7 +2225,7 @@ public sealed class RevokeApiKeyHandlerTests
 }
 ```
 
-Create `tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs`:
+Create `tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs`:
 
 ```csharp
 using FluentAssertions;
@@ -2784,11 +2784,11 @@ Expected: 0 errors.
 git add src/OrchestAI.Domain/Interfaces/ITenantRepository.cs src/OrchestAI.Domain/Interfaces/IApiKeyRepository.cs \
   src/OrchestAI.Infrastructure/Repositories/TenantRepository.cs src/OrchestAI.Infrastructure/Repositories/ApiKeyRepository.cs \
   src/OrchestAI.Application/Commands/CreateTenant/ src/OrchestAI.Application/Commands/CreateApiKey/ \
-  src/OrchestAI.Application/Commands/RevokeApiKey/ src/OrchestAI.Infrastructure/Tenancy/RequireAdminSecretFilter.cs \
+  src/OrchestAI.Application/Commands/RevokeApiKey/ src/OrchestAI.API/Filters/RequireAdminSecretFilter.cs \
   src/OrchestAI.API/Controllers/AdminController.cs src/OrchestAI.Infrastructure/DependencyInjection.cs \
   src/OrchestAI.API/appsettings.json src/OrchestAI.API/appsettings.Development.json \
   tests/OrchestAI.Tests/Application/CreateTenantHandlerTests.cs tests/OrchestAI.Tests/Application/CreateApiKeyHandlerTests.cs \
-  tests/OrchestAI.Tests/Application/RevokeApiKeyHandlerTests.cs tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs
+  tests/OrchestAI.Tests/Application/RevokeApiKeyHandlerTests.cs tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs
 git commit -m "feat: add operator-only Tenant/ApiKey bootstrap commands and admin-secret-gated controller"
 ```
 

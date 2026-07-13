@@ -9,6 +9,14 @@
     <InternalsVisibleTo Include="OrchestAI.Tests" />
   </ItemGroup>
 
+  <!-- RequireAdminSecretFilter (Task 8) implements IAsyncActionFilter and needs
+       Microsoft.AspNetCore.Mvc.Filters/Http types. Infrastructure is a plain class library
+       (Microsoft.NET.Sdk, not Sdk.Web) so it needs this FrameworkReference explicitly — the API
+       project gets it implicitly via Sdk.Web. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />

@@ -63,6 +63,9 @@ public static class DependencyInjection
         services.AddScoped<IEvalSuiteRepository, EvalSuiteRepository>();
         services.AddScoped<IEvalRunRepository, EvalRunRepository>();
         services.AddScoped<IEvalResultRepository, EvalResultRepository>();
+        services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<RequireAdminSecretFilter>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();

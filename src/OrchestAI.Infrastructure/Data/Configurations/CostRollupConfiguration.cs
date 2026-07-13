@@ -64,7 +64,13 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
             .HasForeignKey(r => r.TenantId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(r => new { r.Date, r.UserId, r.AgentType, r.Model })
+        // TenantId is included in the unique tuple (not just Date/UserId/AgentType/Model) because
+        // User is a global, non-tenant-scoped entity — the same UserId (e.g.
+        // DatabaseSeeder.EvalSystemUserId, used to attribute live-suite eval runs regardless of who
+        // triggered them) can legitimately appear across multiple tenants. Without TenantId here,
+        // two different tenants' rollups for the same (Date, UserId, AgentType, Model) would
+        // collide on this index. See Task 12 follow-up.
+        builder.HasIndex(r => new { r.Date, r.TenantId, r.UserId, r.AgentType, r.Model })
             .IsUnique();
 
         builder.HasIndex(r => r.TenantId);

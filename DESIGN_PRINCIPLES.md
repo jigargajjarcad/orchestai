@@ -67,3 +67,16 @@ When an existing mechanism already solves a new problem's shape (`EvalCase.Creat
 reusing `IEvalScorer` unchanged for post-hoc scoring; `TenantScopingInterceptor` mirroring
 `UpdatedAtInterceptor`'s exact shape), extend or reuse it rather than introducing a parallel
 abstraction that could drift from the original over time.
+
+## Operational state vs. audit state
+Separate transient operational state from durable audit state. Operational state exists only to
+support the system's current behavior (reservations, rate-limiter counters, concurrency slots,
+queue depth, caches). It is ephemeral, may be reconstructed or discarded after failures, and
+should never become part of the permanent historical record. Audit state records what actually
+happened during execution (traces, spans, immutable cost ledger entries, evaluation results).
+Audit state is immutable, durable, and must never be rewritten or derived from operational state.
+This principle was implicit in the design decisions made during Weeks 7-10 (the cost ledger has
+always been the append-only source of truth that `CostRollup` derives from, never the reverse) and
+is now made explicit as a standing architectural rule for future development. Every new feature
+should ask: Is this operational state or audit state? Does this belong in the immutable record?
+Can losing this state after a crash affect history, or only future behavior?

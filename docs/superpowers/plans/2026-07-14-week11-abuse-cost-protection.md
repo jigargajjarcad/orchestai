@@ -4883,3 +4883,23 @@ git commit -m "docs: add ADR-015 for abuse and cost protection"
 - [ ] Run `dotnet test` — confirm the full suite is green and report the final count against the pre-Task-1 baseline.
 - [ ] Confirm every one of the brief's required tests (Tests section) maps to an actual test written somewhere in Tasks 1-11: rate limit → `RateLimiterPartitioningTests` (Task 9); concurrency limit → `OrchestrationAdmissionRepositoryTests`/`AdmissionConcurrencyRaceTests` (Tasks 6, 11); budget exceeded + concurrent budget race → `AdmissionConcurrencyRaceTests` (Task 11); idempotency (duplicate + TTL expiry + mismatched payload) → `CreateOrchestrationTaskIdempotencyTests` (Task 4) + `IdempotencyRecordExpiryTests` (Task 11); orchestrator cap (agents) → `StartOrchestrationAgentCapTests` (Task 8); cross-tenant isolation → `RateLimiterPartitioningTests` (Task 9), `InMemoryEvalRunQueueTests` (Task 10), `AdmissionConcurrencyRaceTests` (Task 11); rejections queryable → `GetRejectionsHandlerTests` (Task 2). Note `MaxToolCallsPerTask`'s AgentBase-level integration gap explicitly (Task 11's documented limitation) rather than silently treating it as covered.
 - [ ] Confirm `git branch --contains` shows every commit reachable from the working branch tip, per this project's standing subagent-dispatch safeguard.
+
+---
+
+### Task 13 (deferred, scheduled — not part of this week's execution pass): `AgentBase`-level `MaxToolCallsPerTask` integration test
+
+**Status:** explicitly deferred, confirmed with the user (2026-07-14), not silently dropped. Tasks 1-12 leave `MaxToolCallsPerTask` proven only at the unit level (`AsyncLocalTaskToolCallBudgetTests`, Task 8) plus reasoning about how `AgentCapExceededException` propagates through `AgentBase.ExecuteAsync`'s existing catch-all — there is no real end-to-end proof that a sub-agent's tool-call loop actually stops and fails the task cleanly once the cap is hit. This is one of exactly two structural-cap enforcement mechanisms this week exists to deliver (`MaxAgentsPerTask` is the other, and *is* fully integration-tested — Task 8). A cost-protection mechanism with one of its two halves unproven at integration level is not "Week 11 done," it is "Week 11 mostly done" — this task is what closes that gap, and per the user's explicit instruction it must be addressed before Week 11 is treated as fully closed, ahead of starting Week 12 — not bundled into unrelated future work where it is easy to deprioritize.
+
+**Why this wasn't just written into Task 8:** writing a correct `AgentBase`-level integration test requires understanding `ILlmProvider`, `IMcpTool`, and `ToolRegistry` well enough to mock a multi-turn tool-use conversation realistically — none of which this plan's investigation read in full. A rushed mock built on an unverified understanding of that stack risks testing the wrong thing while appearing to pass, which is a worse outcome than an honestly documented gap.
+
+- [ ] **Step 1: Read the agent-execution stack in full before writing anything**
+
+Read, in full, not excerpted: `src/OrchestAI.Domain/Interfaces/ILlmProvider.cs`, `src/OrchestAI.Domain/Interfaces/IMcpTool.cs`, `src/OrchestAI.Domain/Interfaces/IToolRegistry.cs`, `src/OrchestAI.Infrastructure/Tools/ToolRegistry.cs`, and the `AgentConversation`/`AgentTurn`/`ToolRequest`/`ToolResultContent` model types referenced by `AgentBase.ExecuteAsync` (`src/OrchestAI.Domain/Models/`). Confirm exactly what a fake `ILlmProvider.SendAsync` needs to return to make `AgentBase.ExecuteAsync`'s agentic loop request N tool calls across one or more turns — this is the actual mechanism under test.
+
+- [ ] **Step 2: Write a real integration test**
+
+Using a concrete `ResearchAgent` (or another concrete agent — pick whichever has the simplest `AvailableToolNames`) with a fake `ILlmProvider` that returns `turn.StopReason == "tool_use"` with more `ToolRequests` than `MaxToolCallsPerTask` across its configured `MaxAgenticIterations`, and a `TenantLimits`/`ITaskToolCallBudget` scope opened with a small cap (e.g. 2): confirm the agent's `AgentExecutionResult.Success` is `false`, the error reflects the tool-call cap, and — driven through `StartOrchestrationHandler` rather than the agent in isolation — the owning `OrchestrationTask` ends in `Failed` status with a `RejectionEvent` recorded (`Reason == AgentCapExceeded`), never `Completed`.
+
+- [ ] **Step 3: Run and commit**
+
+Run the new test file, confirm the full suite stays green, commit with a message referencing this deferred task and the original Week 11 plan.

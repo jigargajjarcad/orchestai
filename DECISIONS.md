@@ -507,3 +507,278 @@ against every existing frontend consumer of enum-typed fields (all already treat
 - The first post-hoc-eligible `IEvalScorer` other than `LlmJudge` (Decision 7).
 - The first real post-hoc batch large enough that `MaxPostHocTracesPerRequestCeiling`'s default
   of 500 becomes a genuine throughput bottleneck rather than a safety rail.
+
+## ADR-014: Tenant Identity and Isolation
+
+**Status:** Accepted
+
+### Investigation — what already existed vs. what's net-new
+Confirmed by reading every entity in `src/OrchestAI.Domain/Entities/` in full: 13 entities
+already carried an ownership chain back to a `User` (directly or transitively via
+`OrchestrationTask`/`AgentExecution`), but `EvalSuite`/`EvalCase`/`EvalRun`/`EvalResult` had
+**zero** ownership concept — every "user" implicitly shared one global eval-suite space since
+Week 8. Zero authentication of any kind existed (`Program.cs` has no `UseAuthentication()`/
+`UseAuthorization()`, confirmed by full read); every `UserId` in this codebase was a plain,
+unvalidated `Guid` supplied by the caller. `User` itself carries no auth/tenant field —
+deliberately left untouched this week; `Tenant` is a new, separate identity layer, not a
+retrofit of `User`.
+
+### Confirmation #1 — Tenant definition
+One `Tenant` = one external org/customer; `ApiKey` is many-to-one to `Tenant` (revoking a key
+never orphans data). `User` stays an internal actor label, orthogonal to `Tenant` — not part of
+the auth chain this week. Introducing a `User`-belongs-to-`Tenant` relationship, or any
+within-tenant RBAC, is explicitly deferred (non-goal).
+
+### Confirmation #2 — Tenant-scoped tables
+13 entities implement a new `ITenantScoped` marker interface: `OrchestrationTask`,
+`AgentExecution`, `AgentMemory`, `AgentMessage`, `AgentRetryAttempt`, `CostLedger`, `CostRollup`,
+`McpToolCall`, `TaskCheckpoint`, `EvalSuite`, `EvalCase`, `EvalRun`, `EvalResult`. `ModelPricing`
+and `User` remain global/shared, `Tenant`/`ApiKey` are the identity layer itself (also not
+`ITenantScoped` — there is no "current tenant" to scope a tenant lookup to before one is
+resolved). `EvalSuite`/`EvalCase`/`EvalRun`/`EvalResult` becoming tenant-private is a deliberate,
+user-visible behavior change from Week 8-9: eval suites are no longer implicitly global.
+
+All 13 tables are FK-constrained to `Tenants` (`ON DELETE RESTRICT`), not merely indexed — a
+tenant row can never be deleted while it still has referencing data in any of these tables. This
+took two migrations, not one: `AddTenantIsolation` (Task 6) added the `TenantId` columns, backfill,
+and the `ApiKeys`-specific `CK_ApiKeys_TenantId_NotDefault` check constraint, but did not configure
+the `HasOne(Tenant)` relationship on the 13 existing tables' EF configurations — the original plan
+draft described these tables as "FK-constrained" but Task 2's entity/config changes never actually
+added that relationship. This gap was caught during Task 6's review and escalated for a human
+decision (add the real FKs vs. document the gap and defer); the decision was to add them, landing
+as a second, immediately-following migration, `AddTenantForeignKeys`.
+
+### Confirmation #3 — Centralized enforcement, reads and writes, plus explicit relationship checks
+EF Core global query filters, applied **generically** via reflection over every entity
+implementing `ITenantScoped` in `AppDbContext.OnModelCreating` — a future entity that implements
+the interface is protected automatically, with no per-entity `HasQueryFilter` call to remember.
+Writes are enforced by a new `TenantScopingInterceptor` (mirroring the existing
+`UpdatedAtInterceptor` pattern exactly): it stamps `TenantId` on every new `ITenantScoped` entity
+from the ambient tenant, and rejects (never silently overwrites) any entity that somehow already
+carries a mismatched `TenantId`. No domain `Create(...)` factory accepts a `TenantId` parameter
+(the two named exceptions are `ApiKey.Create` and `CostRollup.Create` — see the note below
+Confirmation #5b) — this closes the "client-supplied `TenantId`" attack surface at the design
+level, not just at a runtime check.
+
+The filter/interceptor pair is the *default*, not the *only*, mechanism: `RunEvalSuiteCommand`'s
+`BaselineRunId` needed an explicit new ownership lookup (the handler never looked the referenced
+run up at all before this week), while `ResumeOrchestrationTaskCommand`'s `TaskId` and
+`RequestPostHocScoringCommand`'s explicit `TraceIds` turned out to already be correctly handled
+by the filter alone (a foreign ID is either invisible — 404 — or silently excluded from a
+resolved set, consistent with how these commands already treat "not visible" elsewhere). Each of
+these three was verified individually against the actual current handler code, not assumed.
+
+**Known, accepted limitation — disconnected-`Update()` cannot detect a tampered `TenantId`.**
+`TenantScopingInterceptor`'s write-side tamper check compares `OriginalValue != CurrentValue` on
+the `Modified` branch (not EF's `IsModified` flag — see Implementation notes below for why). This
+correctly catches an in-context tampering attempt (an entity fetched and mutated within the same
+`DbContext`), which is what `TenantScopingInterceptorTests.SaveChanges_ExistingEntity_TenantIdCannotBeChanged`
+exercises. It is a structural no-op, however, for this codebase's standard repository pattern —
+fetch in one `DbContext` (via `IDbContextFactory`), then `ctx.Set<T>().Update(entity)` in a fresh
+one — because EF seeds `OriginalValue` from whatever `CurrentValue` already is on the CLR object at
+attach time, not from the real database row, so the two can never differ regardless of what
+`TenantId` was set to before `Update()` was called. This is accepted as safe today only because
+`ITenantScoped.TenantId` has a private setter on every implementing entity with no code path that
+mutates it post-construction (the only writers are `TenantScopingInterceptor` itself and the two
+named `Create(...)` exceptions above, neither of which flows through the disconnected-`Update()`
+path) — not because the disconnected-update path independently re-verifies this at runtime. Pinned
+down by `TenantScopingInterceptorTests.SaveChanges_DetachedEntityWithTamperedTenantId_DoesNotThrow_DocumentingKnownLimitation`
+as a deliberate, tested gap rather than an unnoticed one. Adding a public/internal setter to any
+`ITenantScoped.TenantId`, or a new factory/mutation path that sets it post-construction, would
+silently reopen this gap — see the code comments on `TenantScopingInterceptor.cs` and
+`ITenantScoped.cs` before touching either.
+
+### Confirmation #4 — Fail closed
+The filter is `e.TenantId == accessor.TenantId`, comparing a non-nullable `Guid` against a
+`Guid?`. With no ambient tenant, `accessor.TenantId` is `null`, and SQL's `x = NULL` is never
+`TRUE` — reads return zero rows with no special-casing, and critically, no `||` fallback branch
+was written that could flip this fail-open. The interceptor explicitly throws
+`TenantContextViolationException` on any write with no resolved tenant. The default/system
+tenant (`00000000-0000-0000-0000-000000000001`, created by the `AddTenantIsolation` migration for
+backfill only) has zero `ApiKey` rows, ever — there is no code path that could mint one for it,
+since key issuance always requires an explicit, already-existing `TenantId` argument.
+
+### Confirmation #5 — Background propagation
+`TenantId` travels explicitly with queued work: `EvalRunQueueItem(Guid EvalRunId, Guid TenantId)`
+replaces the old bare-`Guid` queue payload. The handlers don't need a new dependency to supply
+this — by the time `RunEvalSuiteHandler`/`RequestPostHocScoringHandler` call
+`_runRepository.AddAsync(run, ct)`, `TenantScopingInterceptor` has already stamped `run.TenantId`
+from the ambient tenant (set by the auth middleware for the whole HTTP request), and because the
+interceptor sets it via `entry.Property(...).CurrentValue`, the in-memory entity reflects the
+stamped value too — the handler just reads `run.TenantId` straight off the entity.
+`EvalRunBackgroundWorker.ExecuteAsync` restores the ambient tenant scope from the dequeued item
+**before** `ProcessRunAsync` touches any tenant-scoped repository (its very first call fetches
+the `EvalRun` itself, which is `ITenantScoped`), and checks the owning tenant's status
+(`Active`/`Suspended`/deleted) before doing any further work — a tenant suspended after enqueue
+gets its queued run marked `Failed` with a clear reason, never silently completed.
+
+### Confirmation #5b — Cost rollup: a deliberate, narrow, audited exception
+`CostRollupBackgroundService` aggregates across every tenant by nature — it cannot run inside
+any single tenant's ambient scope. A new `ICurrentTenantAccessor.BeginSystemWriteScope()` (a
+second, independent `AsyncLocal<bool>` flag) is the **only** bypass: while active,
+`TenantScopingInterceptor` skips its normal auto-stamp/reject logic entirely, and three repository
+methods explicitly call `IgnoreQueryFilters()`, each guarded by an `InvalidOperationException` if
+called outside a system-write scope, so an accidental future call from tenant-facing code fails
+loudly instead of silently leaking cross-tenant data: `ICostLedgerRepository.
+GetDailyAggregatesForRollupAsync`, `ICostRollupRepository.UpsertAsync`, and
+`ICostRollupRepository.GetLastRolledUpDateAsync`. `CostRollups` gained `TenantId` in its grouping
+key (`Date, TenantId, UserId, AgentType, Model`, both in the entity and in the unique index) so two
+tenants' costs are never collapsed into one aggregate row or into one colliding unique-index slot.
+Auditable by construction: grep for `IgnoreQueryFilters`/`BeginSystemWriteScope` and confirm each
+has exactly the call sites described here (Task 14's audit).
+
+**Two named exceptions to "no factory ever takes `TenantId`," not one:** `CostRollup.Create(...)`
+(this task) and `ApiKey.Create(...)` (Task 1) both accept an explicit `tenantId` parameter — the
+review that surfaced this during Task 1's implementation initially read as a contradiction of the
+Global Constraints until traced to its actual justification (see Task 1's code comment on
+`ApiKey.Create` and the Global Constraints entry above). Both share the same shape: a trusted
+writer with no ambient ITenantScoped write path to bypass. `CostRollup`'s writer
+(`CostRollupBackgroundService`) derives `TenantId` from an authoritative SQL join
+(`OrchestrationTask.TenantId`), never from a caller. `ApiKey`'s writer (`CreateApiKeyHandler`,
+admin-secret-gated, Task 8) has no ambient tenant scope during the call at all — the operator
+explicitly designating the tenant for a new key IS the operation. Neither is reachable from a
+tenant-authenticated request path, which is the actual property the constraint protects. Any
+*other* factory method accepting `TenantId` is a defect, not a third instance of this pattern —
+`TenantScopingCompletenessTests` (Task 13) and this ADR are what a future reviewer checks before
+accepting a claimed third exception.
+
+### Confirmation #6 — Ambient tenant mechanism
+`ICurrentTenantAccessor`, backed by `AsyncLocal<Guid?>` (plus the separate `AsyncLocal<bool>` for
+system-write scope). Chosen over `IHttpContextAccessor`/DI-scope alignment because it must serve
+both an HTTP request (set once by auth middleware) and a background-worker job (set explicitly
+per dequeued item) identically — `IHttpContextAccessor` doesn't exist in the latter, and
+`AppDbContext` instances are created per-call via `IDbContextFactory`, which resolves
+constructor dependencies from an internal per-call scope rather than the ambient HTTP request
+scope. `AsyncLocal` flows correctly across async continuations within whichever logical call
+chain is executing, independent of DI scope boundaries — proven directly by
+`AsyncLocalCurrentTenantAccessorTests`'s concurrent-flows test (two simultaneous `Task.Run`
+bodies, each setting a different tenant, never observe each other's value).
+
+### Confirmation #7 — API key format
+`orch_live_<publicKeyId>.<secret>` — a 12-character random base62 `publicKeyId` (indexed lookup
+key) and a 32-character random base62 `secret` (≈190 bits of entropy). Hashed with SHA-256, not
+a slow KDF (bcrypt/argon2 exist to resist brute-forcing a *low-entropy human-chosen* password —
+this is a long, randomly-generated machine credential, which that threat model doesn't apply
+to). Verified via `CryptographicOperations.FixedTimeEquals`, never a raw string comparison, which
+can leak timing information proportional to how many leading bytes match. The raw key is
+returned to the caller exactly once, at creation, and is never persisted, logged, or retrievable
+again — only `HashedSecret` is stored.
+
+### Confirmation #8 — Backfill and provisioning bootstrap
+One well-known default/system tenant (`00000000-0000-0000-0000-000000000001`, `Tenant.DefaultTenantId`),
+created by the `AddTenantIsolation` migration, with zero `ApiKey` rows ever — structurally
+unauthenticatable (confirmation #4), enforced at two independent layers rather than one:
+`CreateApiKeyHandler` rejects the ID explicitly at the application layer, and a Postgres `CHECK`
+constraint (`CK_ApiKeys_TenantId_NotDefault` on the `ApiKeys` table, Task 6) refuses the row at
+the database layer regardless of how the insert was attempted — a raw SQL statement, a future
+code path that forgets the handler-level check, or a bug in the handler itself all still fail.
+Convention alone ("no code path currently does this") was judged insufficient for the one
+invariant fail-closed enforcement itself depends on; a schema constraint doesn't erode as the
+codebase changes. `CreateTenantCommand`/`CreateApiKeyCommand`/`RevokeApiKeyCommand` are reachable
+only through `AdminController`, gated by `RequireAdminSecretFilter` (a static, separately
+configured `Admin:BootstrapSecret`, checked via constant-time comparison, never a tenant API
+key) — this is deliberately not the same auth path as Task 9's tenant middleware, since an
+ordinary tenant must never be able to create another tenant or mint itself unlimited keys.
+
+### Confirmation #9 — Suspension
+Invalid/missing/revoked/expired key → `401`. Valid key, `Suspended` tenant → `403`. Queued work
+for a tenant suspended after enqueue is rejected (marked `Failed` with a clear reason) when the
+worker checks status, before any further processing — never silently completed. Verified directly
+against real `TenantAuthenticationMiddleware`/`EvalRunBackgroundWorker` code, not assumed.
+
+### Confirmation #10 — Frontend authentication transition
+Temporary, explicitly non-production: an in-memory-only (module-scoped JS variable, never
+`localStorage`/`sessionStorage`, never baked into the build) API-key prompt, gating the app's
+render and injecting `Authorization: Bearer <key>` via a thin `authenticatedFetch` wrapper. This
+avoids *persistence*-based exposure (nothing survives a refresh or ships in a build artifact) —
+it does **not** avoid *runtime* exposure: any JavaScript-accessible value, including one held
+only in memory, remains readable by an XSS vulnerability during an active session. A real
+production design needs a backend-for-frontend session, short-lived tokens, or httpOnly cookies
+— not a long-lived machine credential living in browser JS at all. CORS (`Program.cs`) already
+has no `.AllowCredentials()` and explicit allowed origins (unchanged this week) — relevant since
+a cookie-based future redesign would need to revisit this.
+
+### Decision 11 — `EvalSuite`/`EvalCase`/`EvalRun`/`EvalResult` becoming tenant-private is a deliberate behavior change
+Before this week, every eval suite was implicitly shared across all callers (there was no
+isolation concept at all). After this week, each suite belongs to exactly one tenant, and a
+different tenant cannot see or run it. This is called out explicitly because it's the one
+tenant-scoping decision that changes *product* behavior, not just adds a security boundary
+around already-private data — flagged here so it isn't a surprise to whoever operates multiple
+tenants' eval suites going forward.
+
+### Implementation notes
+Four real deviations surfaced during implementation that this ADR's design didn't anticipate.
+
+**`TenantScopingInterceptor` trusted `IsModified`, which is always `true` for this codebase's
+disconnected-`Update()` pattern (Task 11).** Every repository (`EvalRunRepository`,
+`OrchestrationTaskRepository`, `AgentExecutionRepository`, `ApiKeyRepository`, ...) uses
+`IDbContextFactory` — fetch in one `DbContext`, mutate the CLR object, then
+`ctx.Set<T>().Update(entity)` in a fresh one. EF Core's `Update()` on a previously-untracked graph
+marks every scalar property `IsModified = true`, including `TenantId`, even when its value is
+identical to what's already persisted. The interceptor was trusting that flag, so it would have
+rejected every legitimate status transition (`EvalRun.MarkRunning/Completed/Failed`,
+`OrchestrationTask` transitions, etc.) on any `ITenantScoped` entity the instant a real tenant
+context was involved — a production-breaking bug that no test caught before Task 11, since
+handler tests mock repositories and the one pre-existing integration test never wired the
+interceptor in. Fixed by comparing `OriginalValue != CurrentValue` instead (see Confirmation #3's
+"Known, accepted limitation" note above for the residual gap this fix carries and why it's safe).
+
+**`CostRollupRepository` bypassed `IgnoreQueryFilters()` and the unique index lacked `TenantId`
+(Task 12).** Initially, `UpsertAsync`'s existing-row lookup and `GetLastRolledUpDateAsync` queried
+`ctx.CostRollups` without `IgnoreQueryFilters()`, while running inside `BeginSystemWriteScope()`
+(ambient `TenantId` is `null` there). The fail-closed filter made every "does this already exist"
+check return zero rows unconditionally, so every rollup tick after the first would have attempted
+a second `INSERT` for an already-rolled-up day and crashed on the unique-constraint violation.
+Compounding this, the unique index itself was `(Date, UserId, AgentType, Model)` — no `TenantId`
+— creating a real cross-tenant collision risk via the shared `DatabaseSeeder.EvalSystemUserId`
+constant (multiple tenants' rollups could legitimately share that same `UserId`). Both fixed in
+the same task: `IgnoreQueryFilters()` plus the system-write-scope guard added to both methods
+(mirroring the pattern `CostLedgerRepository.GetDailyAggregatesForRollupAsync` already used), and
+the unique index extended to `(Date, TenantId, UserId, AgentType, Model)` via the
+`ExtendCostRollupUniqueIndexWithTenantId` migration, verified against real Postgres (the InMemory
+provider doesn't enforce unique indexes at all, so this required a real-database integration
+test). Confirmation #5b above describes the resulting final state only.
+
+**Task 14's raw-data-access audit found 3 pre-existing `ExecuteDeleteAsync` call sites the
+original plan's investigation had missed.** `TaskCheckpointRepository.DeleteByTaskIdAsync` and
+`AgentMemoryRepository.DeleteAsync` predate Week 10 and were judged safe by construction — both
+filter on a tenant-unique key (`taskId`/`id` respectively), so they cannot cross a tenant boundary
+regardless of whether `ExecuteDelete` also honors the query filter. `AgentMemoryRepository.
+DeleteExpiredAsync` filters only on `ExpiresAt` — not tenant-unique — so it had genuine
+cross-tenant risk if `ExecuteDelete` didn't apply the global filter the way a normal query does.
+Proven safe empirically rather than assumed from documentation:
+`TenantFilterExecuteDeleteTests.DeleteExpiredAsync_ScopedToTenantA_NeverDeletesTenantBsExpiredRows`
+runs against real Postgres (EF Core's InMemory provider cannot translate `ExecuteDelete` at all)
+and confirms EF Core 8+ applies the global query filter to `ExecuteDelete` for this project's
+actual model/filter configuration, consistent with (but independently verified beyond) EF Core's
+documented behavior. No production code changes were needed — every audited call site was already
+safe.
+
+**`RequireAdminSecretFilter` and `TenantAuthenticationMiddleware` were relocated from
+`Infrastructure` to `API` during review (Tasks 8-9).** The original task briefs specified
+`src/OrchestAI.Infrastructure/`, matching where most cross-cutting Infrastructure code lives, but
+both types are ASP.NET Core pipeline glue (`IAsyncActionFilter` / `IMiddleware`) that pulls in
+`Microsoft.AspNetCore.Mvc`/`Microsoft.AspNetCore.Http` — framework references a plain persistence/
+cross-cutting class library shouldn't carry. Corrected to live in `src/OrchestAI.API/` (Filters/
+Middleware) instead. Two new `LayeringTests` guardrails were added specifically because the
+existing `Infrastructure_DoesNotDependOnApi` check would not have caught this class of mistake
+(neither type referenced `OrchestAI.API` directly, only ASP.NET Core MVC/Http types):
+`Infrastructure_DoesNotDependOnAspNetCoreMvc` and `Infrastructure_DoesNotDependOnAspNetCoreHttp`.
+See `DESIGN_PRINCIPLES.md` for the general principle this established.
+
+### Trigger for revisiting
+- The first time a `User`-within-`Tenant` concept (multiple named users per tenant, with
+  RBAC) is needed — `User` and `Tenant` are deliberately orthogonal this week; revisit once
+  there's a real multi-seat-per-tenant requirement.
+- The first time self-service tenant/key management is needed — today it's operator-only via
+  `AdminController`; revisit once there's a real reason a tenant needs to rotate its own keys
+  without an operator.
+- The first time the frontend auth flow needs to survive a page refresh or be used by a
+  non-technical end user — the in-memory prompt (confirmation #10) is deliberately not that;
+  revisit with a real backend-for-frontend session design at that point.
+- The first time `CostRollupBackgroundService`'s system-write-scope pattern is needed by a
+  second cross-tenant job — at that point, confirm the bypass is still narrow and auditable with
+  two call sites instead of one, not three or four with divergent justifications.
+- The first time a public/internal setter is proposed for any `ITenantScoped.TenantId`, or a new
+  factory/mutation path that sets it post-construction — revisit the disconnected-`Update()`
+  known limitation (Confirmation #3) before accepting either change.

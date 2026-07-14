@@ -1,10 +1,13 @@
 namespace OrchestAI.Domain.Interfaces;
 
 // Marker + accessor for every entity that must be isolated per tenant. TenantId has NO public
-// setter and is never a parameter on any Create(...) factory — the only writer is
-// TenantScopingInterceptor (Task 5), which sets it via entry.Property(...).CurrentValue,
-// exactly like UpdatedAtInterceptor stamps UpdatedAt. This closes the "client-supplied
-// TenantId" attack surface at the design level, not just at runtime-check level.
+// setter and is never a parameter on any Create(...) factory — except the two audited
+// system-writer factories, ApiKey.Create and CostRollup.Create (both already reviewed under
+// ADR-014 in DECISIONS.md); no request-driven application factory ever takes it. For every
+// other entity, the only writer is TenantScopingInterceptor (Task 5), which sets it via
+// entry.Property(...).CurrentValue, exactly like UpdatedAtInterceptor stamps UpdatedAt. This
+// closes the "client-supplied TenantId" attack surface at the design level, not just at
+// runtime-check level.
 public interface ITenantScoped
 {
     // Every implementation MUST declare this as `{ get; private set; }` (or stricter) — never

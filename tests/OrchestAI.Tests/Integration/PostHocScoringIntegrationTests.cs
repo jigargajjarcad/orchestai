@@ -11,6 +11,7 @@ using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Application.Configuration;
 using OrchestAI.Infrastructure.Data;
+using OrchestAI.Infrastructure.Data.Interceptors;
 using OrchestAI.Infrastructure.Eval;
 using OrchestAI.Infrastructure.Repositories;
 using OrchestAI.Infrastructure.Tenancy;
@@ -27,7 +28,14 @@ public sealed class PostHocScoringIntegrationTests
     private static (IDbContextFactory<AppDbContext> Factory, AsyncLocalCurrentTenantAccessor Accessor) BuildFactory(string dbName)
     {
         var accessor = new AsyncLocalCurrentTenantAccessor();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
+        // TenantScopingInterceptor (Task 5) now exists on this branch — wire it in exactly like
+        // DependencyInjection.AddInfrastructure does, so this "no mocked repositories anywhere"
+        // flow genuinely proves the real stamp-on-write path (ADR-014), not just a bare
+        // in-memory DbContext with no interceptor at all.
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(dbName)
+            .AddInterceptors(new TenantScopingInterceptor(accessor))
+            .Options;
         // See TenantQueryFilterTests.TestDbContextFactory: PooledDbContextFactory<TContext> has
         // no hook for AppDbContext's new ICurrentTenantAccessor dependency, so this test uses the
         // shared minimal IDbContextFactory<AppDbContext> instead.
@@ -39,14 +47,14 @@ public sealed class PostHocScoringIntegrationTests
     {
         var dbName = Guid.NewGuid().ToString();
         var (factory, accessor) = BuildFactory(dbName);
-        // This test predates tenant scoping (Task 10) and TenantScopingInterceptor (Task 5, not
-        // yet on this branch). Every ITenantScoped entity in this flow — seeded AgentExecution
-        // rows and the EvalRun/EvalResult/CostLedger rows the real handler/worker create deep
-        // inside the call chain — keeps its Guid.Empty TenantId default. Scoping the ambient
-        // tenant to Guid.Empty for the whole flow (it flows through every await via AsyncLocal)
-        // makes Task 4's new query filter transparent to this test without reaching into
-        // production code to stamp anything.
-        using var tenantScope = accessor.SetTenant(Guid.Empty);
+        // Scopes a single real tenant for the whole flow (it flows through every await via
+        // AsyncLocal): TenantScopingInterceptor auto-stamps every new ITenantScoped entity below
+        // — seeded AgentExecution rows and the EvalRun/EvalResult/CostLedger rows the real
+        // handler/worker create deep inside the call chain — with this same tenantId, exactly as
+        // production does per-HTTP-request. This also exercises RequestPostHocScoringHandler's
+        // TenantId-stamped-before-enqueue guard for real, rather than bypassing it.
+        var tenantId = Guid.NewGuid();
+        using var tenantScope = accessor.SetTenant(tenantId);
 
         var user = TestUserFactory.Create("posthoc-integration@test.local");
         var task = OrchestrationTask.Create(user.Id, "production task", "prompt");
@@ -90,10 +98,9 @@ public sealed class PostHocScoringIntegrationTests
         services.AddSingleton<IAgentExecutionRepository>(executionRepository);
         services.AddSingleton<IAgentFactory>(Mock.Of<IAgentFactory>());
 
-        // This test predates tenant scoping and runs entirely under the Guid.Empty sentinel
-        // tenant (see the comment above) — there's no real Tenant row to look up, so the
-        // Task 11 suspension check needs a stub that reports any tenant as active rather than
-        // a real ITenantRepository against an empty Tenants table.
+        // This flow doesn't persist a real Tenant row for tenantId, so the Task 11 suspension
+        // check needs a stub that reports any tenant as active rather than a real
+        // ITenantRepository lookup against an empty Tenants table.
         var tenantRepoMock = new Mock<ITenantRepository>();
         tenantRepoMock
             .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))

@@ -132,7 +132,17 @@ public sealed class RequestPostHocScoringHandlerTests
             .ReturnsAsync(new TraceSelectionResult(resolvedIds, TotalMatched: 2));
 
         var runRepoMock = new Mock<IEvalRunRepository>();
-        runRepoMock.Setup(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        runRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()))
+            .Callback<EvalRun, CancellationToken>((r, _) =>
+                // This mock stands in for the real EvalRunRepository, whose AddAsync flushes a
+                // real SaveChanges and lets TenantScopingInterceptor stamp TenantId (see
+                // ADR-014). Simulate that stamp the same way TenantQueryFilterTests/
+                // EvalRunBackgroundWorkerPostHocTests do for other private-setter properties, so
+                // this test still proves the handler's post-AddAsync TenantId-stamped invariant
+                // instead of accidentally tripping it.
+                typeof(EvalRun).GetProperty(nameof(EvalRun.TenantId))!.SetValue(r, Guid.NewGuid()))
+            .Returns(Task.CompletedTask);
 
         var queueMock = new Mock<IEvalRunQueue>();
         queueMock.Setup(q => q.EnqueueAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -166,7 +176,14 @@ public sealed class RequestPostHocScoringHandlerTests
         var runRepoMock = new Mock<IEvalRunRepository>();
         runRepoMock
             .Setup(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()))
-            .Callback<EvalRun, CancellationToken>((r, _) => captured = r)
+            .Callback<EvalRun, CancellationToken>((r, _) =>
+            {
+                // See Handle_ValidBoundedSelection_CreatesPostHocRunAndEnqueues above: simulates
+                // TenantScopingInterceptor's post-SaveChanges stamp so this mock doesn't trip the
+                // handler's post-AddAsync TenantId-stamped invariant.
+                typeof(EvalRun).GetProperty(nameof(EvalRun.TenantId))!.SetValue(r, Guid.NewGuid());
+                captured = r;
+            })
             .Returns(Task.CompletedTask);
 
         var queueMock = new Mock<IEvalRunQueue>();

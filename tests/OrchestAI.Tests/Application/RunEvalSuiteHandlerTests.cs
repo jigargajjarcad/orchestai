@@ -22,7 +22,17 @@ public sealed class RunEvalSuiteHandlerTests
         EvalRun? captured = null;
         runRepoMock
             .Setup(r => r.AddAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>()))
-            .Callback<EvalRun, CancellationToken>((r, _) => captured = r)
+            .Callback<EvalRun, CancellationToken>((r, _) =>
+            {
+                // This mock stands in for the real EvalRunRepository, whose AddAsync flushes a
+                // real SaveChanges and lets TenantScopingInterceptor stamp TenantId (see ADR-014).
+                // Simulate that stamp here the same way TenantQueryFilterTests/
+                // EvalRunBackgroundWorkerPostHocTests do for other private-setter properties, so
+                // this test still proves the handler's post-AddAsync TenantId-stamped invariant
+                // instead of accidentally tripping it.
+                typeof(EvalRun).GetProperty(nameof(EvalRun.TenantId))!.SetValue(r, Guid.NewGuid());
+                captured = r;
+            })
             .Returns(Task.CompletedTask);
 
         var queueMock = new Mock<IEvalRunQueue>();

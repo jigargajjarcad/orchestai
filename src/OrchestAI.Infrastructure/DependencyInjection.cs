@@ -18,6 +18,7 @@ using OrchestAI.Infrastructure.Observability;
 using OrchestAI.Infrastructure.Providers;
 using OrchestAI.Infrastructure.Repositories;
 using OrchestAI.Infrastructure.Security;
+using OrchestAI.Infrastructure.Tenancy;
 using OrchestAI.Infrastructure.Tools;
 using System.ClientModel;
 
@@ -29,17 +30,21 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
+
         services.AddSingleton<UpdatedAtInterceptor>();
+        services.AddSingleton<TenantScopingInterceptor>();
 
         services.AddDbContextFactory<AppDbContext>((sp, options) =>
         {
-            var interceptor = sp.GetRequiredService<UpdatedAtInterceptor>();
+            var updatedAtInterceptor = sp.GetRequiredService<UpdatedAtInterceptor>();
+            var tenantScopingInterceptor = sp.GetRequiredService<TenantScopingInterceptor>();
 
             options.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection"),
                 npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
 
-            options.AddInterceptors(interceptor);
+            options.AddInterceptors(updatedAtInterceptor, tenantScopingInterceptor);
         });
 
         services.AddScoped<DatabaseSeeder>();
@@ -58,6 +63,8 @@ public static class DependencyInjection
         services.AddScoped<IEvalSuiteRepository, EvalSuiteRepository>();
         services.AddScoped<IEvalRunRepository, EvalRunRepository>();
         services.AddScoped<IEvalResultRepository, EvalResultRepository>();
+        services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
@@ -74,6 +81,7 @@ public static class DependencyInjection
         services.Configure<EvalOptions>(configuration.GetSection(EvalOptions.SectionName));
 
         services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
+        services.AddSingleton<IApiKeyHasher, ApiKeyHasher>();
 
         var apiKey = configuration["Anthropic:ApiKey"]
             ?? throw new InvalidOperationException(

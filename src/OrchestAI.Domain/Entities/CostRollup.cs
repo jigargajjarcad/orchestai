@@ -1,15 +1,17 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-// One row per (Date, UserId, AgentType, Model). Populated by CostRollupAggregationService —
-// see ADR-011. Recomputed (not incrementally accumulated) on every aggregation tick so a
-// re-run of the job for the same day is idempotent.
-public sealed class CostRollup
+// One row per (Date, TenantId, UserId, AgentType, Model). Populated by
+// CostRollupBackgroundService — see ADR-011. Recomputed (not incrementally accumulated) on
+// every aggregation tick so a re-run of the job for the same day is idempotent.
+public sealed class CostRollup : ITenantScoped
 {
     private CostRollup() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public DateOnly Date { get; private set; }
     public Guid UserId { get; private set; }
     public AgentType AgentType { get; private set; }
@@ -20,14 +22,20 @@ public sealed class CostRollup
     public int ExecutionCount { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    // One of exactly two named exceptions to "no factory ever takes TenantId" (the other is
+    // ApiKey.Create) — see the class-level ADR-014 confirmation #5b reference and the
+    // Task 12 brief. Safe here because the only caller, CostRollupBackgroundService, derives
+    // tenantId per-row from an authoritative SQL join (OrchestrationTask.TenantId), never from
+    // a request-supplied value.
     public static CostRollup Create(
-        DateOnly date, Guid userId, AgentType agentType, string model,
+        DateOnly date, Guid tenantId, Guid userId, AgentType agentType, string model,
         int inputTokens, int outputTokens, decimal costUsd, int executionCount)
     {
         return new CostRollup
         {
             Id = Guid.NewGuid(),
             Date = date,
+            TenantId = tenantId,
             UserId = userId,
             AgentType = agentType,
             Model = model,

@@ -16,6 +16,10 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(r => r.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(r => r.Date)
             .IsRequired()
             .HasColumnType("date");
@@ -55,8 +59,21 @@ public sealed class CostRollupConfiguration : IEntityTypeConfiguration<CostRollu
             .HasColumnType("timestamptz")
             .HasDefaultValueSql("NOW()");
 
-        builder.HasIndex(r => new { r.Date, r.UserId, r.AgentType, r.Model })
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(r => r.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // TenantId is included in the unique tuple (not just Date/UserId/AgentType/Model) because
+        // User is a global, non-tenant-scoped entity — the same UserId (e.g.
+        // DatabaseSeeder.EvalSystemUserId, used to attribute live-suite eval runs regardless of who
+        // triggered them) can legitimately appear across multiple tenants. Without TenantId here,
+        // two different tenants' rollups for the same (Date, UserId, AgentType, Model) would
+        // collide on this index. See Task 12 follow-up.
+        builder.HasIndex(r => new { r.Date, r.TenantId, r.UserId, r.AgentType, r.Model })
             .IsUnique();
+
+        builder.HasIndex(r => r.TenantId);
 
         builder.HasIndex(r => new { r.UserId, r.Date });
     }

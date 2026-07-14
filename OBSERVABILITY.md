@@ -102,6 +102,39 @@ current post-hoc result.
 
 Full reasoning: ADR-013 in `DECISIONS.md`.
 
+## 2c. Tenant isolation
+
+Every table in sections 1-2b above is now tenant-scoped (see ADR-014) — `AgentExecution`,
+`McpToolCall`, `CostLedger`, `EvalRun`, `EvalResult`, and everything else holding task/execution/
+cost/eval data carries a `TenantId`, enforced by an EF Core global query filter (reads) and a
+`SaveChanges` interceptor (writes), and backed by a real foreign key to `Tenants` (`ON DELETE
+RESTRICT`) rather than just an index. Every query in this document's sections 1-4 is automatically
+scoped to whichever tenant authenticated the request — no query handler needed to change to
+achieve this, since the filter is applied generically to every entity implementing
+`ITenantScoped`, not per-query.
+
+**Week 1-9 data** (everything that existed before this week) was backfilled onto one well-known
+default/system tenant (`00000000-0000-0000-0000-000000000001`), which has zero API keys and is
+structurally unreachable by any real caller — it exists only so historical data has a valid
+`TenantId`, not as an authentication fallback.
+
+**One exception**: `CostRollupBackgroundService`'s cross-tenant aggregation (section 2, Decision
+1) runs inside a narrow, explicit `BeginSystemWriteScope()` — the only code path in this system
+that deliberately bypasses per-tenant isolation, because rolling up costs *across* every tenant
+is its entire purpose. `CostRollups` rows still carry `TenantId` in their grouping key (also part
+of their unique index, after a Task 12 fix closed a cross-tenant collision risk), so the
+resulting aggregates remain per-tenant even though the job that produces them reads across all of
+them at once.
+
+**Known limitation**: the write-side interceptor's tamper check cannot detect a changed
+`TenantId` on an entity updated through this codebase's disconnected-`Update()` repository
+pattern (fetch in one `DbContext`, `Update()` in a fresh one) — only for an entity still tracked
+in the same `DbContext` it was fetched in. This is accepted as safe today because `TenantId` has
+no public setter anywhere and no code path mutates it post-creation; see ADR-014 and the code
+comments on `TenantScopingInterceptor.cs`/`ITenantScoped.cs` for the full reasoning.
+
+Full reasoning: ADR-014 in `DECISIONS.md`.
+
 ## 3. Query
 
 Five MediatR query handlers, each reading whichever layer answers the question fastest:

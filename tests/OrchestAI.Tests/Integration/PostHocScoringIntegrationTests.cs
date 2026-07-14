@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -12,8 +11,10 @@ using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Application.Configuration;
 using OrchestAI.Infrastructure.Data;
+using OrchestAI.Infrastructure.Data.Interceptors;
 using OrchestAI.Infrastructure.Eval;
 using OrchestAI.Infrastructure.Repositories;
+using OrchestAI.Infrastructure.Tenancy;
 using OrchestAI.Tests.Infrastructure;
 
 namespace OrchestAI.Tests.Integration;
@@ -24,17 +25,36 @@ namespace OrchestAI.Tests.Integration;
 // EvalResult rows — no mocked repositories anywhere in this test.
 public sealed class PostHocScoringIntegrationTests
 {
-    private static PooledDbContextFactory<AppDbContext> BuildFactory(string dbName)
+    private static (IDbContextFactory<AppDbContext> Factory, AsyncLocalCurrentTenantAccessor Accessor) BuildFactory(string dbName)
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
-        return new PooledDbContextFactory<AppDbContext>(options);
+        var accessor = new AsyncLocalCurrentTenantAccessor();
+        // TenantScopingInterceptor (Task 5) now exists on this branch — wire it in exactly like
+        // DependencyInjection.AddInfrastructure does, so this "no mocked repositories anywhere"
+        // flow genuinely proves the real stamp-on-write path (ADR-014), not just a bare
+        // in-memory DbContext with no interceptor at all.
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(dbName)
+            .AddInterceptors(new TenantScopingInterceptor(accessor))
+            .Options;
+        // See TenantQueryFilterTests.TestDbContextFactory: PooledDbContextFactory<TContext> has
+        // no hook for AppDbContext's new ICurrentTenantAccessor dependency, so this test uses the
+        // shared minimal IDbContextFactory<AppDbContext> instead.
+        return (new TestDbContextFactory(options, accessor), accessor);
     }
 
     [Fact]
     public async Task FullFlow_SeededHistoricalTraces_ProducesEvalResultsWithNullCaseIdAndRubric()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
+        // Scopes a single real tenant for the whole flow (it flows through every await via
+        // AsyncLocal): TenantScopingInterceptor auto-stamps every new ITenantScoped entity below
+        // — seeded AgentExecution rows and the EvalRun/EvalResult/CostLedger rows the real
+        // handler/worker create deep inside the call chain — with this same tenantId, exactly as
+        // production does per-HTTP-request. This also exercises RequestPostHocScoringHandler's
+        // TenantId-stamped-before-enqueue guard for real, rather than bypassing it.
+        var tenantId = Guid.NewGuid();
+        using var tenantScope = accessor.SetTenant(tenantId);
 
         var user = TestUserFactory.Create("posthoc-integration@test.local");
         var task = OrchestrationTask.Create(user.Id, "production task", "prompt");
@@ -78,6 +98,15 @@ public sealed class PostHocScoringIntegrationTests
         services.AddSingleton<IAgentExecutionRepository>(executionRepository);
         services.AddSingleton<IAgentFactory>(Mock.Of<IAgentFactory>());
 
+        // This flow doesn't persist a real Tenant row for tenantId, so the Task 11 suspension
+        // check needs a stub that reports any tenant as active rather than a real
+        // ITenantRepository lookup against an empty Tenants table.
+        var tenantRepoMock = new Mock<ITenantRepository>();
+        tenantRepoMock
+            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Tenant.Create("Test Tenant", "test-tenant"));
+        services.AddSingleton<ITenantRepository>(tenantRepoMock.Object);
+
         var providerMock = new Mock<ILlmProvider>();
         providerMock.Setup(p => p.ProviderId).Returns("anthropic");
         providerMock
@@ -91,7 +120,7 @@ public sealed class PostHocScoringIntegrationTests
             .Setup(c => c.GetAsync("claude-haiku-4-5-20251001", It.IsAny<CancellationToken>()))
             .ReturnsAsync(ModelPricing.Create("claude-haiku-4-5-20251001", 0.80m, 4.00m));
 
-        var costLedgerRepository = new CostLedgerRepository(factory);
+        var costLedgerRepository = new CostLedgerRepository(factory, accessor);
         var judgeOptions = Options.Create(new EvalOptions
         {
             JudgeModel = "anthropic/claude-haiku-4-5-20251001", DefaultJudgePassThreshold = 0.7m
@@ -102,7 +131,7 @@ public sealed class PostHocScoringIntegrationTests
 
         var worker = new EvalRunBackgroundWorker(
             Mock.Of<IEvalRunQueue>(), provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<EvalRunBackgroundWorker>.Instance);
+            accessor, NullLogger<EvalRunBackgroundWorker>.Instance);
 
         await worker.ProcessRunAsync(triggerResponse.EvalRunId, CancellationToken.None);
 

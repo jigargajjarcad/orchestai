@@ -103,6 +103,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasDefaultValue("Pending");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EvalRunId");
@@ -113,6 +116,8 @@ namespace OrchestAI.Infrastructure.Migrations
 
                     b.HasIndex("SpanId")
                         .IsUnique();
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("AgentType", "CreatedAt");
 
@@ -151,6 +156,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
@@ -164,6 +172,8 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserId", "AgentType");
 
@@ -203,9 +213,14 @@ namespace OrchestAI.Infrastructure.Migrations
                     b.Property<int>("SequenceOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AgentExecutionId");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("AgentMessages", (string)null);
                 });
@@ -235,11 +250,67 @@ namespace OrchestAI.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AgentExecutionId");
 
+                    b.HasIndex("TenantId");
+
                     b.ToTable("AgentRetryAttempts", (string)null);
+                });
+
+            modelBuilder.Entity("OrchestAI.Domain.Entities.ApiKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamptz")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<string>("HashedSecret")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<string>("PublicKeyId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicKeyId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("ApiKeys", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ApiKeys_TenantId_NotDefault", "\"TenantId\" <> '00000000-0000-0000-0000-000000000001'");
+                        });
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.CostLedger", b =>
@@ -284,6 +355,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasDefaultValue("Production");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AgentExecutionId");
@@ -291,6 +365,8 @@ namespace OrchestAI.Infrastructure.Migrations
                     b.HasIndex("EvalRunId");
 
                     b.HasIndex("Source");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("OrchestrationTaskId", "RecordedAt")
                         .IsDescending(false, true);
@@ -338,6 +414,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
@@ -348,9 +427,11 @@ namespace OrchestAI.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId");
+
                     b.HasIndex("UserId", "Date");
 
-                    b.HasIndex("Date", "UserId", "AgentType", "Model")
+                    b.HasIndex("Date", "TenantId", "UserId", "AgentType", "Model")
                         .IsUnique();
 
                     b.ToTable("CostRollups", (string)null);
@@ -394,9 +475,14 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasDefaultValue("");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("SuiteId");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("EvalCases", (string)null);
                 });
@@ -445,11 +531,16 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AgentExecutionId");
 
                     b.HasIndex("EvalCaseId");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("EvalRunId", "EvalCaseId")
                         .IsUnique();
@@ -515,6 +606,9 @@ namespace OrchestAI.Infrastructure.Migrations
                     b.Property<Guid?>("SuiteId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("TriggeredAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
@@ -529,6 +623,8 @@ namespace OrchestAI.Infrastructure.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("SuiteId");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("EvalRuns", (string)null);
                 });
@@ -559,9 +655,14 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TargetAgentType");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("EvalSuites", (string)null);
                 });
@@ -619,6 +720,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ToolName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -632,6 +736,8 @@ namespace OrchestAI.Infrastructure.Migrations
 
                     b.HasIndex("SpanId")
                         .IsUnique();
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("Success", "ErrorCategory");
 
@@ -718,6 +824,9 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasDefaultValue("Pending");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -760,6 +869,8 @@ namespace OrchestAI.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("TraceId")
                         .IsUnique();
@@ -812,12 +923,57 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("OrchestrationTaskId", "AgentType")
                         .IsUnique();
 
                     b.ToTable("TaskCheckpoints", (string)null);
+                });
+
+            modelBuilder.Entity("OrchestAI.Domain.Entities.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamptz")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Active");
+
+                    b.Property<DateTimeOffset?>("SuspendedAt")
+                        .HasColumnType("timestamptz");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Tenants", (string)null);
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.User", b =>
@@ -863,11 +1019,23 @@ namespace OrchestAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("OrchestrationTask");
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.AgentMemory", b =>
                 {
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("OrchestAI.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -885,6 +1053,12 @@ namespace OrchestAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AgentExecution");
                 });
 
@@ -896,7 +1070,24 @@ namespace OrchestAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AgentExecution");
+                });
+
+            modelBuilder.Entity("OrchestAI.Domain.Entities.ApiKey", b =>
+                {
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.CostLedger", b =>
@@ -912,9 +1103,24 @@ namespace OrchestAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AgentExecution");
 
                     b.Navigation("OrchestrationTask");
+                });
+
+            modelBuilder.Entity("OrchestAI.Domain.Entities.CostRollup", b =>
+                {
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.EvalCase", b =>
@@ -923,6 +1129,12 @@ namespace OrchestAI.Infrastructure.Migrations
                         .WithMany("Cases")
                         .HasForeignKey("SuiteId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Suite");
@@ -939,6 +1151,12 @@ namespace OrchestAI.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("EvalRunId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Case");
@@ -958,9 +1176,24 @@ namespace OrchestAI.Infrastructure.Migrations
                         .HasForeignKey("SuiteId")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("BaselineRun");
 
                     b.Navigation("Suite");
+                });
+
+            modelBuilder.Entity("OrchestAI.Domain.Entities.EvalSuite", b =>
+                {
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.McpToolCall", b =>
@@ -971,11 +1204,23 @@ namespace OrchestAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AgentExecution");
                 });
 
             modelBuilder.Entity("OrchestAI.Domain.Entities.OrchestrationTask", b =>
                 {
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("OrchestAI.Domain.Entities.User", "User")
                         .WithMany("Tasks")
                         .HasForeignKey("UserId")
@@ -991,6 +1236,12 @@ namespace OrchestAI.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrchestrationTaskId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OrchestAI.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("OrchestrationTask");

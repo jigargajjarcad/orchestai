@@ -16,6 +16,10 @@ public sealed class EvalCaseConfiguration : IEntityTypeConfiguration<EvalCase>
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(c => c.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(c => c.SuiteId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -46,6 +50,13 @@ public sealed class EvalCaseConfiguration : IEntityTypeConfiguration<EvalCase>
             .IsRequired()
             .HasColumnType("timestamptz")
             .HasDefaultValueSql("NOW()");
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(c => c.TenantId);
 
         builder.HasIndex(c => c.SuiteId);
     }

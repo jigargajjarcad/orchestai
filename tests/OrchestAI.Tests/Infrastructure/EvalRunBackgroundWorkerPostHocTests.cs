@@ -10,6 +10,7 @@ using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Application.Configuration;
 using OrchestAI.Infrastructure.Eval;
+using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.Tests.Infrastructure;
 
@@ -71,7 +72,7 @@ public sealed class EvalRunBackgroundWorkerPostHocTests
 
     private static EvalRunBackgroundWorker BuildWorker(
         IEvalRunRepository runRepo, IEvalResultRepository resultRepo, IAgentExecutionRepository executionRepo,
-        LlmJudgeScorer judgeScorer)
+        LlmJudgeScorer judgeScorer, ITenantRepository? tenantRepo = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IEvalSuiteRepository>());
@@ -81,12 +82,52 @@ public sealed class EvalRunBackgroundWorkerPostHocTests
         services.AddSingleton(executionRepo);
         services.AddSingleton(Mock.Of<IAgentFactory>());
         services.AddSingleton<IEvalScorerFactory>(new EvalScorerFactory([judgeScorer]));
+        services.AddSingleton(tenantRepo ?? BuildActiveTenantRepository());
         var provider = services.BuildServiceProvider();
 
         var queueMock = new Mock<IEvalRunQueue>();
         return new EvalRunBackgroundWorker(
             queueMock.Object, provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<EvalRunBackgroundWorker>.Instance);
+            new AsyncLocalCurrentTenantAccessor(), NullLogger<EvalRunBackgroundWorker>.Instance);
+    }
+
+    // Every existing test in this file exercises the PostHoc scoring path itself and never
+    // stamped a real tenant onto its EvalRun (TenantId defaults to Guid.Empty) — the new
+    // tenant-suspension check added in Task 11 needs SOME active tenant to resolve, or every
+    // test here would fail with "tenant not active" before ever reaching the scoring logic
+    // they actually test.
+    private static ITenantRepository BuildActiveTenantRepository()
+    {
+        var mock = new Mock<ITenantRepository>();
+        var tenant = Tenant.Create("Test Tenant", "test-tenant");
+        mock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        return mock.Object;
+    }
+
+    // Dedicated helper for the tenant-suspension test below: no judge scorer is registered (an
+    // empty IEvalScorerFactory) because the suspension check must reject the run before scoring
+    // is ever attempted — if ProcessRunAsync regressed and reached the scorer anyway, resolving
+    // a scorer type with no registered scorer would throw and fail the test loudly, instead of
+    // silently passing.
+    private static EvalRunBackgroundWorker BuildWorkerWithTenantRepository(
+        IEvalRunRepository runRepo, IEvalResultRepository resultRepo, IAgentExecutionRepository executionRepo,
+        ITenantRepository tenantRepo)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IEvalSuiteRepository>());
+        services.AddSingleton(runRepo);
+        services.AddSingleton(resultRepo);
+        services.AddSingleton(Mock.Of<IOrchestrationTaskRepository>());
+        services.AddSingleton(executionRepo);
+        services.AddSingleton(Mock.Of<IAgentFactory>());
+        services.AddSingleton<IEvalScorerFactory>(new EvalScorerFactory([]));
+        services.AddSingleton(tenantRepo);
+        var provider = services.BuildServiceProvider();
+
+        var queueMock = new Mock<IEvalRunQueue>();
+        return new EvalRunBackgroundWorker(
+            queueMock.Object, provider.GetRequiredService<IServiceScopeFactory>(),
+            new AsyncLocalCurrentTenantAccessor(), NullLogger<EvalRunBackgroundWorker>.Instance);
     }
 
     private static EvalRun BuildPostHocRun(params Guid[] resolvedTraceIds)
@@ -288,5 +329,41 @@ public sealed class EvalRunBackgroundWorkerPostHocTests
             "scoring happens before delete — a scorer failure must leave the stale prior result intact, not delete it first");
         resultRepoMock.Verify(r => r.AddAsync(It.IsAny<EvalResult>(), It.IsAny<CancellationToken>()), Times.Never);
         run.Status.Should().Be(EvalRunStatus.Completed, "the per-trace try/catch swallows the scorer's exception and the run still completes");
+    }
+
+    [Fact]
+    public async Task ProcessRunAsync_TenantSuspendedAfterEnqueue_RunMarkedFailedNotCompleted()
+    {
+        var taskId = Guid.NewGuid();
+        var execution = AgentExecution.Create(taskId, AgentType.Research, "prompt");
+        execution.Start();
+        execution.Complete("output", 10, 5, 0.01m);
+
+        var criteriaJson = System.Text.Json.JsonSerializer.Serialize(new { resolvedTraceIds = new[] { execution.Id } });
+        var run = EvalRun.CreatePostHoc("posthoc-1", "was the tool call appropriate?", criteriaJson);
+        var tenantId = Guid.NewGuid();
+        typeof(EvalRun).GetProperty(nameof(EvalRun.TenantId))!.SetValue(run, tenantId);
+
+        var suspendedTenant = Tenant.Create("Acme", "acme");
+        suspendedTenant.Suspend();
+
+        var runRepoMock = new Mock<IEvalRunRepository>();
+        runRepoMock.Setup(r => r.GetByIdAsync(run.Id, It.IsAny<CancellationToken>())).ReturnsAsync(run);
+        runRepoMock.Setup(r => r.UpdateAsync(It.IsAny<EvalRun>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var tenantRepoMock = new Mock<ITenantRepository>();
+        tenantRepoMock.Setup(r => r.GetByIdAsync(tenantId, It.IsAny<CancellationToken>())).ReturnsAsync(suspendedTenant);
+
+        var resultRepoMock = new Mock<IEvalResultRepository>();
+        var executionRepoMock = new Mock<IAgentExecutionRepository>();
+
+        var worker = BuildWorkerWithTenantRepository(
+            runRepoMock.Object, resultRepoMock.Object, executionRepoMock.Object, tenantRepoMock.Object);
+
+        await worker.ProcessRunAsync(run.Id, CancellationToken.None);
+
+        run.Status.Should().Be(EvalRunStatus.Failed, "a tenant suspended after enqueue must reject queued work, not silently complete it");
+        executionRepoMock.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no trace should even be looked up once the owning tenant is known to be suspended");
     }
 }

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using OrchestAI.API.Filters;
+using OrchestAI.API.Middleware;
 using OrchestAI.Application;
 using OrchestAI.Infrastructure;
 using OrchestAI.Infrastructure.Data;
@@ -28,6 +30,17 @@ try
     builder.Services.AddControllers()
         .AddJsonOptions(options =>
             options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
+    // Gates AdminController via [ServiceFilter(typeof(RequireAdminSecretFilter))] — registered
+    // here rather than in AddInfrastructure because the filter is MVC-specific glue (API layer),
+    // not persistence/cross-cutting infrastructure.
+    builder.Services.AddScoped<RequireAdminSecretFilter>();
+
+    // IMiddleware-based custom middleware must be registered in DI (UseMiddleware<T>() resolves
+    // it via IMiddlewareFactory) — registered here, not in AddInfrastructure, for the same reason
+    // as RequireAdminSecretFilter above: this is ASP.NET Core HTTP-pipeline glue (API layer), not
+    // persistence/cross-cutting infrastructure. See Task 9 / ADR-014.
+    builder.Services.AddScoped<TenantAuthenticationMiddleware>();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>
@@ -83,6 +96,11 @@ try
     app.UseExceptionHandler();
     app.UseStatusCodePages();
     app.UseCors("Frontend");
+    // The tenant auth gate: resolves the Bearer API key to a tenant and sets the ambient
+    // ICurrentTenantAccessor scope for every downstream handler. Exempts /health, /swagger, and
+    // /api/v1/admin/* (the admin-bootstrap surface, gated separately by RequireAdminSecretFilter).
+    // Fail-closed: missing/malformed/unknown/revoked key -> 401; valid key, suspended tenant -> 403.
+    app.UseMiddleware<TenantAuthenticationMiddleware>();
     app.MapControllers();
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }));
 

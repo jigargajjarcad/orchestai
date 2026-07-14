@@ -16,6 +16,10 @@ public sealed class McpToolCallConfiguration : IEntityTypeConfiguration<McpToolC
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(tc => tc.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(tc => tc.AgentExecutionId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -62,6 +66,13 @@ public sealed class McpToolCallConfiguration : IEntityTypeConfiguration<McpToolC
             .WithMany(e => e.ToolCalls)
             .HasForeignKey(tc => tc.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(tc => tc.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(tc => tc.TenantId);
 
         builder.HasIndex(tc => tc.SpanId)
             .IsUnique();

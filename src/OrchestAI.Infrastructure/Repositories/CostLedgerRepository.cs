@@ -10,9 +10,13 @@ namespace OrchestAI.Infrastructure.Repositories;
 public sealed class CostLedgerRepository : ICostLedgerRepository
 {
     private readonly IDbContextFactory<AppDbContext> _contextFactory;
+    private readonly ICurrentTenantAccessor _tenantAccessor;
 
-    public CostLedgerRepository(IDbContextFactory<AppDbContext> contextFactory)
-        => _contextFactory = contextFactory;
+    public CostLedgerRepository(IDbContextFactory<AppDbContext> contextFactory, ICurrentTenantAccessor tenantAccessor)
+    {
+        _contextFactory = contextFactory;
+        _tenantAccessor = tenantAccessor;
+    }
 
     public async Task AddAsync(CostLedger ledger, CancellationToken cancellationToken = default)
     {
@@ -49,7 +53,44 @@ public sealed class CostLedgerRepository : ICostLedgerRepository
         return raw
             .GroupBy(x => (Date: DateOnly.FromDateTime(x.RecordedAt.UtcDateTime), x.UserId, x.AgentType, x.Model))
             .Select(g => new CostLedgerAggregate(
-                g.Key.Date, g.Key.UserId, g.Key.AgentType, g.Key.Model,
+                g.Key.Date, Guid.Empty, g.Key.UserId, g.Key.AgentType, g.Key.Model,
+                g.Sum(x => x.InputTokens), g.Sum(x => x.OutputTokens), g.Sum(x => x.CostUsd), g.Count()))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<CostLedgerAggregate>> GetDailyAggregatesForRollupAsync(
+        DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
+    {
+        if (!_tenantAccessor.IsSystemWriteScope)
+            throw new InvalidOperationException(
+                "GetDailyAggregatesForRollupAsync must only be called from within a system-write scope (CostRollupBackgroundService).");
+
+        await using var ctx = await _contextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var fromUtc = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var toUtc = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        // Same join/grouping shape as GetDailyAggregatesAsync, but deliberately cross-tenant:
+        // IgnoreQueryFilters() on both query roots so this sees every tenant's rows in one pass,
+        // and TenantId (from the authoritative OrchestrationTask.TenantId join) is added to both
+        // the GroupBy key and the projection.
+        var raw = await ctx.CostLedger
+            .IgnoreQueryFilters()
+            .Where(c => c.RecordedAt >= fromUtc && c.RecordedAt < toUtc
+                && c.AgentExecutionId != null && c.Source == CostSource.Production)
+            .Join(ctx.OrchestrationTasks.IgnoreQueryFilters(), c => c.OrchestrationTaskId, t => t.Id,
+                (c, t) => new { c.RecordedAt, t.TenantId, t.UserId, c.AgentExecutionId, c.Model, c.InputTokens, c.OutputTokens, c.CostUsd })
+            .Join(ctx.AgentExecutions.IgnoreQueryFilters(), x => x.AgentExecutionId!.Value, e => e.Id,
+                (x, e) => new { x.RecordedAt, x.TenantId, x.UserId, e.AgentType, x.Model, x.InputTokens, x.OutputTokens, x.CostUsd })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return raw
+            .GroupBy(x => (Date: DateOnly.FromDateTime(x.RecordedAt.UtcDateTime), x.TenantId, x.UserId, x.AgentType, x.Model))
+            .Select(g => new CostLedgerAggregate(
+                g.Key.Date, g.Key.TenantId, g.Key.UserId, g.Key.AgentType, g.Key.Model,
                 g.Sum(x => x.InputTokens), g.Sum(x => x.OutputTokens), g.Sum(x => x.CostUsd), g.Count()))
             .ToList();
     }

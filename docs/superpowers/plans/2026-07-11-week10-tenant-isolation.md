@@ -16,7 +16,7 @@
 - The default/system tenant (used only for backfill) must be structurally incapable of authenticating — no valid `ApiKey` row exists for it, ever.
 - EF Core global query filters + the `SaveChanges` interceptor are the *default* enforcement mechanism, not the *only* one — any command accepting a foreign ID (baseline run, checkpoint resume, trace-to-eval linking) must still explicitly verify tenant ownership at the domain/service layer.
 - Client-supplied `TenantId` values are never trusted — the interceptor stamps `TenantId` from the resolved ambient context only, and rejects (does not silently overwrite) any mismatched value that somehow reaches an entity.
-- `TenantId` is set exactly once per entity (via the `SaveChanges` interceptor, using the same `entry.Property(...).CurrentValue` technique this codebase already uses for `UpdatedAt` — see `UpdatedAtInterceptor`) — no domain factory method (`Create(...)`) ever takes a `TenantId` parameter. This closes the "client-supplied TenantId" attack surface at the design level, in addition to the interceptor's runtime check.
+- `TenantId` is set exactly once per entity (via the `SaveChanges` interceptor, using the same `entry.Property(...).CurrentValue` technique this codebase already uses for `UpdatedAt` — see `UpdatedAtInterceptor`) — no domain factory method for an `ITenantScoped` entity created by request-driven application code ever takes a `TenantId` parameter. This closes the "client-supplied TenantId" attack surface at the design level, in addition to the interceptor's runtime check. There are exactly two named exceptions, both non-`ITenantScoped` entities created only by a trusted, non-tenant-authenticated writer with no ambient tenant scope to bypass: `ApiKey.Create(tenantId, ...)` (Task 1 — the operator explicitly designates the tenant via the admin-secret-gated `CreateApiKeyHandler`, Task 8; there is no ambient tenant during that call for an interceptor to stamp from) and `CostRollup.Create(tenantId, ...)` (Task 12 — `CostRollupBackgroundService` derives it from an authoritative SQL join, never from a caller). Any other factory method accepting `TenantId` is a defect, not a third instance of this pattern.
 - Background workers and queued commands must carry `TenantId` explicitly in their persisted payload, captured at enqueue time — never inferred later, never defaulted.
 - The cost rollup job is cross-tenant by nature and uses a separate, explicit, narrowly-scoped system-data-access path — it must never run inside a tenant's ambient scope, and must never be reachable from tenant-authenticated request or worker code paths.
 - No self-service tenant signup, no SSO/OAuth, no per-tenant billing, no RBAC-within-tenant, no rate limiting/cost caps (Week 11), no self-service key rotation UI. Tenant/API-key creation is operator-only this week, gated by a separate admin secret, never a tenant API key.
@@ -275,6 +275,15 @@ public sealed class ApiKey
 
     public Tenant Tenant { get; private set; } = null!;
 
+    // ApiKey is deliberately NOT ITenantScoped (see Task 13's ExpectedGloballySharedTypes) and
+    // Create() deliberately DOES take tenantId — this is one of exactly two named exceptions to
+    // the Global Constraints' "no factory ever takes TenantId" rule (the other is
+    // CostRollup.Create, Task 12). This is not a design regression: Create() is only ever
+    // reachable via the admin-secret-gated CreateApiKeyHandler (Task 8), never a tenant-
+    // authenticated request, and there is no ambient tenant scope during that call for an
+    // interceptor to stamp from in the first place — the operator explicitly designating which
+    // tenant a new key belongs to IS the operation, not a value that should be inferred from
+    // request context.
     public static ApiKey Create(Guid tenantId, string publicKeyId, string hashedSecret, string? displayName = null)
     {
         return new ApiKey
@@ -1378,6 +1387,8 @@ git commit -m "feat: add TenantScopingInterceptor enforcing fail-closed tenant w
 - Consumes: `Tenant`/`ApiKey` (Task 1), `ITenantScoped` on all 13 entities (Task 2).
 - Produces: `Tenants`/`ApiKeys` tables; every one of the 13 tables gains a non-nullable, indexed, FK-constrained `TenantId` column; a well-known default/system tenant row (`00000000-0000-0000-0000-000000000001`) with **zero** `ApiKeys` rows.
 
+**Follow-up note (FK constraints):** the `AddTenantIsolation` migration above only produced the non-nullable, indexed `TenantId` column on the 13 tables — Task 2 (already merged) configured `Property(x => x.TenantId).IsRequired()` + `HasIndex(x => x.TenantId)` only, with no `HasOne`/navigation to `Tenant`, so no `AddForeignKey` call was ever generated for these 13 tables. This was caught during Task 6's review before merge. It was closed with a separate `AddTenantForeignKeys` migration (not folded into `AddTenantIsolation`) that adds `builder.HasOne<Tenant>().WithMany().HasForeignKey(t => t.TenantId).OnDelete(DeleteBehavior.Restrict)` to all 13 configuration files, applied and verified against real Postgres (`FK_<Table>_Tenants_TenantId ... ON DELETE RESTRICT`), with an automated test (`Insert_WithNonExistentTenantId_ThrowsForeignKeyViolation`) proving the INSERT-side rejection and an interactive `psql` proof confirming the DELETE-side restriction. The "Produces" line above now accurately describes the final state.
+
 **Why this migration hand-replaces the typed `AddColumn`/`AlterColumn` calls with raw SQL instead of relying on `dotnet ef migrations add`'s automatic diff:** `TenantId` is declared as a non-nullable `Guid` in every entity (correct final domain shape, matching `ITenantScoped`). A model-diff-generated migration would therefore try to `AddColumn(..., nullable: false)` directly against tables that already have rows — Postgres rejects this outright (or requires a default, which would silently backfill with a meaningless value, not the real relational-consistency backfill this task requires). The fix used here: let `dotnet ef migrations add` generate the migration NORMALLY (so `AppDbContextModelSnapshot.cs` and the migration's `.Designer.cs` correctly reflect the true final model state — those files are generated from the C# model itself, not from whatever ends up in `Up()`), then **replace only the body of `Up()`** with hand-written `migrationBuilder.Sql(...)` calls implementing the safe nullable→backfill→verify→non-nullable sequence for the 13 existing tables. The brand-new `Tenants`/`ApiKeys` tables have no populated-table risk, so their auto-generated `CreateTable` calls can be kept as EF generated them.
 
 - [ ] **Step 1: Add `TenantConfiguration` and `ApiKeyConfiguration`**
@@ -2030,12 +2041,12 @@ git commit -m "feat: add IApiKeyHasher with constant-time secret verification"
 - Create: `src/OrchestAI.Application/Commands/CreateTenant/{CreateTenantCommand,CreateTenantHandler,CreateTenantResponse}.cs`
 - Create: `src/OrchestAI.Application/Commands/CreateApiKey/{CreateApiKeyCommand,CreateApiKeyHandler,CreateApiKeyResponse}.cs`
 - Create: `src/OrchestAI.Application/Commands/RevokeApiKey/{RevokeApiKeyCommand,RevokeApiKeyHandler,RevokeApiKeyResponse}.cs`
-- Create: `src/OrchestAI.Infrastructure/Tenancy/RequireAdminSecretFilter.cs`
+- Create: `src/OrchestAI.API/Filters/RequireAdminSecretFilter.cs`
 - Create: `src/OrchestAI.API/Controllers/AdminController.cs`
 - Modify: `src/OrchestAI.Infrastructure/DependencyInjection.cs` (register repositories + filter)
 - Modify: `src/OrchestAI.API/appsettings.json` / `appsettings.Development.json` (add empty `Admin:BootstrapSecret` placeholder key so the setting is discoverable, never a real value committed)
 - Test: Create `tests/OrchestAI.Tests/Application/CreateTenantHandlerTests.cs`, `CreateApiKeyHandlerTests.cs`, `RevokeApiKeyHandlerTests.cs`
-- Test: Create `tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs`
+- Test: Create `tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs`
 
 **Interfaces:**
 - Produces: `ITenantRepository { GetByIdAsync, GetBySlugAsync, AddAsync, UpdateAsync }`; `IApiKeyRepository { GetByIdAsync, GetByPublicKeyIdAsync, AddAsync, UpdateAsync }`; `CreateTenantCommand(string Name, string Slug)`; `CreateApiKeyCommand(Guid TenantId, string? DisplayName)` → returns the raw key **exactly once**, rejects `Tenant.DefaultTenantId`; `RevokeApiKeyCommand(Guid ApiKeyId)`; `SuspendTenantCommand(Guid TenantId)` (Step 13); `RequireAdminSecretFilter : IAsyncActionFilter` — checks `X-Admin-Secret` header against `Admin:BootstrapSecret` config via constant-time comparison, 503 if unconfigured, 401 if missing/wrong.
@@ -2214,7 +2225,7 @@ public sealed class RevokeApiKeyHandlerTests
 }
 ```
 
-Create `tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs`:
+Create `tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs`:
 
 ```csharp
 using FluentAssertions;
@@ -2302,6 +2313,33 @@ public sealed class RequireAdminSecretFilterTests
 
         context.Result.Should().BeOfType<StatusCodeResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    // A legitimate tenant credential must never satisfy the admin gate — this filter checks
+    // ONLY X-Admin-Secret, never Authorization, so a request carrying a real (or fake) tenant
+    // API key but no X-Admin-Secret header is indistinguishable from any other unauthenticated
+    // request as far as this filter is concerned. Named explicitly (rather than left as an
+    // implication of "checks one specific header") because it's the exact invariant confirmation
+    // #8 depends on: an ordinary tenant must never be able to reach tenant/API-key provisioning.
+    [Fact]
+    public async Task OnActionExecutionAsync_ValidTenantAuthorizationHeaderPresent_StillReturns401()
+    {
+        var filter = new RequireAdminSecretFilter(BuildConfig("correct-secret"));
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers.Authorization = "Bearer orch_live_pk123.a-real-tenant-secret";
+        var actionContext = new ActionContext(httpContext, new RouteData(), new ControllerActionDescriptor());
+        var context = new ActionExecutingContext(
+            actionContext, [], new Dictionary<string, object?>(), controller: new object());
+        var nextCalled = false;
+
+        await filter.OnActionExecutionAsync(context, () =>
+        {
+            nextCalled = true;
+            return Task.FromResult(new ActionExecutedContext(context, [], context.Controller));
+        });
+
+        nextCalled.Should().BeFalse("a tenant API key must never satisfy the admin-secret gate, regardless of how valid it is elsewhere");
+        context.Result.Should().BeOfType<UnauthorizedResult>();
     }
 }
 ```
@@ -2746,11 +2784,11 @@ Expected: 0 errors.
 git add src/OrchestAI.Domain/Interfaces/ITenantRepository.cs src/OrchestAI.Domain/Interfaces/IApiKeyRepository.cs \
   src/OrchestAI.Infrastructure/Repositories/TenantRepository.cs src/OrchestAI.Infrastructure/Repositories/ApiKeyRepository.cs \
   src/OrchestAI.Application/Commands/CreateTenant/ src/OrchestAI.Application/Commands/CreateApiKey/ \
-  src/OrchestAI.Application/Commands/RevokeApiKey/ src/OrchestAI.Infrastructure/Tenancy/RequireAdminSecretFilter.cs \
+  src/OrchestAI.Application/Commands/RevokeApiKey/ src/OrchestAI.API/Filters/RequireAdminSecretFilter.cs \
   src/OrchestAI.API/Controllers/AdminController.cs src/OrchestAI.Infrastructure/DependencyInjection.cs \
   src/OrchestAI.API/appsettings.json src/OrchestAI.API/appsettings.Development.json \
   tests/OrchestAI.Tests/Application/CreateTenantHandlerTests.cs tests/OrchestAI.Tests/Application/CreateApiKeyHandlerTests.cs \
-  tests/OrchestAI.Tests/Application/RevokeApiKeyHandlerTests.cs tests/OrchestAI.Tests/Infrastructure/RequireAdminSecretFilterTests.cs
+  tests/OrchestAI.Tests/Application/RevokeApiKeyHandlerTests.cs tests/OrchestAI.Tests/API/RequireAdminSecretFilterTests.cs
 git commit -m "feat: add operator-only Tenant/ApiKey bootstrap commands and admin-secret-gated controller"
 ```
 
@@ -3885,7 +3923,7 @@ git commit -m "feat: propagate TenantId through the eval run queue and restore i
 - Test: Create `tests/OrchestAI.Tests/Infrastructure/SystemWriteScopeTests.cs`
 - Test: Modify `tests/OrchestAI.Tests/Infrastructure/CostRollupBackgroundServiceTests.cs`
 
-**Why `CostRollup.Create(...)` is the one entity allowed a `tenantId` parameter:** every other `ITenantScoped` entity is created by request-driven application code, where the ONLY trustworthy source of `TenantId` is the ambient ico — accepting it as a parameter would open exactly the "client-supplied TenantId" attack surface Task 5 closes by design. `CostRollup` is different: it is created exclusively by `CostRollupBackgroundService`, a trusted system process that derives each row's `TenantId` from an authoritative SQL join (`OrchestrationTask.TenantId`), never from anything a caller supplies. Accepting it as a constructor parameter here is not a design regression — it's the correct shape for the one entity whose writer legitimately varies tenant per-row within a single operation.
+**Why `CostRollup.Create(...)` takes a `tenantId` parameter:** every `ITenantScoped` entity created by request-driven application code has the ONLY trustworthy source of `TenantId` be the ambient `ICurrentTenantAccessor` — accepting it as a parameter would open exactly the "client-supplied TenantId" attack surface Task 5 closes by design. `CostRollup` is different: it is created exclusively by `CostRollupBackgroundService`, a trusted system process that derives each row's `TenantId` from an authoritative SQL join (`OrchestrationTask.TenantId`), never from anything a caller supplies. Accepting it as a constructor parameter here is not a design regression — it's the correct shape for the one entity whose writer legitimately varies tenant per-row within a single operation. This is one of exactly two named exceptions to the Global Constraints' "no factory ever takes TenantId" rule — the other is `ApiKey.Create(tenantId, ...)` (Task 1), which shares the same justification shape: a trusted, non-tenant-authenticated writer (the admin-secret-gated `CreateApiKeyHandler`, Task 8) operating with no ambient tenant scope to bypass, where `TenantId` is legitimately an input the caller is choosing rather than a value that should be inferred from request context.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4785,7 +4823,7 @@ the `EvalRun` itself, which is `ITenantScoped`), and checks the owning tenant's 
 (`Active`/`Suspended`/deleted) before doing any further work — a tenant suspended after enqueue
 gets its queued run marked `Failed` with a clear reason, never silently completed.
 
-### Confirmation #5b — Cost rollup: the one deliberate, narrow, audited exception
+### Confirmation #5b — Cost rollup: a deliberate, narrow, audited exception
 `CostRollupBackgroundService` aggregates across every tenant by nature — it cannot run inside
 any single tenant's ambient scope. A new `ICurrentTenantAccessor.BeginSystemWriteScope()` (a
 second, independent `AsyncLocal<bool>` flag) is the **only** bypass: while active,
@@ -4793,14 +4831,25 @@ second, independent `AsyncLocal<bool>` flag) is the **only** bypass: while activ
 `ICostLedgerRepository.GetDailyAggregatesForRollupAsync` explicitly calls `IgnoreQueryFilters()`
 — guarded by an `InvalidOperationException` if called outside a system-write scope, so an
 accidental future call from tenant-facing code fails loudly instead of silently leaking
-cross-tenant data. `CostRollup.Create(...)` is the one entity factory that accepts an explicit
-`tenantId` parameter — justified because its only writer (this job) derives each row's tenant
-from an authoritative SQL join (`OrchestrationTask.TenantId`), never from anything a caller
-supplies, unlike every other entity where a `TenantId` parameter would be a real attack surface.
-`CostRollups` gained `TenantId` in its grouping key (`Date, TenantId, UserId, AgentType, Model`)
-so two tenants' costs are never collapsed into one aggregate row. Auditable by construction: grep
-for `IgnoreQueryFilters`/`BeginSystemWriteScope` and confirm each has exactly the one call site
-described here (Task 14's audit).
+cross-tenant data. `CostRollups` gained `TenantId` in its grouping key
+(`Date, TenantId, UserId, AgentType, Model`) so two tenants' costs are never collapsed into one
+aggregate row. Auditable by construction: grep for `IgnoreQueryFilters`/`BeginSystemWriteScope`
+and confirm each has exactly the one call site described here (Task 14's audit).
+
+**Two named exceptions to "no factory ever takes `TenantId`," not one:** `CostRollup.Create(...)`
+(this task) and `ApiKey.Create(...)` (Task 1) both accept an explicit `tenantId` parameter — the
+review that surfaced this during Task 1's implementation initially read as a contradiction of the
+Global Constraints until traced to its actual justification (see Task 1's code comment on
+`ApiKey.Create` and the Global Constraints entry above). Both share the same shape: a trusted
+writer with no ambient ITenantScoped write path to bypass. `CostRollup`'s writer
+(`CostRollupBackgroundService`) derives `TenantId` from an authoritative SQL join
+(`OrchestrationTask.TenantId`), never from a caller. `ApiKey`'s writer (`CreateApiKeyHandler`,
+admin-secret-gated, Task 8) has no ambient tenant scope during the call at all — the operator
+explicitly designating the tenant for a new key IS the operation. Neither is reachable from a
+tenant-authenticated request path, which is the actual property the constraint protects. Any
+*other* factory method accepting `TenantId` is a defect, not a third instance of this pattern —
+`TenantScopingCompletenessTests` (Task 13) and this ADR are what a future reviewer checks before
+accepting a claimed third exception.
 
 ### Confirmation #6 — Ambient tenant mechanism
 `ICurrentTenantAccessor`, backed by `AsyncLocal<Guid?>` (plus the separate `AsyncLocal<bool>` for

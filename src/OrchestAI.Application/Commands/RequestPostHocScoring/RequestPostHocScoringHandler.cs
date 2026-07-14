@@ -88,7 +88,17 @@ public sealed class RequestPostHocScoringHandler
         var subjectVersion = $"posthoc-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
         var run = EvalRun.CreatePostHoc(subjectVersion, request.Rubric, selectionCriteriaJson, request.ForceRescore);
         await _runRepository.AddAsync(run, cancellationToken).ConfigureAwait(false);
-        await _queue.EnqueueAsync(run.Id, cancellationToken).ConfigureAwait(false);
+
+        // AddAsync must have flushed SaveChanges by now, which means TenantScopingInterceptor
+        // has already stamped run.TenantId from the ambient tenant context (see ADR-014). If
+        // this ever fires, SaveChanges didn't run or the interceptor didn't — fail loudly
+        // instead of silently enqueuing a Guid.Empty-scoped eval run.
+        if (run.TenantId == Guid.Empty)
+            throw new InvalidOperationException(
+                "EvalRun.TenantId was not stamped before enqueue — this indicates SaveChanges did not run " +
+                "or TenantScopingInterceptor did not fire.");
+
+        await _queue.EnqueueAsync(run.Id, run.TenantId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Enqueued post-hoc scoring run {RunId} for {TraceCount} traces (agentType={AgentType})",

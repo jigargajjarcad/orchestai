@@ -17,6 +17,10 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(e => e.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(e => e.OrchestrationTaskId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -86,6 +90,13 @@ public sealed class AgentExecutionConfiguration : IEntityTypeConfiguration<Agent
             .WithMany(t => t.AgentExecutions)
             .HasForeignKey(e => e.OrchestrationTaskId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(e => e.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.TenantId);
 
         builder.HasIndex(e => e.OrchestrationTaskId);
 

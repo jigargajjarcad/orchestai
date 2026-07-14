@@ -1,13 +1,15 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class McpToolCall
+public sealed class McpToolCall : ITenantScoped
 {
     private McpToolCall() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid AgentExecutionId { get; private set; }
     public string ToolName { get; private set; } = string.Empty;
     public string InputParameters { get; private set; } = "{}";

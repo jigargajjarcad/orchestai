@@ -1,30 +1,41 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Repositories;
+using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.Tests.Infrastructure;
 
 public sealed class CostLedgerRepositoryEvalFilterTests
 {
-    private static PooledDbContextFactory<AppDbContext> BuildFactory(string dbName)
+    private static (IDbContextFactory<AppDbContext> Factory, AsyncLocalCurrentTenantAccessor Accessor) BuildFactory(string dbName)
     {
+        var accessor = new AsyncLocalCurrentTenantAccessor();
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(dbName)
             .Options;
-        return new PooledDbContextFactory<AppDbContext>(options);
+        // See TenantQueryFilterTests.TestDbContextFactory: PooledDbContextFactory<TContext> has
+        // no hook for AppDbContext's new ICurrentTenantAccessor dependency, so this test uses the
+        // shared minimal IDbContextFactory<AppDbContext> instead.
+        return (new TestDbContextFactory(options, accessor), accessor);
     }
 
     [Fact]
     public async Task GetDailyAggregatesAsync_MixOfProductionAndEvalRows_OnlyReturnsProduction()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         Guid userId;
+
+        // This test predates tenant scoping (Task 10) and TenantScopingInterceptor (Task 5, not
+        // yet on this branch) — every ITenantScoped entity below is seeded via Create(...) and
+        // keeps its Guid.Empty default. Scoping the ambient tenant to Guid.Empty for the whole
+        // test makes Task 4's new query filter transparent to this test without changing its
+        // seeding or assertions.
+        using var tenantScope = accessor.SetTenant(Guid.Empty);
 
         await using (var seedCtx = await factory.CreateDbContextAsync())
         {
@@ -45,7 +56,7 @@ public sealed class CostLedgerRepositoryEvalFilterTests
             await seedCtx.SaveChangesAsync();
         }
 
-        var repository = new CostLedgerRepository(factory);
+        var repository = new CostLedgerRepository(factory, accessor);
         var aggregates = await repository.GetDailyAggregatesAsync(today, today, CancellationToken.None);
 
         aggregates.Should().ContainSingle();

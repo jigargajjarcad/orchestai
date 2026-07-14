@@ -1,12 +1,14 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class EvalRun
+public sealed class EvalRun : ITenantScoped
 {
     private EvalRun() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid? SuiteId { get; private set; }
     public EvalRunSource Source { get; private set; }
     public DateTimeOffset TriggeredAt { get; private set; }

@@ -1,26 +1,34 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Enums;
 using OrchestAI.Infrastructure.Data;
 using OrchestAI.Infrastructure.Repositories;
+using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.Tests.Infrastructure;
 
 public sealed class EvalResultRepositoryIdempotencyTests
 {
-    private static PooledDbContextFactory<AppDbContext> BuildFactory(string dbName)
+    private static (IDbContextFactory<AppDbContext> Factory, AsyncLocalCurrentTenantAccessor Accessor) BuildFactory(string dbName)
     {
+        var accessor = new AsyncLocalCurrentTenantAccessor();
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(dbName).Options;
-        return new PooledDbContextFactory<AppDbContext>(options);
+        // See TenantQueryFilterTests.TestDbContextFactory: PooledDbContextFactory<TContext> has
+        // no hook for AppDbContext's new ICurrentTenantAccessor dependency, so this test uses the
+        // shared minimal IDbContextFactory<AppDbContext> instead.
+        return (new TestDbContextFactory(options, accessor), accessor);
     }
 
     [Fact]
     public async Task GetScoredAgentExecutionIdsAsync_ReturnsOnlyMatchesForExactScorerAndVersion()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
+        // This test predates tenant scoping (Task 10) and TenantScopingInterceptor (Task 5, not
+        // yet on this branch) — seeded EvalResult rows keep their Guid.Empty TenantId default.
+        // Scoping the ambient tenant to Guid.Empty makes Task 4's new query filter transparent.
+        using var tenantScope = accessor.SetTenant(Guid.Empty);
         var runId = Guid.NewGuid();
         var scoredExecutionId = Guid.NewGuid();
         var unscoredExecutionId = Guid.NewGuid();
@@ -46,7 +54,8 @@ public sealed class EvalResultRepositoryIdempotencyTests
     public async Task GetScoredAgentExecutionIdsAsync_LiveCaseBasedResult_NeverCounted()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
+        using var tenantScope = accessor.SetTenant(Guid.Empty);
         var executionId = Guid.NewGuid();
 
         await using (var seedCtx = await factory.CreateDbContextAsync())
@@ -69,7 +78,8 @@ public sealed class EvalResultRepositoryIdempotencyTests
     public async Task DeletePostHocResultAsync_PriorResultExists_RemovesItAndAllowsReinsert()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, accessor) = BuildFactory(dbName);
+        using var tenantScope = accessor.SetTenant(Guid.Empty);
         var executionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
 
@@ -100,7 +110,7 @@ public sealed class EvalResultRepositoryIdempotencyTests
     public async Task DeletePostHocResultAsync_NoPriorResult_IsNoOp()
     {
         var dbName = Guid.NewGuid().ToString();
-        var factory = BuildFactory(dbName);
+        var (factory, _) = BuildFactory(dbName);
         var repository = new EvalResultRepository(factory);
 
         var act = async () => await repository.DeletePostHocResultAsync(

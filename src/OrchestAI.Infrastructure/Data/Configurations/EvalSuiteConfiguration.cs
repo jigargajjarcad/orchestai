@@ -16,6 +16,10 @@ public sealed class EvalSuiteConfiguration : IEntityTypeConfiguration<EvalSuite>
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(s => s.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(s => s.Name)
             .IsRequired()
             .HasMaxLength(200);
@@ -37,6 +41,13 @@ public sealed class EvalSuiteConfiguration : IEntityTypeConfiguration<EvalSuite>
             .WithOne(c => c.Suite)
             .HasForeignKey(c => c.SuiteId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(s => s.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(s => s.TenantId);
 
         builder.HasIndex(s => s.TargetAgentType);
     }

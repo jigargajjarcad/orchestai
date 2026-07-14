@@ -1,12 +1,14 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class EvalSuite
+public sealed class EvalSuite : ITenantScoped
 {
     private EvalSuite() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public AgentType TargetAgentType { get; private set; }

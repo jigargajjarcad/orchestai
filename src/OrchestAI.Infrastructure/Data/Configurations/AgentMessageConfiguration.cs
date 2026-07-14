@@ -16,6 +16,10 @@ public sealed class AgentMessageConfiguration : IEntityTypeConfiguration<AgentMe
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(m => m.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(m => m.AgentExecutionId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -40,5 +44,12 @@ public sealed class AgentMessageConfiguration : IEntityTypeConfiguration<AgentMe
             .WithMany(e => e.Messages)
             .HasForeignKey(m => m.AgentExecutionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(m => m.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(m => m.TenantId);
     }
 }

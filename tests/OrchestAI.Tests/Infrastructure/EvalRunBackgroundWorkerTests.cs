@@ -7,6 +7,7 @@ using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
 using OrchestAI.Infrastructure.Eval;
+using OrchestAI.Infrastructure.Tenancy;
 
 namespace OrchestAI.Tests.Infrastructure;
 
@@ -153,7 +154,7 @@ public sealed class EvalRunBackgroundWorkerTests
 
     private static EvalRunBackgroundWorker BuildWorker(
         IEvalSuiteRepository suiteRepo, IEvalRunRepository runRepo, IEvalResultRepository resultRepo,
-        IOrchestrationTaskRepository taskRepo, IAgentFactory agentFactory)
+        IOrchestrationTaskRepository taskRepo, IAgentFactory agentFactory, ITenantRepository? tenantRepo = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(suiteRepo);
@@ -162,11 +163,26 @@ public sealed class EvalRunBackgroundWorkerTests
         services.AddSingleton(taskRepo);
         services.AddSingleton(agentFactory);
         services.AddSingleton<IEvalScorerFactory>(new EvalScorerFactory([new RuleBasedScorer()]));
+        services.AddSingleton(tenantRepo ?? BuildActiveTenantRepository());
         var provider = services.BuildServiceProvider();
 
         var queueMock = new Mock<IEvalRunQueue>();
         return new EvalRunBackgroundWorker(
             queueMock.Object, provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<EvalRunBackgroundWorker>.Instance);
+            new AsyncLocalCurrentTenantAccessor(), NullLogger<EvalRunBackgroundWorker>.Instance);
+    }
+
+    // Every existing test in this file calls ProcessRunAsync directly with an EvalRun that never
+    // had a real tenant stamped (TenantId defaults to Guid.Empty) — the new tenant-suspension
+    // check added in Task 11 needs SOME active tenant to resolve for any GetByIdAsync call, or
+    // every test here would start failing with "tenant not active" instead of exercising the
+    // live-suite behavior they actually test. See EvalRunBackgroundWorkerPostHocTests.cs for the
+    // dedicated suspended-tenant test.
+    private static ITenantRepository BuildActiveTenantRepository()
+    {
+        var mock = new Mock<ITenantRepository>();
+        var tenant = Tenant.Create("Test Tenant", "test-tenant");
+        mock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        return mock.Object;
     }
 }

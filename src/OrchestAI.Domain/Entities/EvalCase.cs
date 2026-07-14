@@ -1,13 +1,15 @@
 using System.Text.Json;
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
-public sealed class EvalCase
+public sealed class EvalCase : ITenantScoped
 {
     private EvalCase() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid SuiteId { get; private set; }
     public string InputPayload { get; private set; } = string.Empty;
     public string ExpectedCriteria { get; private set; } = string.Empty;

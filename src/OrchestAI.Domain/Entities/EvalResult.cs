@@ -1,14 +1,16 @@
 using OrchestAI.Domain.Enums;
+using OrchestAI.Domain.Interfaces;
 
 namespace OrchestAI.Domain.Entities;
 
 // Immutable after creation — a score is a point-in-time record of what the scorer
 // concluded when the run executed, never re-derived from current scorer logic on read.
-public sealed class EvalResult
+public sealed class EvalResult : ITenantScoped
 {
     private EvalResult() { }
 
     public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
     public Guid EvalRunId { get; private set; }
     public Guid? EvalCaseId { get; private set; }
     public Guid? AgentExecutionId { get; private set; }

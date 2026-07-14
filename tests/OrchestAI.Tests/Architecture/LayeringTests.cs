@@ -67,6 +67,46 @@ public sealed class LayeringTests
             FailureDetail(result, "Infrastructure must not reference API"));
     }
 
+    // Added after Task 8's RequireAdminSecretFilter (an IAsyncActionFilter) shipped inside
+    // Infrastructure.Tenancy, which forced a FrameworkReference to Microsoft.AspNetCore.App onto
+    // an otherwise plain class library. Infrastructure_DoesNotDependOnApi (above) would never have
+    // caught this — the filter had no project reference to OrchestAI.API, only to ASP.NET Core
+    // MVC types directly. This test closes that specific detection gap: MVC-specific glue
+    // (IActionFilter, controllers, model binding, etc.) belongs in the API layer, never
+    // Infrastructure, regardless of whether it happens to reference OrchestAI.API itself.
+    //
+    // Infrastructure_DoesNotDependOnAspNetCoreMvc and Infrastructure_DoesNotDependOnAspNetCoreHttp
+    // (below) both exist because ASP.NET Core pipeline-glue types — filters (Microsoft.AspNetCore.Mvc)
+    // and middleware (Microsoft.AspNetCore.Http, e.g. IMiddleware) — belong in OrchestAI.API, never
+    // OrchestAI.Infrastructure. Task 9's TenantAuthenticationMiddleware (IMiddleware, which lives in
+    // Microsoft.AspNetCore.Http, a namespace this Mvc-specific guardrail does NOT cover) was built
+    // directly in OrchestAI.API to avoid repeating Task 8's exact mistake; this second guardrail
+    // closes the detection gap the Mvc-only check would have left open for any future IMiddleware
+    // placed in Infrastructure.
+    [Fact]
+    public void Infrastructure_DoesNotDependOnAspNetCoreMvc()
+    {
+        var result = Types.InAssembly(InfrastructureAssembly)
+            .Should()
+            .NotHaveDependencyOn("Microsoft.AspNetCore.Mvc")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            FailureDetail(result, "Infrastructure must not reference ASP.NET Core MVC types (IActionFilter, controllers, etc.) — that's API-layer business, not persistence/cross-cutting infrastructure"));
+    }
+
+    [Fact]
+    public void Infrastructure_DoesNotDependOnAspNetCoreHttp()
+    {
+        var result = Types.InAssembly(InfrastructureAssembly)
+            .Should()
+            .NotHaveDependencyOn("Microsoft.AspNetCore.Http")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            FailureDetail(result, "Infrastructure must not reference ASP.NET Core Http types (IMiddleware, HttpContext, etc.) — that's API-layer business, not persistence/cross-cutting infrastructure"));
+    }
+
     // Confirms the layers actually used above resolve to distinct assemblies (Domain,
     // Application, Infrastructure, API) — if a future refactor merged two layers into one
     // assembly, the dependency checks above would trivially "pass" by having nothing to find,

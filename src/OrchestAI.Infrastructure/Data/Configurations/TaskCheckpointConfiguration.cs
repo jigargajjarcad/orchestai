@@ -16,6 +16,10 @@ public sealed class TaskCheckpointConfiguration : IEntityTypeConfiguration<TaskC
             .HasColumnType("uuid")
             .HasDefaultValueSql("gen_random_uuid()");
 
+        builder.Property(c => c.TenantId)
+            .IsRequired()
+            .HasColumnType("uuid");
+
         builder.Property(c => c.OrchestrationTaskId)
             .IsRequired()
             .HasColumnType("uuid");
@@ -54,6 +58,13 @@ public sealed class TaskCheckpointConfiguration : IEntityTypeConfiguration<TaskC
             .WithMany()
             .HasForeignKey(c => c.OrchestrationTaskId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Tenant>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(c => c.TenantId);
 
         builder.HasIndex(c => new { c.OrchestrationTaskId, c.AgentType })
             .IsUnique();

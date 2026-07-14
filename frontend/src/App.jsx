@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
+import { hasApiKey, authenticatedFetch } from './apiKey'
+import ApiKeyPrompt from './ApiKeyPrompt'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
@@ -256,7 +258,7 @@ function MemoriesPage({ onDelete }) {
 
   const load = async () => {
     try {
-      const res = await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
+      const res = await authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
       if (!res.ok) throw new Error(`Failed to load memories: ${res.status}`)
       setMemories(await res.json())
     } catch (err) {
@@ -269,7 +271,7 @@ function MemoriesPage({ onDelete }) {
 
   const handleDelete = async (id) => {
     try {
-      await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories/${id}`, { method: 'DELETE' })
+      await authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/memories/${id}`, { method: 'DELETE' })
       setMemories(prev => prev.filter(m => m.id !== id))
       onDelete?.()
     } catch (err) {
@@ -331,6 +333,7 @@ function MemoriesPage({ onDelete }) {
 }
 
 export default function App() {
+  const [keySet, setKeySet] = useState(hasApiKey())
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
   const [requireApproval, setRequireApproval] = useState(false)
@@ -353,7 +356,7 @@ export default function App() {
 
   const fetchMemoryCounts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
+      const res = await authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/memories`)
       if (!res.ok) return {}
       const memories = await res.json()
       const counts = {}
@@ -422,7 +425,7 @@ export default function App() {
     setMemoryCounts(baseline)
 
     try {
-      const createRes = await fetch(`${API_BASE}/tasks`, {
+      const createRes = await authenticatedFetch(`${API_BASE}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: DEV_USER_ID, title, userPrompt: prompt, requireApproval }),
@@ -433,7 +436,7 @@ export default function App() {
       setTaskId(id)
       setTaskStatus('Pending')
 
-      await fetch(`${API_BASE}/tasks/${id}/start`, { method: 'POST' })
+      await authenticatedFetch(`${API_BASE}/tasks/${id}/start`, { method: 'POST' })
       setTaskStatus('Running')
 
       const es = new EventSource(`${API_BASE}/tasks/${id}/stream`)
@@ -525,7 +528,7 @@ export default function App() {
 
   const fetchFinalResult = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/tasks/${id}?includeToolCalls=true`)
+      const res = await authenticatedFetch(`${API_BASE}/tasks/${id}?includeToolCalls=true`)
       if (res.ok) {
         const data = await res.json()
         setFinalResult(data.finalResult)
@@ -548,7 +551,7 @@ export default function App() {
     if (!taskId) return
     setApprovalBusy(true)
     try {
-      await fetch(`${API_BASE}/tasks/${taskId}/approve`, {
+      await authenticatedFetch(`${API_BASE}/tasks/${taskId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -564,7 +567,7 @@ export default function App() {
     if (!taskId) return
     setApprovalBusy(true)
     try {
-      await fetch(`${API_BASE}/tasks/${taskId}/reject`, {
+      await authenticatedFetch(`${API_BASE}/tasks/${taskId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: note || null }),
@@ -580,6 +583,10 @@ export default function App() {
 
   const isActive = taskStatus === 'Running' || taskStatus === 'WaitingForApproval'
   const statusColor = STATUS_COLORS[taskStatus] ?? '#6b7280'
+
+  if (!keySet) {
+    return <ApiKeyPrompt onSubmitted={() => setKeySet(true)} />
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#11111b', color: '#cdd6f4', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 14 }}>

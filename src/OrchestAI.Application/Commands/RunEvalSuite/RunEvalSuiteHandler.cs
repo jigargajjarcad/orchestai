@@ -33,9 +33,25 @@ public sealed class RunEvalSuiteHandler : IRequestHandler<RunEvalSuiteCommand, R
         if (string.IsNullOrWhiteSpace(request.SubjectVersion))
             throw new ValidationException(nameof(request.SubjectVersion), "SubjectVersion is required.");
 
+        if (request.BaselineRunId is { } baselineRunId)
+        {
+            _ = await _runRepository.GetByIdAsync(baselineRunId, cancellationToken).ConfigureAwait(false)
+                ?? throw new NotFoundException(nameof(EvalRun), baselineRunId);
+        }
+
         var run = EvalRun.Create(suite.Id, request.SubjectVersion, request.BaselineRunId);
         await _runRepository.AddAsync(run, cancellationToken).ConfigureAwait(false);
-        await _queue.EnqueueAsync(run.Id, cancellationToken).ConfigureAwait(false);
+
+        // AddAsync must have flushed SaveChanges by now, which means TenantScopingInterceptor
+        // has already stamped run.TenantId from the ambient tenant context (see ADR-014). If
+        // this ever fires, SaveChanges didn't run or the interceptor didn't — fail loudly
+        // instead of silently enqueuing a Guid.Empty-scoped eval run.
+        if (run.TenantId == Guid.Empty)
+            throw new InvalidOperationException(
+                "EvalRun.TenantId was not stamped before enqueue — this indicates SaveChanges did not run " +
+                "or TenantScopingInterceptor did not fire.");
+
+        await _queue.EnqueueAsync(run.Id, run.TenantId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Enqueued eval run {RunId} for suite {SuiteId} (subject={SubjectVersion}, baseline={BaselineRunId})",

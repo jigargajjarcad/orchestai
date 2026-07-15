@@ -6,5 +6,6 @@ public sealed record CreateOrchestrationTaskCommand(
     Guid UserId,
     string Title,
     string UserPrompt,
-    bool RequireApproval = false
+    bool RequireApproval = false,
+    string? IdempotencyKey = null
 ) : IRequest<CreateOrchestrationTaskResponse>;

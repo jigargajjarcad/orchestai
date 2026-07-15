@@ -39,14 +39,18 @@ public sealed class TasksController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>Creates a new orchestration task.</summary>
+    /// <summary>Creates a new orchestration task. Supports an optional Idempotency-Key header.</summary>
     [HttpPost]
     [ProducesResponseType(typeof(CreateOrchestrationTaskResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateAsync(
-        [FromBody] CreateOrchestrationTaskCommand command,
+        [FromBody] CreateOrchestrationTaskCommand bodyCommand,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
+        var command = bodyCommand with { IdempotencyKey = idempotencyKey };
+
         try
         {
             var response = await _mediator.Send(command, cancellationToken);
@@ -57,6 +61,10 @@ public sealed class TasksController : ControllerBase
             _logger.LogWarning("Validation failed for CreateOrchestrationTask: {@Errors}", ex.Errors);
             return ValidationProblem(new ValidationProblemDetails(
                 ex.Errors.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)));
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflict", Detail = ex.Message, Status = StatusCodes.Status409Conflict });
         }
     }
 

@@ -1,7 +1,9 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using OrchestAI.Application.Commands.CreateOrchestrationTask;
+using OrchestAI.Application.Configuration;
 using OrchestAI.Application.Exceptions;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Interfaces;
@@ -11,15 +13,19 @@ namespace OrchestAI.Tests.Application;
 public sealed class CreateOrchestrationTaskHandlerTests
 {
     private readonly Mock<IOrchestrationTaskRepository> _repositoryMock;
+    private readonly Mock<IIdempotencyRecordRepository> _idempotencyRepositoryMock;
     private readonly Mock<ILogger<CreateOrchestrationTaskHandler>> _loggerMock;
     private readonly CreateOrchestrationTaskHandler _handler;
 
     public CreateOrchestrationTaskHandlerTests()
     {
         _repositoryMock = new Mock<IOrchestrationTaskRepository>();
+        _idempotencyRepositoryMock = new Mock<IIdempotencyRecordRepository>();
         _loggerMock = new Mock<ILogger<CreateOrchestrationTaskHandler>>();
         _handler = new CreateOrchestrationTaskHandler(
             _repositoryMock.Object,
+            _idempotencyRepositoryMock.Object,
+            Options.Create(new AbuseProtectionOptions()),
             _loggerMock.Object);
     }
 

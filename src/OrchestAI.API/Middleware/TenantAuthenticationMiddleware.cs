@@ -81,6 +81,8 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
             return;
         }
 
+        context.Items["ApiKeyId"] = apiKey.Id;
+
         await MaybeRecordUsageAsync(apiKey, context.RequestAborted).ConfigureAwait(false);
 
         using (_tenantAccessor.SetTenant(tenant.Id))

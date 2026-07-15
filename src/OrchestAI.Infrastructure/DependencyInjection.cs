@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<ITenantLimitsRepository, TenantLimitsRepository>();
         services.AddSingleton<ITenantLimitsProvider, EfTenantLimitsProvider>();
+        services.AddScoped<IRejectionEventRepository, RejectionEventRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();

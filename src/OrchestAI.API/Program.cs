@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OrchestAI.API.ExceptionHandling;
 using OrchestAI.API.Filters;
 using OrchestAI.API.Middleware;
 using OrchestAI.Application;
@@ -41,6 +42,12 @@ try
     // as RequireAdminSecretFilter above: this is ASP.NET Core HTTP-pipeline glue (API layer), not
     // persistence/cross-cutting infrastructure. See Task 9 / ADR-014.
     builder.Services.AddScoped<TenantAuthenticationMiddleware>();
+
+    // API-layer rejection contract (Task 2) — RejectionResponder builds every 429 response and
+    // RejectionEvent write; TenantLimitExceededExceptionHandler is the choke point for every
+    // synchronous-HTTP-request rejection thrown as an exception.
+    builder.Services.AddScoped<RejectionResponder>();
+    builder.Services.AddExceptionHandler<TenantLimitExceededExceptionHandler>();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>

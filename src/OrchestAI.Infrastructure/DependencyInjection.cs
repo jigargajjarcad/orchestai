@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddScoped<IIdempotencyRecordRepository, IdempotencyRecordRepository>();
         services.AddScoped<ITaskAdmissionReservationRepository, TaskAdmissionReservationRepository>();
         services.AddSingleton<IBudgetEstimator, ConservativeBudgetEstimator>();
+        services.AddScoped<IOrchestrationAdmissionRepository, OrchestrationAdmissionRepository>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();

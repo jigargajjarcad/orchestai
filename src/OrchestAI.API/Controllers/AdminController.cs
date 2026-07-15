@@ -4,6 +4,7 @@ using OrchestAI.API.Filters;
 using OrchestAI.Application.Commands.CreateApiKey;
 using OrchestAI.Application.Commands.CreateTenant;
 using OrchestAI.Application.Commands.RevokeApiKey;
+using OrchestAI.Application.Commands.SetTenantLimits;
 using OrchestAI.Application.Commands.SuspendTenant;
 using OrchestAI.Application.Exceptions;
 
@@ -101,4 +102,34 @@ public sealed class AdminController : ControllerBase
             return NotFound(new ProblemDetails { Title = "Not Found", Detail = ex.Message, Status = StatusCodes.Status404NotFound });
         }
     }
+
+    [HttpPut("tenants/{tenantId:guid}/limits")]
+    [ProducesResponseType(typeof(SetTenantLimitsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetTenantLimitsAsync(
+        Guid tenantId, [FromBody] SetTenantLimitsRequestBody body, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _mediator.Send(
+                new SetTenantLimitsCommand(
+                    tenantId, body.RequestsPerMinute, body.MaxConcurrentTasks, body.MaxAgentsPerTask,
+                    body.MaxToolCallsPerTask, body.DailyCostBudgetUsd, body.MonthlyCostBudgetUsd, body.MaxQueueDepth),
+                cancellationToken);
+            return Ok(response);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Not Found", Detail = ex.Message, Status = StatusCodes.Status404NotFound });
+        }
+    }
 }
+
+public sealed record SetTenantLimitsRequestBody(
+    int? RequestsPerMinute,
+    int? MaxConcurrentTasks,
+    int? MaxAgentsPerTask,
+    int? MaxToolCallsPerTask,
+    decimal? DailyCostBudgetUsd,
+    decimal? MonthlyCostBudgetUsd,
+    int? MaxQueueDepth);

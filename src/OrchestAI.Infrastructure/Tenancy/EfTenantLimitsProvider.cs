@@ -22,6 +22,14 @@ public sealed class EfTenantLimitsProvider : ITenantLimitsProvider
     private readonly TimeSpan _refreshInterval;
     private readonly ConcurrentDictionary<Guid, (ResolvedTenantLimits Limits, DateTimeOffset CachedAt)> _cache = new();
 
+    // Single-flight guard for cache-miss/expiry, same double-checked-locking shape as
+    // ModelPricingCache's _refreshLock — but keyed per tenant (via GetOrAdd) rather than one
+    // global SemaphoreSlim, since this cache is keyed per tenant too: a global lock would
+    // serialize unrelated tenants' refreshes against each other for no reason. Without this,
+    // N concurrent GetAsync calls for the same tenant during a cold cache/expiry each fire their
+    // own DB round trip (thundering herd) — this coalesces them into one.
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _refreshLocks = new();
+
     public EfTenantLimitsProvider(
         IServiceScopeFactory scopeFactory,
         IOptions<TenantLimitsDefaults> defaults,
@@ -37,13 +45,25 @@ public sealed class EfTenantLimitsProvider : ITenantLimitsProvider
         if (_cache.TryGetValue(tenantId, out var cached) && DateTimeOffset.UtcNow - cached.CachedAt < _refreshInterval)
             return cached.Limits;
 
-        using var scope = _scopeFactory.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<ITenantLimitsRepository>();
-        var row = await repository.GetByTenantIdAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        var refreshLock = _refreshLocks.GetOrAdd(tenantId, static _ => new SemaphoreSlim(1, 1));
+        await refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_cache.TryGetValue(tenantId, out cached) && DateTimeOffset.UtcNow - cached.CachedAt < _refreshInterval)
+                return cached.Limits; // another caller already refreshed while we waited on the lock
 
-        var resolved = Resolve(row);
-        _cache[tenantId] = (resolved, DateTimeOffset.UtcNow);
-        return resolved;
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<ITenantLimitsRepository>();
+            var row = await repository.GetByTenantIdAsync(tenantId, cancellationToken).ConfigureAwait(false);
+
+            var resolved = Resolve(row);
+            _cache[tenantId] = (resolved, DateTimeOffset.UtcNow);
+            return resolved;
+        }
+        finally
+        {
+            refreshLock.Release();
+        }
     }
 
     public ResolvedTenantLimits GetSnapshot(Guid tenantId) =>

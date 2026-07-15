@@ -95,4 +95,29 @@ public sealed class EfTenantLimitsProviderTests
 
         snapshot.RequestsPerMinute.Should().Be(999);
     }
+
+    [Fact]
+    public async Task GetAsync_ConcurrentCallsDuringColdCache_CoalesceIntoSingleRepositoryCall()
+    {
+        var tenantId = Guid.NewGuid();
+        var row = TenantLimits.Create(tenantId, requestsPerMinute: 777, null, null, null, null, null, null);
+        // Held open until both GetAsync calls have been started, so the second call is
+        // guaranteed to observe a cold cache and block on the single-flight lock rather than
+        // the DB call, proving the guard — not scheduling luck — is what limits this to one call.
+        var gate = new TaskCompletionSource<TenantLimits?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var repoMock = new Mock<ITenantLimitsRepository>();
+        repoMock.Setup(r => r.GetByTenantIdAsync(tenantId, It.IsAny<CancellationToken>())).Returns(gate.Task);
+        var provider = CreateProvider(repoMock);
+
+        var task1 = provider.GetAsync(tenantId);
+        var task2 = provider.GetAsync(tenantId);
+
+        gate.SetResult(row);
+        var results = await Task.WhenAll(task1, task2);
+
+        results[0].RequestsPerMinute.Should().Be(777);
+        results[1].RequestsPerMinute.Should().Be(777);
+        repoMock.Verify(r => r.GetByTenantIdAsync(tenantId, It.IsAny<CancellationToken>()), Times.Once,
+            "concurrent GetAsync calls for the same tenant during a cache miss must coalesce into a single DB round trip");
+    }
 }

@@ -33,6 +33,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<TenantLimits> TenantLimits => Set<TenantLimits>();
     public DbSet<RejectionEvent> RejectionEvents => Set<RejectionEvent>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<TaskAdmissionReservation> TaskAdmissionReservations => Set<TaskAdmissionReservation>();
     public DbSet<EvalSuite> EvalSuites => Set<EvalSuite>();
     public DbSet<EvalCase> EvalCases => Set<EvalCase>();
     public DbSet<EvalRun> EvalRuns => Set<EvalRun>();
@@ -58,6 +59,7 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new TenantLimitsConfiguration());
         modelBuilder.ApplyConfiguration(new RejectionEventConfiguration());
         modelBuilder.ApplyConfiguration(new IdempotencyRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new TaskAdmissionReservationConfiguration());
         modelBuilder.ApplyConfiguration(new EvalSuiteConfiguration());
         modelBuilder.ApplyConfiguration(new EvalCaseConfiguration());
         modelBuilder.ApplyConfiguration(new EvalRunConfiguration());

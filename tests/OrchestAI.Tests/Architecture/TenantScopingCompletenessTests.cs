@@ -21,7 +21,7 @@ public sealed class TenantScopingCompletenessTests
         typeof(OrchestrationTask), typeof(AgentExecution), typeof(AgentMemory), typeof(AgentMessage),
         typeof(AgentRetryAttempt), typeof(CostLedger), typeof(CostRollup), typeof(McpToolCall),
         typeof(TaskCheckpoint), typeof(EvalSuite), typeof(EvalCase), typeof(EvalRun), typeof(EvalResult),
-        typeof(RejectionEvent), typeof(IdempotencyRecord)
+        typeof(RejectionEvent), typeof(IdempotencyRecord), typeof(TaskAdmissionReservation)
     ];
 
     // Deliberately NOT tenant-scoped — global/shared data (see ADR-014). Listed explicitly so a

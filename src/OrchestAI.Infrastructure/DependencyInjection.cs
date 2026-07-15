@@ -8,6 +8,7 @@ using OrchestAI.Application.Configuration;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure.Agents;
 using OrchestAI.Infrastructure.Agents.Base;
+using OrchestAI.Infrastructure.Budgeting;
 using OrchestAI.Infrastructure.Caching;
 using OrchestAI.Infrastructure.Configuration;
 using OrchestAI.Infrastructure.Data;
@@ -69,6 +70,8 @@ public static class DependencyInjection
         services.AddSingleton<ITenantLimitsProvider, EfTenantLimitsProvider>();
         services.AddScoped<IRejectionEventRepository, RejectionEventRepository>();
         services.AddScoped<IIdempotencyRecordRepository, IdempotencyRecordRepository>();
+        services.AddScoped<ITaskAdmissionReservationRepository, TaskAdmissionReservationRepository>();
+        services.AddSingleton<IBudgetEstimator, ConservativeBudgetEstimator>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();

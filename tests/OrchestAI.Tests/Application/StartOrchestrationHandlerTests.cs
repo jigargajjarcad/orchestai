@@ -19,6 +19,7 @@ public sealed class StartOrchestrationHandlerTests
     private readonly Mock<IOrchestrationEventBus> _eventBusMock;
     private readonly Mock<IApprovalGateway> _approvalGatewayMock;
     private readonly Mock<ITaskCheckpointRepository> _checkpointRepositoryMock;
+    private readonly Mock<ITaskAdmissionReservationRepository> _reservationRepositoryMock;
     private readonly Mock<ILogger<StartOrchestrationHandler>> _loggerMock;
     private readonly StartOrchestrationHandler _handler;
 
@@ -35,6 +36,10 @@ public sealed class StartOrchestrationHandlerTests
         _checkpointRepositoryMock
             .Setup(r => r.DeleteByTaskIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _reservationRepositoryMock = new Mock<ITaskAdmissionReservationRepository>();
+        _reservationRepositoryMock
+            .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         _loggerMock = new Mock<ILogger<StartOrchestrationHandler>>();
 
         _handler = new StartOrchestrationHandler(
@@ -44,6 +49,7 @@ public sealed class StartOrchestrationHandlerTests
             _eventBusMock.Object,
             _approvalGatewayMock.Object,
             _checkpointRepositoryMock.Object,
+            _reservationRepositoryMock.Object,
             _loggerMock.Object);
     }
 
@@ -70,11 +76,15 @@ public sealed class StartOrchestrationHandlerTests
             .Where(ex => ex.EntityId.Equals(taskId));
     }
 
+    // Superseded by Task 7: previously this guard rejected re-entry on an already-Running task
+    // (the old handler itself performed the Pending -> Running transition). Now admission
+    // (Task 6) performs that CAS before this handler ever runs, so "Running" is the expected
+    // precondition, not an error state. The remaining defensive guard now rejects the case where
+    // the task has NOT yet been admitted to Running (e.g. reached here still Pending).
     [Fact]
-    public async Task Handle_TaskAlreadyRunning_ThrowsInvalidOperationException()
+    public async Task Handle_TaskStillPending_ThrowsInvalidOperationException()
     {
-        var task = OrchestrationTask.Create(DevUserId, "Test Task", "Test prompt");
-        task.MarkRunning();
+        var task = OrchestrationTask.Create(DevUserId, "Test Task", "Test prompt"); // still Pending
 
         _taskRepositoryMock
             .Setup(r => r.GetByIdAsync(task.Id, It.IsAny<CancellationToken>()))
@@ -83,7 +93,7 @@ public sealed class StartOrchestrationHandlerTests
         var act = () => _handler.Handle(new StartOrchestrationCommand(task.Id), CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*Running*");
+            .WithMessage("*Pending*");
     }
 
     [Fact]
@@ -106,6 +116,7 @@ public sealed class StartOrchestrationHandlerTests
     public async Task Handle_HappyPath_OrchestratorCalledAndAgentsSpawned()
     {
         var task = OrchestrationTask.Create(DevUserId, "Research Task", "Research .NET 9");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
         var researchExecutionId = Guid.NewGuid();
         var writerExecutionId = Guid.NewGuid();
@@ -171,15 +182,19 @@ public sealed class StartOrchestrationHandlerTests
         _agentFactoryMock.Verify(f => f.Create(AgentType.Research), Times.Once);
         _agentFactoryMock.Verify(f => f.Create(AgentType.Writer), Times.Once);
 
+        // Task 7: the handler no longer performs its own Pending -> Running UpdateAsync (that CAS
+        // now happens in AdmitOrchestrationTaskHandler, Task 6) — only the final MarkCompleted
+        // persist happens here.
         _taskRepositoryMock.Verify(
             r => r.UpdateAsync(It.IsAny<OrchestrationTask>(), It.IsAny<CancellationToken>()),
-            Times.AtLeast(2));
+            Times.Once);
     }
 
     [Fact]
     public async Task Handle_OneAgentFails_TaskMarkedFailed()
     {
         var task = OrchestrationTask.Create(DevUserId, "Code Task", "Write a sorting algorithm");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
 
         _taskRepositoryMock
@@ -224,16 +239,19 @@ public sealed class StartOrchestrationHandlerTests
             b => b.Publish(taskId, It.Is<SseEvent>(e => e.Event == "task_failed")),
             Times.Once);
 
-        // Verify UpdateAsync was called at least twice (MarkRunning + MarkFailed)
+        // Task 7: the handler no longer performs its own Pending -> Running UpdateAsync (that CAS
+        // now happens in AdmitOrchestrationTaskHandler, Task 6) — only the final MarkFailed
+        // persist happens here.
         _taskRepositoryMock.Verify(
             r => r.UpdateAsync(It.IsAny<OrchestrationTask>(), It.IsAny<CancellationToken>()),
-            Times.AtLeast(2));
+            Times.Once);
     }
 
     [Fact]
     public async Task Handle_SequentialMode_PriorOutputInjectedIntoNextAgentPrompt()
     {
         var task = OrchestrationTask.Create(DevUserId, "Sequential Task", "Research then write");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
         const string researchOutput = "Findings: .NET 9 improves performance by 20%.";
 
@@ -290,6 +308,7 @@ public sealed class StartOrchestrationHandlerTests
     public async Task Handle_SequentialMode_AgentFailContinuesToNextWithoutPriorOutput()
     {
         var task = OrchestrationTask.Create(DevUserId, "Sequential Task", "Research then write");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
 
         _taskRepositoryMock
@@ -349,6 +368,7 @@ public sealed class StartOrchestrationHandlerTests
     public async Task Handle_SequentialMode_AllSucceed_PublishesTaskCompleted()
     {
         var task = OrchestrationTask.Create(DevUserId, "Sequential Task", "Sequential pipeline");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
 
         _taskRepositoryMock
@@ -402,6 +422,7 @@ public sealed class StartOrchestrationHandlerTests
     public async Task Handle_SequentialMode_AgentsRunInOrder()
     {
         var task = OrchestrationTask.Create(DevUserId, "Order Test", "Run in order");
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
         var callOrder = new List<AgentType>();
 

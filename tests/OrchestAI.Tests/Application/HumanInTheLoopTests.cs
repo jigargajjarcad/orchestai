@@ -23,6 +23,7 @@ public sealed class HumanInTheLoopTests
     public async Task StartOrchestration_RequireApproval_EmitsApprovalRequiredAndWaits()
     {
         var task = OrchestrationTask.Create(DevUserId, "Approval Task", "Do something", requireApproval: true);
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
 
         var taskRepositoryMock = new Mock<IOrchestrationTaskRepository>();
@@ -70,6 +71,11 @@ public sealed class HumanInTheLoopTests
             .Setup(r => r.DeleteByTaskIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        var reservationRepositoryMock = new Mock<ITaskAdmissionReservationRepository>();
+        reservationRepositoryMock
+            .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var handler = new StartOrchestrationHandler(
             taskRepositoryMock.Object,
             orchestratorMock.Object,
@@ -77,6 +83,7 @@ public sealed class HumanInTheLoopTests
             eventBusMock.Object,
             approvalGatewayMock.Object,
             checkpointRepositoryMock.Object,
+            reservationRepositoryMock.Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);
@@ -96,6 +103,7 @@ public sealed class HumanInTheLoopTests
     public async Task StartOrchestration_Rejected_AbortsBeforeAgentDispatch()
     {
         var task = OrchestrationTask.Create(DevUserId, "Approval Task", "Do something", requireApproval: true);
+        task.MarkRunning(); // simulates AdmitOrchestrationTaskHandler (Task 6) having already run
         var taskId = task.Id;
 
         var taskRepositoryMock = new Mock<IOrchestrationTaskRepository>();
@@ -126,6 +134,11 @@ public sealed class HumanInTheLoopTests
             .Callback(() => task.Reject("Not aligned with goals."))
             .Returns(Task.CompletedTask);
 
+        var reservationRepositoryMock = new Mock<ITaskAdmissionReservationRepository>();
+        reservationRepositoryMock
+            .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         var handler = new StartOrchestrationHandler(
             taskRepositoryMock.Object,
             orchestratorMock.Object,
@@ -133,6 +146,7 @@ public sealed class HumanInTheLoopTests
             eventBusMock.Object,
             approvalGatewayMock.Object,
             new Mock<ITaskCheckpointRepository>().Object,
+            reservationRepositoryMock.Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);

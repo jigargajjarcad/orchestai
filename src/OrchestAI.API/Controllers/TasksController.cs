@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using OrchestAI.Application.Commands.AdmitOrchestrationTask;
 using OrchestAI.Application.Commands.ApproveOrchestrationTask;
 using OrchestAI.Application.Commands.CreateOrchestrationTask;
 using OrchestAI.Application.Commands.RejectOrchestrationTask;
@@ -92,15 +93,36 @@ public sealed class TasksController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>Starts agent execution for a pending task.</summary>
+    /// <summary>Admits (concurrency/budget checks) and starts agent execution for a pending
+    /// task. Admission is synchronous — a 429/404/409 here means no dispatch was ever queued;
+    /// agent dispatch itself continues in the background after a 202.</summary>
     [HttpPost("{id:guid}/start")]
     [ProducesResponseType(typeof(StartOrchestrationResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public IActionResult StartAsync(
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> StartAsync(
         Guid id,
-        [FromServices] IServiceScopeFactory scopeFactory)
+        [FromServices] IServiceScopeFactory scopeFactory,
+        CancellationToken cancellationToken)
     {
+        try
+        {
+            await _mediator.Send(new AdmitOrchestrationTaskCommand(id), cancellationToken);
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Not Found", Detail = ex.Message, Status = StatusCodes.Status404NotFound });
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(new ProblemDetails { Title = "Conflict", Detail = ex.Message, Status = StatusCodes.Status409Conflict });
+        }
+        // TenantLimitExceededException is deliberately not caught here — it propagates to the
+        // global TenantLimitExceededExceptionHandler (Task 2), the one place that builds the
+        // unified 429 response and writes the RejectionEvent. Catching it locally would
+        // duplicate that logic in a second place.
+
         _ = Task.Run(async () =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -112,15 +134,15 @@ public sealed class TasksController : ControllerBase
             }
             catch (NotFoundException ex)
             {
-                _logger.LogWarning("Start failed — task not found: {TaskId}", ex.EntityId);
+                _logger.LogWarning("Dispatch failed — task not found: {TaskId}", ex.EntityId);
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("Start failed — invalid state: {Message}", ex.Message);
+                _logger.LogWarning("Dispatch failed — invalid state: {Message}", ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled error starting task {TaskId}", id);
+                _logger.LogError(ex, "Unhandled error dispatching task {TaskId}", id);
             }
         });
 

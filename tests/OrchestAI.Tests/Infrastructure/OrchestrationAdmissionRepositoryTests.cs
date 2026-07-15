@@ -34,11 +34,22 @@ namespace OrchestAI.Tests.Infrastructure;
 // UPDATE row lock and the rollback assertions actually meaningful (a lock and a rollback proven
 // only within one already-uncommitted outer transaction proves nothing about real cross-connection
 // behavior). The cost is that seed data is now genuinely committed rather than rolled back, so each
-// test explicitly deletes what it created in a finally block (CleanupAsync), in FK-safe order:
-// OrchestrationTasks first (TaskAdmissionReservations/AgentExecutions cascade-delete from that),
-// then Users, then the Tenant — OrchestrationTask -> Tenant/User are DeleteBehavior.Restrict, so
-// they cannot be deleted before their tasks are gone. Every test uses a fresh random-suffixed
-// tenant, so cross-test data never collides even if a cleanup step were skipped on a prior failure.
+// test explicitly deletes what it created in a finally block (CleanupAsync).
+//
+// Seed-failure safety (Task 6 review fix): seeding is split into two separately-awaited,
+// individually-atomic steps — SeedTenantAsync then SeedTaskAsync, each wrapping exactly one
+// SaveChangesAsync call — and BOTH calls happen inside the test's own try block, assigning to
+// nullable locals declared before the try. This matters because each step commits for real: if
+// SeedTaskAsync threw after SeedTenantAsync had already committed the tenant row, and the tenant
+// seed call sat outside try (as it briefly did during development), the tenant row would leak
+// permanently with no finally block to catch it — the never-actually-workable outer-transaction
+// design the brief specified had no such gap (an uncommitted transaction cleans itself up
+// regardless of where a failure occurs), but this real-connections design does need the explicit
+// guard. Because `tenant = await SeedTenantAsync(...)` only assigns after that call's single
+// SaveChangesAsync has itself atomically committed-or-thrown, `tenant` is reliably non-null in
+// finally exactly when a tenant row exists to clean up, and likewise for `task`. Every test uses a
+// fresh random-suffixed tenant, so cross-test data never collides even if a cleanup step were
+// skipped on a prior failure.
 public sealed class OrchestrationAdmissionRepositoryTests
 {
     private const string ConnectionString = "Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme";
@@ -62,9 +73,19 @@ public sealed class OrchestrationAdmissionRepositoryTests
         return (new RealDbContextFactory(options, accessor), accessor);
     }
 
-    // Deletes everything a test seeded, in FK-safe order, so the shared dev database is left
-    // untouched regardless of pass/fail — replaces the outer-transaction-rollback cleanup the
-    // rest of this suite uses, which is unavailable here (see class-level comment).
+    // SCOPE (Task 6 review fix — narrowed from an earlier, overstated "FK-safe order" claim):
+    // this only cleans up the tables the 5 tests in THIS FILE actually seed — Tenants, Users,
+    // OrchestrationTasks, TaskAdmissionReservations — via the two Restrict FKs relevant to them
+    // (OrchestrationTask -> Tenant, OrchestrationTask -> User; TaskAdmissionReservations cascade
+    // from OrchestrationTasks, so deleting tasks first clears those automatically). It is NOT a
+    // general-purpose "delete everything under a tenant" helper. A targeted FK audit during Task 6
+    // review found several OTHER entities also carry a Restrict FK to Tenant with no cleanup path
+    // here: CostRollup, EvalRun, EvalSuite, EvalCase, EvalResult, AgentMemory. None of that data
+    // exists in this file's tests, so nothing is broken today — but if a future real-Postgres
+    // transaction test (Task 11 is the likely candidate) copies this harness and seeds any of
+    // those entity types, deleting the Tenant here will throw a real FK-violation
+    // DbUpdateException, not silently orphan rows. Extend this method (or add a parallel cleanup
+    // step) for any new entity types before reusing it as-is.
     private static async Task CleanupAsync(RealDbContextFactory factory, Guid tenantId, params Guid[] userIds)
     {
         await using var ctx = factory.CreateDbContext();
@@ -75,37 +96,44 @@ public sealed class OrchestrationAdmissionRepositoryTests
         await ctx.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM \"Tenants\" WHERE \"Id\" = {tenantId}");
     }
 
-    private static async Task<(Tenant Tenant, OrchestrationTask Task)> SeedTenantAndTaskAsync(
-        RealDbContextFactory factory, AsyncLocalCurrentTenantAccessor accessor, string suffix)
+    // Each of these two seed helpers wraps exactly one SaveChangesAsync call, so each is
+    // individually atomic (commits fully or throws with nothing committed) — see the class-level
+    // comment on why callers must await and capture each one separately, both inside their own
+    // try block, rather than composing them into one un-guarded helper call outside try.
+    private static async Task<Tenant> SeedTenantAsync(RealDbContextFactory factory, string suffix)
     {
         var tenant = Tenant.Create($"Acme-{suffix}", $"acme-{suffix}");
-        await using (var ctx = await factory.CreateDbContextAsync())
-        {
-            ctx.Tenants.Add(tenant);
-            await ctx.SaveChangesAsync();
-        }
+        await using var ctx = await factory.CreateDbContextAsync();
+        ctx.Tenants.Add(tenant);
+        await ctx.SaveChangesAsync();
+        return tenant;
+    }
 
-        OrchestrationTask task;
-        using (accessor.SetTenant(tenant.Id))
-        {
-            await using var ctx = await factory.CreateDbContextAsync();
-            var user = TestUserFactory.Create($"admit-{suffix}@test.local");
-            task = OrchestrationTask.Create(user.Id, "T", "P", false);
-            ctx.Users.Add(user);
-            ctx.OrchestrationTasks.Add(task);
-            await ctx.SaveChangesAsync();
-        }
-
-        return (tenant, task);
+    private static async Task<OrchestrationTask> SeedTaskAsync(
+        RealDbContextFactory factory, AsyncLocalCurrentTenantAccessor accessor, Guid tenantId, string suffix)
+    {
+        using var _ = accessor.SetTenant(tenantId);
+        await using var ctx = await factory.CreateDbContextAsync();
+        var user = TestUserFactory.Create($"admit-{suffix}@test.local");
+        var task = OrchestrationTask.Create(user.Id, "T", "P", false);
+        ctx.Users.Add(user);
+        ctx.OrchestrationTasks.Add(task);
+        await ctx.SaveChangesAsync();
+        return task;
     }
 
     [Fact]
     public async Task TryAdmitAsync_WithinLimits_TransitionsTaskAndInsertsReservation()
     {
         var (factory, accessor) = SetUp();
-        var (tenant, task) = await SeedTenantAndTaskAsync(factory, accessor, Guid.NewGuid().ToString("N"));
+        var suffix = Guid.NewGuid().ToString("N");
+        Tenant? tenant = null;
+        OrchestrationTask? task = null;
         try
         {
+            tenant = await SeedTenantAsync(factory, suffix);
+            task = await SeedTaskAsync(factory, accessor, tenant.Id, suffix);
+
             var repository = new OrchestrationAdmissionRepository(factory);
 
             AdmissionResult result;
@@ -129,7 +157,8 @@ public sealed class OrchestrationAdmissionRepositoryTests
         }
         finally
         {
-            await CleanupAsync(factory, tenant.Id, task.UserId);
+            if (tenant is not null)
+                await CleanupAsync(factory, tenant.Id, task?.UserId ?? Guid.Empty);
         }
     }
 
@@ -137,9 +166,14 @@ public sealed class OrchestrationAdmissionRepositoryTests
     public async Task TryAdmitAsync_TaskAlreadyRunning_RejectsAndLeavesNoReservation()
     {
         var (factory, accessor) = SetUp();
-        var (tenant, task) = await SeedTenantAndTaskAsync(factory, accessor, Guid.NewGuid().ToString("N"));
+        var suffix = Guid.NewGuid().ToString("N");
+        Tenant? tenant = null;
+        OrchestrationTask? task = null;
         try
         {
+            tenant = await SeedTenantAsync(factory, suffix);
+            task = await SeedTaskAsync(factory, accessor, tenant.Id, suffix);
+
             using (accessor.SetTenant(tenant.Id))
             {
                 await using var ctx = await factory.CreateDbContextAsync();
@@ -168,7 +202,8 @@ public sealed class OrchestrationAdmissionRepositoryTests
         }
         finally
         {
-            await CleanupAsync(factory, tenant.Id, task.UserId);
+            if (tenant is not null)
+                await CleanupAsync(factory, tenant.Id, task?.UserId ?? Guid.Empty);
         }
     }
 
@@ -177,10 +212,14 @@ public sealed class OrchestrationAdmissionRepositoryTests
     {
         var (factory, accessor) = SetUp();
         var suffix = Guid.NewGuid().ToString("N");
-        var (tenant, task) = await SeedTenantAndTaskAsync(factory, accessor, suffix);
+        Tenant? tenant = null;
+        OrchestrationTask? task = null;
         var otherUserId = Guid.Empty;
         try
         {
+            tenant = await SeedTenantAsync(factory, suffix);
+            task = await SeedTaskAsync(factory, accessor, tenant.Id, suffix);
+
             using (accessor.SetTenant(tenant.Id))
             {
                 await using var ctx = await factory.CreateDbContextAsync();
@@ -216,7 +255,8 @@ public sealed class OrchestrationAdmissionRepositoryTests
         }
         finally
         {
-            await CleanupAsync(factory, tenant.Id, task.UserId, otherUserId);
+            if (tenant is not null)
+                await CleanupAsync(factory, tenant.Id, task?.UserId ?? Guid.Empty, otherUserId);
         }
     }
 
@@ -224,9 +264,14 @@ public sealed class OrchestrationAdmissionRepositoryTests
     public async Task TryAdmitAsync_BudgetWouldBeExceeded_RollsBackTaskStateToo()
     {
         var (factory, accessor) = SetUp();
-        var (tenant, task) = await SeedTenantAndTaskAsync(factory, accessor, Guid.NewGuid().ToString("N"));
+        var suffix = Guid.NewGuid().ToString("N");
+        Tenant? tenant = null;
+        OrchestrationTask? task = null;
         try
         {
+            tenant = await SeedTenantAsync(factory, suffix);
+            task = await SeedTaskAsync(factory, accessor, tenant.Id, suffix);
+
             var repository = new OrchestrationAdmissionRepository(factory);
 
             AdmissionResult result;
@@ -247,7 +292,8 @@ public sealed class OrchestrationAdmissionRepositoryTests
         }
         finally
         {
-            await CleanupAsync(factory, tenant.Id, task.UserId);
+            if (tenant is not null)
+                await CleanupAsync(factory, tenant.Id, task?.UserId ?? Guid.Empty);
         }
     }
 
@@ -256,10 +302,14 @@ public sealed class OrchestrationAdmissionRepositoryTests
     {
         var (factory, accessor) = SetUp();
         var suffix = Guid.NewGuid().ToString("N");
-        var (tenant, task) = await SeedTenantAndTaskAsync(factory, accessor, suffix);
+        Tenant? tenant = null;
+        OrchestrationTask? task = null;
         var staleUserId = Guid.Empty;
         try
         {
+            tenant = await SeedTenantAsync(factory, suffix);
+            task = await SeedTaskAsync(factory, accessor, tenant.Id, suffix);
+
             using (accessor.SetTenant(tenant.Id))
             {
                 await using var ctx = await factory.CreateDbContextAsync();
@@ -293,7 +343,8 @@ public sealed class OrchestrationAdmissionRepositoryTests
         }
         finally
         {
-            await CleanupAsync(factory, tenant.Id, task.UserId, staleUserId);
+            if (tenant is not null)
+                await CleanupAsync(factory, tenant.Id, task?.UserId ?? Guid.Empty, staleUserId);
         }
     }
 }

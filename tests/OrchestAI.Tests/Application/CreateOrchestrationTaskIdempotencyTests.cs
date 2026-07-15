@@ -72,6 +72,8 @@ public sealed class CreateOrchestrationTaskIdempotencyTests
         response.Id.Should().Be(originalTask.Id);
         taskRepoMock.Verify(r => r.AddAsync(It.IsAny<OrchestrationTask>(), It.IsAny<CancellationToken>()), Times.Never,
             "a repeated idempotency key with the same payload must never create a second task");
+        idempotencyRepoMock.Verify(r => r.AddAsync(It.IsAny<IdempotencyRecord>(), It.IsAny<CancellationToken>()), Times.Never,
+            "a replay must never write a second idempotency record either");
     }
 
     [Fact]
@@ -92,6 +94,34 @@ public sealed class CreateOrchestrationTaskIdempotencyTests
 
         await act.Should().ThrowAsync<ConflictException>();
         taskRepoMock.Verify(r => r.AddAsync(It.IsAny<OrchestrationTask>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // Review fix (Task 4): proves CreateOrchestrationTaskHandler's catch (IdempotencyKeyConflictException)
+    // fallback in isolation, mocking the repository-level conflict the real-Postgres
+    // IdempotencyRecordUniqueIndexIntegrationTests proves end-to-end against the actual unique
+    // index. This is the "acceptable substitute" for the concurrent-race sub-case the code review
+    // called out — the handler-side fallback logic doesn't need a real database to verify.
+    [Fact]
+    public async Task Handle_IdempotencyInsertLosesConcurrentRace_ReturnsWinningTaskInsteadOfThrowing()
+    {
+        var winningTask = OrchestrationTask.Create(Guid.NewGuid(), "Winning Title", "P", false);
+
+        var taskRepoMock = new Mock<IOrchestrationTaskRepository>();
+        taskRepoMock.Setup(r => r.GetByIdAsync(winningTask.Id, It.IsAny<CancellationToken>())).ReturnsAsync(winningTask);
+
+        var idempotencyRepoMock = new Mock<IIdempotencyRecordRepository>();
+        idempotencyRepoMock.Setup(r => r.GetByKeyAsync("key-1", It.IsAny<CancellationToken>())).ReturnsAsync((IdempotencyRecord?)null);
+        idempotencyRepoMock.Setup(r => r.AddAsync(It.IsAny<IdempotencyRecord>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IdempotencyKeyConflictException(winningTask.Id));
+
+        var handler = CreateHandler(taskRepoMock, idempotencyRepoMock);
+
+        var response = await handler.Handle(
+            new CreateOrchestrationTaskCommand(Guid.NewGuid(), "T", "P", false, "key-1"), CancellationToken.None);
+
+        response.Id.Should().Be(winningTask.Id);
+        taskRepoMock.Verify(r => r.AddAsync(It.IsAny<OrchestrationTask>(), It.IsAny<CancellationToken>()), Times.Once,
+            "the loser's own task is still created — and left as a harmless orphan — before the conflict is discovered");
     }
 
     // Mirrors CreateOrchestrationTaskHandler.ComputeRequestHash exactly — kept in sync manually

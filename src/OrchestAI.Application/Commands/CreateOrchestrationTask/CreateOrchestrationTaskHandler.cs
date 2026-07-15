@@ -72,7 +72,28 @@ public sealed class CreateOrchestrationTaskHandler
             var record = IdempotencyRecord.Create(
                 request.IdempotencyKey, task.Id, requestHash,
                 TimeSpan.FromHours(_abuseProtectionOptions.Value.IdempotencyKeyTtlHours));
-            await _idempotencyRepository.AddAsync(record, cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                await _idempotencyRepository.AddAsync(record, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IdempotencyKeyConflictException ex)
+            {
+                // Lost a genuine concurrent race for a brand-new key (see the brief's design note
+                // and ADR-015): another request's insert won between our GetByKeyAsync "not found"
+                // check above and this insert. `task`, created above, is now an orphaned — but
+                // harmless — Pending row; return the task the WINNING insert already points to,
+                // exactly like a normal replay, instead of surfacing the conflict to the caller.
+                var winningTask = await _repository.GetByIdAsync(ex.ExistingTaskId, cancellationToken).ConfigureAwait(false)
+                    ?? throw new NotFoundException(nameof(OrchestrationTask), ex.ExistingTaskId);
+
+                _logger.LogInformation(
+                    "Lost idempotency race for key {IdempotencyKey} — returning winning task {WinningTaskId} " +
+                    "instead of orphaned task {OrphanedTaskId}",
+                    request.IdempotencyKey, winningTask.Id, task.Id);
+
+                return ToResponse(winningTask);
+            }
         }
 
         _logger.LogInformation(

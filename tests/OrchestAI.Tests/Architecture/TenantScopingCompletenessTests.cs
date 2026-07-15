@@ -27,7 +27,7 @@ public sealed class TenantScopingCompletenessTests
     // reviewer of this test sees the full picture, not just the positive list.
     private static readonly Type[] ExpectedGloballySharedTypes =
     [
-        typeof(User), typeof(Tenant), typeof(ApiKey), typeof(ModelPricing)
+        typeof(User), typeof(Tenant), typeof(ApiKey), typeof(ModelPricing), typeof(TenantLimits)
     ];
 
     [Fact]

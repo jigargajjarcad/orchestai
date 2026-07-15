@@ -65,6 +65,8 @@ public static class DependencyInjection
         services.AddScoped<IEvalResultRepository, EvalResultRepository>();
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<ITenantLimitsRepository, TenantLimitsRepository>();
+        services.AddSingleton<ITenantLimitsProvider, EfTenantLimitsProvider>();
 
         services.AddSingleton<IOrchestrationEventBus, InMemoryOrchestrationEventBus>();
         services.AddSingleton<IApprovalGateway, InMemoryApprovalGateway>();
@@ -79,6 +81,8 @@ public static class DependencyInjection
         services.Configure<RetryPolicyOptions>(configuration.GetSection(RetryPolicyOptions.SectionName));
         services.Configure<PiiRedactionOptions>(configuration.GetSection(PiiRedactionOptions.SectionName));
         services.Configure<EvalOptions>(configuration.GetSection(EvalOptions.SectionName));
+        services.Configure<TenantLimitsDefaults>(configuration.GetSection(TenantLimitsDefaults.SectionName));
+        services.Configure<AbuseProtectionOptions>(configuration.GetSection(AbuseProtectionOptions.SectionName));
 
         services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
         services.AddSingleton<IApiKeyHasher, ApiKeyHasher>();

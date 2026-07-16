@@ -977,9 +977,10 @@ discovered later:
   convenience.
 
 ### Implementation notes
-Eight real deviations surfaced during implementation (Tasks 1-11) that this ADR's design didn't
-anticipate. (Task 7's review gate running late due to a mid-session machine restart is a process
-note, not a design deviation, and is omitted here — see `.superpowers/sdd/progress.md`.)
+Nine real deviations surfaced during implementation (Tasks 1-11, plus a final whole-branch review
+finding fixed afterward) that this ADR's design didn't anticipate. (Task 7's review gate running
+late due to a mid-session machine restart is a process note, not a design deviation, and is
+omitted here — see `.superpowers/sdd/progress.md`.)
 
 **Task 1's brief specified an `EfTenantLimitsProvider` constructor that fails DI validation at
 startup.** The brief's literal constructor took `ITenantLimitsRepository` directly into a
@@ -1072,6 +1073,56 @@ through a real `AgentBase.InvokeToolAsync` call. This gap was identified during 
 implementation, re-confirmed during Task 8's review, and is tracked as the deferred Task 13
 follow-up (already committed at `1fa1fac`) rather than silently treated as covered by this ADR.
 
+**A final whole-branch review found Confirmation #1's `ITenantLimitsProvider.GetSnapshot` handoff
+to `RateLimiterSetup.BuildGlobalLimiter` has two distinct bugs, only one of which this ADR's
+Task 9 design anticipated and only one of which is fixed here.**
+`System.Threading.RateLimiting.PartitionedRateLimiter.Create`'s partition-key resolver runs on
+every `AttemptAcquire`, but the `RateLimitPartition.GetTokenBucketLimiter` factory nested inside
+it — the thing that actually bakes `TokenLimit`/`TokensPerPeriod` into a real
+`TokenBucketRateLimiter` — only ever runs once per partition key, the first time that key is seen,
+for the life of the process.
+
+*Bug #1 — cold-cache-at-first-request (FIXED in this commit).* Nothing warmed
+`EfTenantLimitsProvider`'s cache before the rate limiter ran, so a tenant's very first request (or
+a tenant that only ever calls read-only endpoints — dashboard, `GET /tasks`, `GET /rejections` —
+none of which previously touched `GetAsync`) hit `GetSnapshot()` with a cache miss, got back
+`TenantLimitsDefaults.RequestsPerMinute` (120 req/min), and that became the tenant's bucket
+configuration permanently — a later cache warm from any other call site (admission, dispatch,
+enqueue) had no effect on the already-created bucket. Fixed by calling
+`ITenantLimitsProvider.GetAsync(tenant.Id, context.RequestAborted)` in
+`TenantAuthenticationMiddleware.InvokeAsync` (`src/OrchestAI.API/Middleware/
+TenantAuthenticationMiddleware.cs`) immediately after the tenant is resolved and confirmed
+`Active`, before `next(context)` is invoked — i.e. before `UseRateLimiter()` runs, since
+`TenantAuthenticationMiddleware` is registered ahead of `UseRateLimiter()` in `Program.cs`. Every
+tenant's `GetSnapshot()` call inside the rate limiter's partition-key resolver is now guaranteed to
+see a warm cache on that tenant's first request, cold-cache or not. Proven by
+`TenantLimitsCacheWarmUpIntegrationTests.ColdCacheTenant_FirstRequestThroughMiddleware_
+RateLimiterEnforcesConfiguredLimit_NotSystemDefault`, which deliberately does not pre-warm the
+cache before the limiter runs — it drives the real middleware (with a genuine, non-mocked
+`EfTenantLimitsProvider`) through `InvokeAsync` and only builds the tenant's bucket, via
+`RateLimiterSetup.BuildGlobalLimiter()`, from inside `next`, reproducing the actual pipeline order.
+
+*Bug #2 — bucket immutability after a limits change (ACCEPTED, NAMED ARCHITECTURAL LIMITATION —
+same treatment as Confirmation #2's in-memory/single-instance state; NOT fixed here).* Warming the
+cache earlier does nothing for a tenant whose bucket already exists. An admin `PUT .../limits` call
+that changes `RequestsPerMinute` via `SetTenantLimitsCommand` has zero effect on that tenant's live
+rate limiting until the process restarts — which drops every tenant's buckets, not just the
+changed one. This is not a staleness problem cache-warming could ever fix: `GetSnapshot` genuinely
+is re-read on every request (proven, not assumed — see below), but `PartitionedRateLimiter` simply
+never reconsiders an already-existing partition's bucket regardless of what that read returns. This
+is a structural limitation of `System.Threading.RateLimiting`'s partition-caching model as used
+here, deliberately not attempted in this fix. Demonstrated empirically by
+`RateLimiterPartitioningTests.BuildGlobalLimiter_TenantLimitsChangedAfterBucketCreated_
+ChangeHasNoEffectOnExistingBucket`: it builds a real limiter, exhausts a tenant's bucket at
+`RequestsPerMinute=3`, changes the mocked `ITenantLimitsProvider`'s live return value to 100
+(simulating a landed admin change), and shows the next request is still rejected — while also
+asserting `GetSnapshot` genuinely was called again and genuinely did return 100, ruling out "stale
+read" as the explanation. Future fix: partition-key versioning — key partitions by
+`{tenantId}:{limitsVersion}` (a version stamp `SetTenantLimitsCommand` increments on every update)
+instead of `{tenantId}` alone, so a limits change produces a fresh partition/bucket and the stale
+one simply ages out of use, rather than requiring in-place mutation of an existing
+`TokenBucketRateLimiter`. Real follow-up work, not attempted this commit.
+
 ### Trigger for revisiting
 - The first time a second API instance is deployed — the in-memory rate limiter, tool-call-budget
   counter, and queue-depth state (Confirmation #2) all need to become shared/distributed (Redis or
@@ -1090,3 +1141,7 @@ follow-up (already committed at `1fa1fac`) rather than silently treated as cover
 - The first time a second post-hoc-eligible consumer of `IEvalRunQueue` needs queue-depth
   semantics stricter than the accepted check-then-increment race (Task 10) — revisit whether the
   admission-transaction's CAS-based approach (Confirmation #4) should replace it.
+- The first time an operator reports a tenant's rate limit change not taking effect — implement
+  partition-key versioning (`{tenantId}:{limitsVersion}`, `SetTenantLimitsCommand` bumping the
+  version on every update) to close Bug #2 (bucket immutability after a limits change), the
+  implementation note directly above.

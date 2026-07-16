@@ -14,19 +14,23 @@ namespace OrchestAI.Tests.API;
 public sealed class TenantAuthenticationMiddlewareTests
 {
     private static (TenantAuthenticationMiddleware Middleware, Mock<IApiKeyHasher> Hasher,
-        Mock<IApiKeyRepository> ApiKeyRepo, Mock<ITenantRepository> TenantRepo, AsyncLocalCurrentTenantAccessor Accessor)
+        Mock<IApiKeyRepository> ApiKeyRepo, Mock<ITenantRepository> TenantRepo, AsyncLocalCurrentTenantAccessor Accessor,
+        Mock<ITenantLimitsProvider> LimitsProvider)
         Build()
     {
         var hasher = new Mock<IApiKeyHasher>();
         var apiKeyRepo = new Mock<IApiKeyRepository>();
         var tenantRepo = new Mock<ITenantRepository>();
         var accessor = new AsyncLocalCurrentTenantAccessor();
+        var limitsProvider = new Mock<ITenantLimitsProvider>();
+        limitsProvider.Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 5, 50, 50m, 500m, 100));
 
         var middleware = new TenantAuthenticationMiddleware(
-            hasher.Object, apiKeyRepo.Object, tenantRepo.Object, accessor,
+            hasher.Object, apiKeyRepo.Object, tenantRepo.Object, accessor, limitsProvider.Object,
             NullLogger<TenantAuthenticationMiddleware>.Instance);
 
-        return (middleware, hasher, apiKeyRepo, tenantRepo, accessor);
+        return (middleware, hasher, apiKeyRepo, tenantRepo, accessor, limitsProvider);
     }
 
     private static DefaultHttpContext BuildContext(string path, string? authHeader = null)
@@ -41,7 +45,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_ValidKey_SetsTenantScopeDuringNextAndCallsIt()
     {
-        var (middleware, hasher, apiKeyRepo, tenantRepo, accessor) = Build();
+        var (middleware, hasher, apiKeyRepo, tenantRepo, accessor, _) = Build();
         var tenant = Tenant.Create("Acme", "acme");
         var apiKey = ApiKey.Create(tenant.Id, "pk123", "hashed");
 
@@ -71,7 +75,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_MissingAuthorizationHeader_Returns401()
     {
-        var (middleware, _, _, _, _) = Build();
+        var (middleware, _, _, _, _, _) = Build();
         var context = BuildContext("/api/v1/eval-suites");
         var nextCalled = false;
 
@@ -84,7 +88,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_MalformedKey_Returns401()
     {
-        var (middleware, hasher, _, _, _) = Build();
+        var (middleware, hasher, _, _, _, _) = Build();
         hasher.Setup(h => h.Parse(It.IsAny<string>())).Returns((ParsedApiKey?)null);
         var context = BuildContext("/api/v1/eval-suites", "Bearer garbage");
 
@@ -96,7 +100,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_UnknownPublicKeyId_Returns401()
     {
-        var (middleware, hasher, apiKeyRepo, _, _) = Build();
+        var (middleware, hasher, apiKeyRepo, _, _, _) = Build();
         hasher.Setup(h => h.Parse("orch_live_pk123.secret")).Returns(new ParsedApiKey("pk123", "secret"));
         apiKeyRepo.Setup(r => r.GetByPublicKeyIdAsync("pk123", It.IsAny<CancellationToken>())).ReturnsAsync((ApiKey?)null);
         var context = BuildContext("/api/v1/eval-suites", "Bearer orch_live_pk123.secret");
@@ -109,7 +113,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_WrongSecret_Returns401()
     {
-        var (middleware, hasher, apiKeyRepo, _, _) = Build();
+        var (middleware, hasher, apiKeyRepo, _, _, _) = Build();
         var apiKey = ApiKey.Create(Guid.NewGuid(), "pk123", "hashed");
         hasher.Setup(h => h.Parse("orch_live_pk123.wrong")).Returns(new ParsedApiKey("pk123", "wrong"));
         hasher.Setup(h => h.Verify("wrong", "hashed")).Returns(false);
@@ -124,7 +128,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_RevokedKey_Returns401()
     {
-        var (middleware, hasher, apiKeyRepo, _, _) = Build();
+        var (middleware, hasher, apiKeyRepo, _, _, _) = Build();
         var apiKey = ApiKey.Create(Guid.NewGuid(), "pk123", "hashed");
         apiKey.Revoke();
         hasher.Setup(h => h.Parse("orch_live_pk123.secret")).Returns(new ParsedApiKey("pk123", "secret"));
@@ -139,7 +143,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_ValidKeyForSuspendedTenant_Returns403()
     {
-        var (middleware, hasher, apiKeyRepo, tenantRepo, _) = Build();
+        var (middleware, hasher, apiKeyRepo, tenantRepo, _, _) = Build();
         var tenant = Tenant.Create("Acme", "acme");
         tenant.Suspend();
         var apiKey = ApiKey.Create(tenant.Id, "pk123", "hashed");
@@ -162,7 +166,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [InlineData("/api/v1/admin/tenants")]
     public async Task InvokeAsync_ExemptPaths_SkipAuthEntirely(string path)
     {
-        var (middleware, _, _, _, _) = Build();
+        var (middleware, _, _, _, _, _) = Build();
         var context = BuildContext(path);
         var nextCalled = false;
 
@@ -175,7 +179,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_RecentlyUsedKey_DoesNotUpdateLastUsedAtAgain()
     {
-        var (middleware, hasher, apiKeyRepo, tenantRepo, _) = Build();
+        var (middleware, hasher, apiKeyRepo, tenantRepo, _, _) = Build();
         var tenant = Tenant.Create("Acme", "acme");
         var apiKey = ApiKey.Create(tenant.Id, "pk123", "hashed");
         apiKey.RecordUsage(); // simulate a very recent prior use
@@ -194,7 +198,7 @@ public sealed class TenantAuthenticationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_UsageRecordingFails_AuthenticationStillSucceeds()
     {
-        var (middleware, hasher, apiKeyRepo, tenantRepo, _) = Build();
+        var (middleware, hasher, apiKeyRepo, tenantRepo, _, _) = Build();
         var tenant = Tenant.Create("Acme", "acme");
         var apiKey = ApiKey.Create(tenant.Id, "pk123", "hashed");
         hasher.Setup(h => h.Parse("orch_live_pk123.secret")).Returns(new ParsedApiKey("pk123", "secret"));

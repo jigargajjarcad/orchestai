@@ -22,6 +22,7 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
     private readonly IApiKeyRepository _apiKeyRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly ICurrentTenantAccessor _tenantAccessor;
+    private readonly ITenantLimitsProvider _tenantLimitsProvider;
     private readonly ILogger<TenantAuthenticationMiddleware> _logger;
 
     public TenantAuthenticationMiddleware(
@@ -29,12 +30,14 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
         IApiKeyRepository apiKeyRepository,
         ITenantRepository tenantRepository,
         ICurrentTenantAccessor tenantAccessor,
+        ITenantLimitsProvider tenantLimitsProvider,
         ILogger<TenantAuthenticationMiddleware> logger)
     {
         _hasher = hasher;
         _apiKeyRepository = apiKeyRepository;
         _tenantRepository = tenantRepository;
         _tenantAccessor = tenantAccessor;
+        _tenantLimitsProvider = tenantLimitsProvider;
         _logger = logger;
     }
 
@@ -84,6 +87,20 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
         context.Items["ApiKeyId"] = apiKey.Id;
 
         await MaybeRecordUsageAsync(apiKey, context.RequestAborted).ConfigureAwait(false);
+
+        // Warm ITenantLimitsProvider's DB-backed cache for this tenant *before* the request
+        // reaches the rate limiter (UseRateLimiter runs after this middleware — see Program.cs).
+        // Without this, RateLimiterSetup.BuildGlobalLimiter's partition-key factory calls the
+        // cache-only, synchronous ITenantLimitsProvider.GetSnapshot() on this tenant's first-ever
+        // request, gets the system-default limits back (cache miss), and System.Threading
+        // .RateLimiting.PartitionedRateLimiter permanently bakes that default into the tenant's
+        // token-bucket for the life of the process — later cache warms from GetAsync elsewhere
+        // (admission/dispatch/enqueue) can't retroactively fix an already-created bucket. A
+        // tenant that only ever hits read-only endpoints would never warm the cache at all under
+        // the old code, so their configured RequestsPerMinute would never be enforced. See
+        // ADR-015 implementation note #9 ("cold-cache-at-first-request", fixed) and #10
+        // ("bucket immutability after limits change", accepted limitation, NOT fixed here).
+        await _tenantLimitsProvider.GetAsync(tenant.Id, context.RequestAborted).ConfigureAwait(false);
 
         using (_tenantAccessor.SetTenant(tenant.Id))
         {

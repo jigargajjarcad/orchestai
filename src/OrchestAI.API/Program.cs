@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OrchestAI.API.ExceptionHandling;
 using OrchestAI.API.Filters;
 using OrchestAI.API.Middleware;
+using OrchestAI.API.RateLimiting;
 using OrchestAI.Application;
 using OrchestAI.Infrastructure;
 using OrchestAI.Infrastructure.Data;
@@ -48,6 +49,7 @@ try
     // synchronous-HTTP-request rejection thrown as an exception.
     builder.Services.AddScoped<RejectionResponder>();
     builder.Services.AddExceptionHandler<TenantLimitExceededExceptionHandler>();
+    builder.Services.AddTenantRateLimiting();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>
@@ -108,6 +110,7 @@ try
     // /api/v1/admin/* (the admin-bootstrap surface, gated separately by RequireAdminSecretFilter).
     // Fail-closed: missing/malformed/unknown/revoked key -> 401; valid key, suspended tenant -> 403.
     app.UseMiddleware<TenantAuthenticationMiddleware>();
+    app.UseRateLimiter();
     app.MapControllers();
     app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }));
 

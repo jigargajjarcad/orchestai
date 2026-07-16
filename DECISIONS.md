@@ -927,14 +927,30 @@ without a second idempotency mechanism. Default TTL is 24 hours
 (`AbuseProtectionOptions.IdempotencyKeyTtlHours`); a repeated key with a mismatched payload
 returns `409 Conflict`.
 
-**Accepted concurrent-first-use race**, Task 4's design note quoted directly: *"A known, accepted
-scope limit: two genuinely *concurrent* (not sequential-retry) `POST /tasks` calls with the same
-brand-new key could both pass the 'not found' check before either inserts, racing past the
-unique `(TenantId, IdempotencyKey)` index into a raw `DbUpdateException` — acceptable here (unlike
-the budget/admission race) because the failure mode is 'one extra valid task created,' not a
-security or budget-overshoot problem."* This is a deliberate contrast with Confirmation #4's
-admission race, which required true atomicity because its failure mode (budget/concurrency
-overshoot) is materially worse.
+**Concurrent-first-use race — handled, not merely accepted.** Task 4's original design note
+proposed treating this as an accepted scope limit: *"A known, accepted scope limit: two genuinely
+*concurrent* (not sequential-retry) `POST /tasks` calls with the same brand-new key could both
+pass the 'not found' check before either inserts, racing past the unique `(TenantId,
+IdempotencyKey)` index into a raw `DbUpdateException` — acceptable here (unlike the budget/
+admission race) because the failure mode is 'one extra valid task created,' not a security or
+budget-overshoot problem."* Task 4's own code review found this prediction wrong: the actual
+failure mode was an **unhandled 500**, not "one extra valid task" — a real Important-severity bug,
+not a harmless tradeoff, because the loser's caller received an error instead of any task at all.
+
+This was fixed in commit `eaee0e8`, not left as designed. `IdempotencyRecordRepository.AddAsync`
+now catches the unique-index violation (`DbUpdateException` wrapping a `PostgresException` with
+`SqlState: "23505"` and `ConstraintName ==
+"IX_IdempotencyRecords_TenantId_IdempotencyKey"`) and throws a typed
+`IdempotencyKeyConflictException` carrying the winning record's `TaskId`.
+`CreateOrchestrationTaskHandler` catches that exception around its own `AddAsync` call and returns
+the **winning task's response to the losing caller** — both concurrent callers get back the same
+task ID, exactly like the sequential-replay path. The loser's own `OrchestrationTask` row (created
+earlier in the same `Handle` call, before the race was discovered) is left behind as an orphaned
+but harmless `Pending` row — an internal artifact, never surfaced to any caller and never returned
+by any API response. This behavior is verified by real-Postgres integration tests (EF Core's
+InMemory provider does not enforce unique indexes), not by unit tests alone. This is a deliberate
+contrast with Confirmation #4's admission race, which required true atomicity because its failure
+mode (budget/concurrency overshoot) is materially worse than an internal orphaned row.
 
 ### Decision — Deliberate deviations from the brief's literal domain-model field list
 Three deviations from the plan's literal field list, all resolved during Task 1 rather than
@@ -961,9 +977,54 @@ discovered later:
   convenience.
 
 ### Implementation notes
-Five real deviations surfaced during implementation (Tasks 1-11) that this ADR's design didn't
+Eight real deviations surfaced during implementation (Tasks 1-11) that this ADR's design didn't
 anticipate. (Task 7's review gate running late due to a mid-session machine restart is a process
 note, not a design deviation, and is omitted here — see `.superpowers/sdd/progress.md`.)
+
+**Task 1's brief specified an `EfTenantLimitsProvider` constructor that fails DI validation at
+startup.** The brief's literal constructor took `ITenantLimitsRepository` directly into a
+`Singleton`-registered provider. Running `dotnet ef migrations add` (which builds and validates
+the full DI container) failed with `Cannot consume scoped service
+'OrchestAI.Domain.Interfaces.ITenantLimitsRepository' from singleton
+'OrchestAI.Domain.Interfaces.ITenantLimitsProvider'` — a hard ASP.NET Core captive-dependency
+failure, not a design-time-only artifact; the brief's literal code produces a container that
+cannot start. Fixed by switching the constructor to `IServiceScopeFactory`, resolving
+`ITenantLimitsRepository` from a fresh `IServiceScope` on each cache-miss — mirroring the existing
+`ModelPricingCache` (Week 7) convention for this exact "Singleton cache needs a Scoped repository"
+shape. Verified end-to-end by starting the real API against live Postgres, not just by unit test.
+A separate post-review fix added a per-tenant `SemaphoreSlim` single-flight guard to
+`EfTenantLimitsProvider.GetAsync` (mirroring `ModelPricingCache.RefreshAsync`'s double-checked-
+locking shape, adapted to a per-tenant lock instead of one global lock) to prevent a thundering
+herd of concurrent cache-miss DB reads for the same tenant.
+
+**Task 4 found and fixed a Critical-severity deterministic bug and an Important-severity race bug
+in the idempotency-key unique index, both in commit `eaee0e8`.** The Critical bug: expired
+`IdempotencyRecord` rows were correctly filtered out on read but never deleted, so reusing any key
+after its TTL expired collided with the stale row on the real unique `(TenantId, IdempotencyKey)`
+index and threw an unhandled `DbUpdateException` (500) on every single reuse — 100% deterministic,
+not a race. The Important bug is the concurrent-first-use race described in Confirmation #8 above.
+Both are fixed by the same mechanism (`IdempotencyRecordRepository.AddAsync` catching the unique-
+violation and either deleting-and-retrying for an expired row, or throwing a typed
+`IdempotencyKeyConflictException` for a live conflict) and verified via real-Postgres integration
+tests, since EF Core's InMemory provider does not enforce unique indexes.
+
+**Task 6 discovered the brief's shared-rolled-back-transaction test-harness pattern is
+structurally incompatible with a repository that opens its own internal transaction.**
+`OrchestrationAdmissionRepository.TryAdmitAsync` is the codebase's first repository method to call
+`ctx.Database.BeginTransactionAsync()` itself; the brief's literal test harness
+(`TransactionScopedDbContextFactory`, one shared connection/transaction rolled back at the end)
+made every test fail identically with `The connection is already in a transaction and cannot
+participate in another transaction` — EF Core's `RelationalConnection.EnsureNoTransactions()`
+unconditionally rejects a second `BeginTransactionAsync` on a connection already enlisted via
+`UseTransaction()`. This is not a case a savepoint API could route around; the repository
+genuinely needs its own top-level transaction to prove real row-lock and rollback semantics. Fixed
+by building a new `RealDbContextFactory` harness — genuinely independent physical connections per
+`CreateDbContext()` call, mirroring production's `AddDbContextFactory` registration, with explicit
+per-test cleanup in a `finally` block instead of relying on an outer rollback. This is directly
+relevant to Confirmation #4's claim of verification via "real concurrent Postgres transactions" —
+that claim is true, but achieving it required this structural test-harness discovery, not just
+following the brief as written. The same fix had to be reapplied to Task 11's tests later, which
+needed the identical independent-connection pattern.
 
 **Task 8's brief undercounted its own Files list by 9.** The original plan's file list missed
 `OrchestratorAgent.cs` as a 6th `AgentBase` subclass needing the `ITaskToolCallBudget`/

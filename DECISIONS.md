@@ -782,3 +782,250 @@ See `DESIGN_PRINCIPLES.md` for the general principle this established.
 - The first time a public/internal setter is proposed for any `ITenantScoped.TenantId`, or a new
   factory/mutation path that sets it post-construction — revisit the disconnected-`Update()`
   known limitation (Confirmation #3) before accepting either change.
+
+## ADR-015: Abuse and Cost Protection
+
+**Status:** Accepted
+
+### Investigation — what already existed vs. what's net-new
+Before this week, ADR-014's tenant isolation was purely a data-visibility boundary: any
+authenticated tenant could enqueue unlimited concurrent `OrchestrationTask`s, each triggering
+unbounded parallel sub-agent fan-out and unbounded per-agent tool-call loops, with no
+request-rate ceiling, no per-task structural cap, and no tenant-level running-cost check at
+admission time. `ITenantLimitsProvider`, `TaskAdmissionReservation`, `RejectionEvent`, and every
+enforcement point below are net-new this week. ADR-011's hybrid `CostRollup` + live-`CostLedger`
+read pattern and ADR-014's tenant-scoping machinery (`ICurrentTenantAccessor`, `ITenantScoped`,
+`TenantScopingInterceptor`) already existed and are reused unchanged throughout this design, not
+rebuilt.
+
+### Confirmation #1 — Rate-limiting algorithm: token bucket, tenant-partitioned
+`Microsoft.AspNetCore.RateLimiting`/`System.Threading.RateLimiting` (ships in the ASP.NET Core 8
+shared framework — no new NuGet package). Token bucket over sliding/fixed window because it
+allows a legitimate short burst (e.g. a dashboard loading several widgets in one page load)
+while still enforcing a steady average rate — a fixed/sliding window would reject that same
+legitimate burst outright. Task 9's design note, quoted directly: *"`TokenLimit = TokensPerPeriod
+= RequestsPerMinute`, `ReplenishmentPeriod = 1 minute`, `QueueLimit = 0` (reject immediately
+rather than queue — queueing inside the rate limiter itself would add latency this is supposed to
+prevent, not just cap volume)."* One `GlobalLimiter` (not per-endpoint `[EnableRateLimiting]`
+policies) applies uniformly to every `api/v1/*` route except `/health`, `/swagger`,
+`/api/v1/admin/*`, and any path ending `/stream` (the SSE endpoint — a long-lived connection
+doesn't fit request-rate semantics). Partition key is the ambient tenant ID
+(`ICurrentTenantAccessor.TenantId`), read via `ITenantLimitsProvider.GetSnapshot` — the
+synchronous, cache-only path built specifically because `RateLimitPartition`'s factory delegate
+must be synchronous.
+
+### Confirmation #2 — In-memory/single-instance state is an accepted limitation, not an oversight
+Three independent pieces of enforcement state all live in single-process memory: the rate
+limiter's `PartitionedRateLimiter` (Task 9), `ITaskToolCallBudget`'s `AsyncLocal` running counter
+(Task 8), and `IEvalRunQueue`'s per-tenant depth `ConcurrentDictionary` (Task 10). None of the
+three is backed by Redis or any shared store. This is explicitly out of scope for this week — a
+horizontally-scaled deployment (more than one Railway/API instance) would let a tenant's
+requests, tool calls, or queue depth spread across instances that don't share state, silently
+defeating each limit. **Trigger to revisit:** the first time a second API instance is deployed —
+see "Trigger for revisiting" below.
+
+### Confirmation #3 — The two-part cost-cap model
+**(a) Per-task structural ceiling**, enforced two different ways for two different reasons.
+`MaxAgentsPerTask` is checked once, pre-dispatch, because it's knowable in advance;
+`MaxToolCallsPerTask` is a running counter checked per call, because it isn't. Task 8's design
+note, quoted directly: *"`OrchestrationPlan.SelectedAgents` is known the instant `PlanAsync`
+returns, so `MaxAgentsPerTask` is checked once, pre-dispatch, in `StartOrchestrationHandler` — the
+cleanest 'reject before any work happens' case. Tool calls are never known in advance
+(`OrchestrationPlan` carries no tool-call count) — they happen one at a time, deep inside each
+sub-agent's own agentic loop (`AgentBase.InvokeToolAsync`), and sub-agents run in parallel via
+`Task.WhenAll`. `MaxToolCallsPerTask` is therefore a single, shared, task-wide running counter
+(`ITaskToolCallBudget`, `AsyncLocal`-backed exactly like `ICurrentTenantAccessor`) that every
+sub-agent increments atomically (`Interlocked`) as it makes calls — the first call that would
+exceed the cap throws `AgentCapExceededException`, which `AgentBase.ExecuteAsync`'s *existing*
+catch-all turns into a normal Failed `AgentExecutionResult`."*
+
+**(b) Tenant-level running budget** (Task 6): checked via atomic reservation at admission time
+against `actual spend (CostRollup + live CostLedger, ADR-011's hybrid pattern) + SUM(active,
+non-stale TaskAdmissionReservation rows)`. The spend read itself is a fast snapshot, deliberately
+outside the atomic transaction — only the reservation math (concurrency count, budget check,
+reservation insert) is atomic; re-reading `CostRollup`/`CostLedger` inside a `SELECT ... FOR
+UPDATE`-held transaction would hold that lock far longer than necessary.
+
+### Confirmation #4 — The atomic-reservation mechanism
+`IOrchestrationAdmissionRepository.TryAdmitAsync` takes a `SELECT ... FOR UPDATE` row lock on the
+tenant's own `Tenants` row, serializing concurrent admissions **per tenant** (never cross-tenant),
+inside one explicit DB transaction that also performs the `Pending -> Running` CAS
+(`ExecuteUpdateAsync`) and the concurrency/budget checks — all-or-nothing. Confirmed against real
+concurrent Postgres transactions (not a single shared/rolled-back transaction) by
+`AdmissionConcurrencyRaceTests` (Task 11), including a test that specifically requires the second
+transaction to observe the first's committed reservation. Task 6's design note, quoted directly —
+the load-bearing architectural justification for why this is one repository method, not a
+composition of smaller ones: *"the all-or-nothing guarantee (brainstorming clarification #1) only
+holds if the tenant row lock, the task-state CAS, the concurrency count, the budget check, and the
+reservation insert all share exactly one DB transaction. Splitting this across multiple
+`IDbContextFactory`-per-call repository methods (this codebase's normal pattern) would silently
+break that guarantee — each call would get its own connection/transaction. This is a deliberate,
+narrow exception to the usual repository-per-entity convention, justified the same way Week 10
+justified `TenantScopingInterceptor`'s system-write-scope: one documented, auditable exception to
+a normal rule, not a pattern to repeat casually elsewhere."*
+
+### Confirmation #5 — Reservations vs. the immutable cost ledger
+`DESIGN_PRINCIPLES.md`'s "Operational state vs. audit state" section (added this week, not scoped
+to Week 11 alone) states the general rule: *"Operational state exists only to support the
+system's current behavior (reservations, rate-limiter counters, concurrency slots, queue depth,
+caches). It is ephemeral, may be reconstructed or discarded after failures, and should never
+become part of the permanent historical record. Audit state records what actually happened during
+execution ... Audit state is immutable, durable, and must never be rewritten or derived from
+operational state."*
+
+Applied concretely here: `TaskAdmissionReservation` is pure operational state. Task 5's design
+note: it is *"never read by, written into, or derived from `CostLedger`/`CostRollup`"* —
+`ReleaseAsync` is a hard `DELETE`, never an adjustment written anywhere else, and `CostLedger`/
+`CostRollup` remain the untouched, immutable audit trail exactly as ADR-011 established them.
+
+**Crash-recovery TTL, stated explicitly as the accepted single-instance-architecture limitation it
+is:** a reservation whose owning task crashes mid-execution (so Task 7's `finally` never runs) is
+never released — it physically remains in the table — but Task 6's admission math excludes any
+reservation older than `AbuseProtectionOptions.ReservationStalenessMinutes` (default 30 minutes)
+from its count/sum, so it stops affecting future admissions once stale. No reconciliation service
+exists or is planned this week to delete these orphaned rows; see "Trigger for revisiting" below.
+
+### Confirmation #6 — The unified response contract, and its one deliberate asymmetry
+Every synchronous-HTTP-request rejection returns `429` + `Retry-After` + a
+`{reason, detail, ...}` JSON body, built by one shared builder, `RejectionResponder`, called from
+exactly two entry points: the rate limiter's `OnRejected` callback (`RateLimited`) and
+`TenantLimitExceededExceptionHandler` (`ConcurrencyExceeded`/`BudgetExceeded`/
+`QueueBackpressure`). `RejectionEvent` is written at the same choke point in both cases, so every
+rejection is independently queryable via `GET /api/v1/rejections` regardless of which enforcement
+point produced it.
+
+`AgentCapExceeded` does **not** go through this HTTP contract at all — deliberately, not as an
+inconsistency. Task 8's design note covers the mechanics: the cap-exceeded exception is caught
+internally by `AgentBase.ExecuteAsync`'s existing catch-all (or, for `MaxAgentsPerTask`, handled
+inline in `StartOrchestrationHandler`), producing a normal Failed `AgentExecutionResult`/task
+status rather than propagating as an HTTP exception. The product reasoning: by the time an agent
+cap can be evaluated, the caller has already received their `202 Accepted` for `POST
+/tasks/{id}/start` — dispatch runs detached, in the background, with no HTTP response in flight to
+write a `429` to. `AgentCapExceeded` is instead surfaced via task status (`Failed`) + SSE
+(`task_failed`) + an independently-written `RejectionEvent`, so it remains observable through the
+same `GET /api/v1/rejections` list as every HTTP-contract rejection, just via a different
+delivery mechanism.
+
+### Confirmation #7 — Reject, never truncate, on any orchestrator-level cap
+Both halves of Confirmation #3(a) fail the task cleanly — `Failed` status, a specific error
+message, and a `RejectionEvent` — rather than silently truncating a plan (dispatching fewer agents
+than planned) or dropping a tool call's result and pretending success.
+`StartOrchestrationAgentCapTests` encodes this as an explicit assertion: exceeding
+`MaxAgentsPerTask` must fail the task **before dispatching a single agent**, never a partial
+dispatch. This is the single most important reject-vs-truncate justification in the whole design,
+restated here because it's this brief's own stated rationale: a partially-executed task that
+looks `Completed` to the eval/scoring layer is a worse failure mode than a task that's visibly
+`Failed`. A silently-truncated plan would corrupt exactly the kind of "what happened, why, how to
+reproduce" trace ADR-011's timeline view exists to preserve, and would let an eval run silently
+score a task against work it never actually did.
+
+### Confirmation #8 — Idempotency-key TTL and behavior
+Idempotency applies to `POST /tasks` only, not `/start` — `/start`'s existing `Pending`-state
+guard, hardened to the atomic `Pending -> Running` CAS in Task 6, already makes a retried
+`/start` call safe (either `409`, or a genuinely-still-`Pending` task starts exactly once)
+without a second idempotency mechanism. Default TTL is 24 hours
+(`AbuseProtectionOptions.IdempotencyKeyTtlHours`); a repeated key with a mismatched payload
+returns `409 Conflict`.
+
+**Accepted concurrent-first-use race**, Task 4's design note quoted directly: *"A known, accepted
+scope limit: two genuinely *concurrent* (not sequential-retry) `POST /tasks` calls with the same
+brand-new key could both pass the 'not found' check before either inserts, racing past the
+unique `(TenantId, IdempotencyKey)` index into a raw `DbUpdateException` — acceptable here (unlike
+the budget/admission race) because the failure mode is 'one extra valid task created,' not a
+security or budget-overshoot problem."* This is a deliberate contrast with Confirmation #4's
+admission race, which required true atomicity because its failure mode (budget/concurrency
+overshoot) is materially worse.
+
+### Decision — Deliberate deviations from the brief's literal domain-model field list
+Three deviations from the plan's literal field list, all resolved during Task 1 rather than
+discovered later:
+
+- **`TenantLimits.MaxQueueDepth`** was added to the entity/`ResolvedTenantLimits` even though the
+  originating plan's enforcement-points list required per-tenant queue-depth limits without
+  listing the corresponding `TenantLimits` field — added at implementation time so Task 10's
+  queue backpressure would have a real per-tenant value to read rather than a hardcoded constant.
+- **`TenantLimits.Create(tenantId, ...)`** is a third named exception to ADR-014's "no
+  `ITenantScoped` factory takes `TenantId`" rule — same shape as `ApiKey.Create`/
+  `CostRollup.Create` (ADR-014 Confirmation #5b): admin-only, reachable only through
+  `AdminController`, with no ambient tenant scope to bypass. Documented directly in
+  `TenantLimits.cs`'s code comment at the point of definition, not discovered after the fact.
+- **`AbuseProtectionOptions`** lives in `OrchestAI.Application.Configuration`, not
+  `Infrastructure.Configuration` — proactively avoiding the exact `Application`-depends-on-
+  `Infrastructure` layering violation ADR-013's `EvalOptions` relocation already fixed reactively
+  in Week 9. `Application`-layer handlers (`CreateOrchestrationTaskHandler`'s idempotency TTL,
+  Task 6's admission handler's reservation staleness) need to read this options type directly, and
+  `LayeringTests.Application_DoesNotDependOnInfrastructure` would fail if it lived in
+  Infrastructure. `TenantLimitsDefaults` stays in `Infrastructure.Configuration` since only
+  `EfTenantLimitsProvider` (Infrastructure) reads it directly — the two options types are
+  deliberately split across layers by who actually consumes them, not lumped into one file for
+  convenience.
+
+### Implementation notes
+Five real deviations surfaced during implementation (Tasks 1-11) that this ADR's design didn't
+anticipate. (Task 7's review gate running late due to a mid-session machine restart is a process
+note, not a design deviation, and is omitted here — see `.superpowers/sdd/progress.md`.)
+
+**Task 8's brief undercounted its own Files list by 9.** The original plan's file list missed
+`OrchestratorAgent.cs` as a 6th `AgentBase` subclass needing the `ITaskToolCallBudget`/
+`IRejectionEventRepository` constructor parameters (the plan's investigation had only enumerated
+5 concrete agents), and missed 7 pre-existing test call sites broken by the new constructor
+params. Independent review confirmed the fix was mechanical and applied identically everywhere;
+one of the 9 extra files (`StartOrchestrationReservationReleaseTests.cs`) was itself missed in the
+implementer's own self-audit of the fix, though the code change there was correct.
+
+**Task 9's own exempt-path test was tautological.** The brief's Step-1 test
+(`BuildGlobalLimiter_ExemptPath_NeverRejects`) used a `null` tenantId, which meant it exercised
+the unrelated "no ambient tenant" fallback branch rather than the `IsExemptPath` logic it claimed
+to test — inherited from the brief itself, not implementer-introduced. Fixed by adding a second
+test with a real tenantId and `requestsPerMinute=1` against an exempt path (100 requests, all must
+succeed), with a masking-proof (neutralize `IsExemptPath`, confirm the new test fails; restore,
+confirm it passes) verified genuine by independent re-review. The original tautological test was
+left in place as harmless, brief-mandated coverage.
+
+**Task 10's 2-file scope grew to include mechanical fixes to 2 pre-existing integration test
+files.** `CrossTenantBackgroundFlowIntegrationTests.cs` and `PostHocScoringIntegrationTests.cs`
+construct `InMemoryEvalRunQueue` directly and broke once its constructor gained the
+`ITenantLimitsProvider` parameter — the same shape as Task 8's `OrchestratorAgent` surprise.
+Review confirmed both fixes are behavior-preserving (a permissive `maxQueueDepth:1000` mock;
+neither test exercises queue-depth/backpressure, an orthogonal concern) and that a full-tree grep
+for `new InMemoryEvalRunQueue` found no other missed caller.
+
+**Task 11 found and fixed a real, deterministic FK-ordering bug in the brief's own literal
+`CleanUpAsync` test code.** The original helper deleted `Users` (via a subquery over
+`OrchestrationTasks`) before deleting `OrchestrationTasks` itself; since
+`FK_OrchestrationTasks_Users_UserId` runs in `Restrict` mode with `OrchestrationTasks` as the
+child, that ordering threw a `23503 foreign_key_violation` on every single run — reproduced
+identically 5/5 times, i.e. deterministic, not flaky. Fixed to match the delete-order convention
+already established by `OrchestrationAdmissionRepositoryTests.CleanupAsync` in the same directory
+(delete `OrchestrationTasks` before `Users`), verified across 13 consecutive post-fix runs (39/39
+executions, zero flakiness). 24 leaked `Tenant` rows and 36 leaked `OrchestrationTask` rows from
+the pre-fix failed runs were found and manually cleaned, with zero residue confirmed
+independently by both the implementer and the controller.
+
+**A real, still-open gap: no integration test drives `AgentBase.InvokeToolAsync`'s
+`MaxToolCallsPerTask` budget-check end-to-end.** `AsyncLocalTaskToolCallBudgetTests` (Task 8)
+proves the counter/scope mechanism in isolation, and `StartOrchestrationAgentCapTests` proves the
+`MaxAgentsPerTask` pre-dispatch check, but nothing exercises the `RejectionEvent` write +
+`AgentCapExceededException` propagation to a Failed `AgentExecutionResult`/`OrchestrationTask`
+through a real `AgentBase.InvokeToolAsync` call. This gap was identified during Task 8's own
+implementation, re-confirmed during Task 8's review, and is tracked as the deferred Task 13
+follow-up (already committed at `1fa1fac`) rather than silently treated as covered by this ADR.
+
+### Trigger for revisiting
+- The first time a second API instance is deployed — the in-memory rate limiter, tool-call-budget
+  counter, and queue-depth state (Confirmation #2) all need to become shared/distributed (Redis or
+  similar) at that point, not before.
+- The first time `AssumedCostPerToolCallUsd`'s flat-rate estimate proves too conservative or not
+  conservative enough against real usage data — replace `ConservativeBudgetEstimator` with a
+  smarter `IBudgetEstimator` implementation, not a change to admission logic; every caller depends
+  only on the interface, by design.
+- The first time orphaned `TaskAdmissionReservation` rows from crashed processes become numerous
+  enough to matter — build the reconciliation sweep explicitly deferred this week (Confirmation
+  #5).
+- The first time Task 13's deferred `AgentBase.InvokeToolAsync` budget-check integration test is
+  written — confirms the `MaxToolCallsPerTask` end-to-end path (RejectionEvent write + Failed
+  propagation) actually behaves as designed, not just the isolated counter and the
+  `MaxAgentsPerTask` half.
+- The first time a second post-hoc-eligible consumer of `IEvalRunQueue` needs queue-depth
+  semantics stricter than the accepted check-then-increment race (Task 10) — revisit whether the
+  admission-transaction's CAS-based approach (Confirmation #4) should replace it.

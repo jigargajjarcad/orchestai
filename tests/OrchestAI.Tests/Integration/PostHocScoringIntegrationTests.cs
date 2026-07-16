@@ -42,6 +42,14 @@ public sealed class PostHocScoringIntegrationTests
         return (new TestDbContextFactory(options, accessor), accessor);
     }
 
+    private static ITenantLimitsProvider CreatePermissiveLimitsProvider()
+    {
+        var limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        limitsProviderMock.Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 5, 50, 50m, 500m, 1000));
+        return limitsProviderMock.Object;
+    }
+
     [Fact]
     public async Task FullFlow_SeededHistoricalTraces_ProducesEvalResultsWithNullCaseIdAndRubric()
     {
@@ -76,7 +84,7 @@ public sealed class PostHocScoringIntegrationTests
         var executionRepository = new AgentExecutionRepository(factory);
         var runRepository = new EvalRunRepository(factory);
         var resultRepository = new EvalResultRepository(factory);
-        var queue = new InMemoryEvalRunQueue();
+        var queue = new InMemoryEvalRunQueue(CreatePermissiveLimitsProvider());
 
         var evalOptions = Options.Create(new EvalOptions { MaxPostHocTracesPerRequestCeiling = 500 });
         var requestHandler = new RequestPostHocScoringHandler(

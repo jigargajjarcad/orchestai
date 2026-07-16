@@ -47,6 +47,14 @@ public sealed class CrossTenantBackgroundFlowIntegrationTests
         return (new TestDbContextFactory(options, accessor), accessor);
     }
 
+    private static ITenantLimitsProvider CreatePermissiveLimitsProvider()
+    {
+        var limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        limitsProviderMock.Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 5, 50, 50m, 500m, 1000));
+        return limitsProviderMock.Object;
+    }
+
     [Fact]
     public async Task FullFlow_TenantAEnqueuesPostHocScoring_WorkerRestoresTenantOutsideHttpScope_TenantBCannotSeeResults()
     {
@@ -59,7 +67,7 @@ public sealed class CrossTenantBackgroundFlowIntegrationTests
         var runRepository = new EvalRunRepository(factory);
         var resultRepository = new EvalResultRepository(factory);
         var tenantRepository = new TenantRepository(factory);
-        var queue = new InMemoryEvalRunQueue();
+        var queue = new InMemoryEvalRunQueue(CreatePermissiveLimitsProvider());
 
         // Seed tenant A's Tenant row (Active) and one historical AgentExecution, scoped to
         // tenant A.
@@ -180,7 +188,7 @@ public sealed class CrossTenantBackgroundFlowIntegrationTests
         var runRepository = new EvalRunRepository(factory);
         var resultRepository = new EvalResultRepository(factory);
         var tenantRepository = new TenantRepository(factory);
-        var queue = new InMemoryEvalRunQueue();
+        var queue = new InMemoryEvalRunQueue(CreatePermissiveLimitsProvider());
 
         Guid executionId;
         using (accessor.SetTenant(tenantId))

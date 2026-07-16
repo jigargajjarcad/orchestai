@@ -76,6 +76,15 @@ public sealed class HumanInTheLoopTests
             .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        var limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        limitsProviderMock
+            .Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 10, 100, 50m, 500m, 100));
+        var tenantAccessorMock = new Mock<ICurrentTenantAccessor>();
+        tenantAccessorMock.Setup(a => a.TenantId).Returns(Guid.NewGuid());
+        var toolCallBudgetMock = new Mock<ITaskToolCallBudget>();
+        toolCallBudgetMock.Setup(b => b.BeginScope(It.IsAny<int>())).Returns(Mock.Of<IDisposable>());
+
         var handler = new StartOrchestrationHandler(
             taskRepositoryMock.Object,
             orchestratorMock.Object,
@@ -84,6 +93,10 @@ public sealed class HumanInTheLoopTests
             approvalGatewayMock.Object,
             checkpointRepositoryMock.Object,
             reservationRepositoryMock.Object,
+            limitsProviderMock.Object,
+            tenantAccessorMock.Object,
+            Mock.Of<IRejectionEventRepository>(),
+            toolCallBudgetMock.Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);
@@ -139,6 +152,15 @@ public sealed class HumanInTheLoopTests
             .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
+        var limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        limitsProviderMock
+            .Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 10, 100, 50m, 500m, 100));
+        var tenantAccessorMock = new Mock<ICurrentTenantAccessor>();
+        tenantAccessorMock.Setup(a => a.TenantId).Returns(Guid.NewGuid());
+        var toolCallBudgetMock = new Mock<ITaskToolCallBudget>();
+        toolCallBudgetMock.Setup(b => b.BeginScope(It.IsAny<int>())).Returns(Mock.Of<IDisposable>());
+
         var handler = new StartOrchestrationHandler(
             taskRepositoryMock.Object,
             orchestratorMock.Object,
@@ -147,6 +169,10 @@ public sealed class HumanInTheLoopTests
             approvalGatewayMock.Object,
             new Mock<ITaskCheckpointRepository>().Object,
             reservationRepositoryMock.Object,
+            limitsProviderMock.Object,
+            tenantAccessorMock.Object,
+            Mock.Of<IRejectionEventRepository>(),
+            toolCallBudgetMock.Object,
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);

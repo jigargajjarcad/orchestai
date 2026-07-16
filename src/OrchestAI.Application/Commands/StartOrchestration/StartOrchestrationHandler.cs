@@ -19,6 +19,10 @@ public sealed class StartOrchestrationHandler
     private readonly IApprovalGateway _approvalGateway;
     private readonly ITaskCheckpointRepository _checkpointRepository;
     private readonly ITaskAdmissionReservationRepository _reservationRepository;
+    private readonly ITenantLimitsProvider _limitsProvider;
+    private readonly ICurrentTenantAccessor _tenantAccessor;
+    private readonly IRejectionEventRepository _rejectionEventRepository;
+    private readonly ITaskToolCallBudget _toolCallBudget;
     private readonly ILogger<StartOrchestrationHandler> _logger;
 
     public StartOrchestrationHandler(
@@ -29,6 +33,10 @@ public sealed class StartOrchestrationHandler
         IApprovalGateway approvalGateway,
         ITaskCheckpointRepository checkpointRepository,
         ITaskAdmissionReservationRepository reservationRepository,
+        ITenantLimitsProvider limitsProvider,
+        ICurrentTenantAccessor tenantAccessor,
+        IRejectionEventRepository rejectionEventRepository,
+        ITaskToolCallBudget toolCallBudget,
         ILogger<StartOrchestrationHandler> logger)
     {
         _taskRepository = taskRepository;
@@ -38,6 +46,10 @@ public sealed class StartOrchestrationHandler
         _approvalGateway = approvalGateway;
         _checkpointRepository = checkpointRepository;
         _reservationRepository = reservationRepository;
+        _limitsProvider = limitsProvider;
+        _tenantAccessor = tenantAccessor;
+        _rejectionEventRepository = rejectionEventRepository;
+        _toolCallBudget = toolCallBudget;
         _logger = logger;
     }
 
@@ -78,6 +90,20 @@ public sealed class StartOrchestrationHandler
                 plan.SelectedAgents.Count,
                 request.TaskId,
                 string.Join(", ", plan.SelectedAgents));
+
+            var tenantId = _tenantAccessor.TenantId
+                ?? throw new InvalidOperationException(
+                    $"StartOrchestrationHandler ran with no ambient tenant for task {request.TaskId}.");
+            var limits = await _limitsProvider.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
+
+            if (plan.SelectedAgents.Count > limits.MaxAgentsPerTask)
+            {
+                await FailWithAgentCapRejectionAsync(
+                    task, plan.SelectedAgents.Count, limits.MaxAgentsPerTask, cancellationToken).ConfigureAwait(false);
+                return new StartOrchestrationResponse(request.TaskId, []);
+            }
+
+            using var toolCallScope = _toolCallBudget.BeginScope(limits.MaxToolCallsPerTask);
 
             if (task.RequireApproval)
             {
@@ -207,6 +233,40 @@ public sealed class StartOrchestrationHandler
                     request.TaskId);
             }
         }
+    }
+
+    private async Task FailWithAgentCapRejectionAsync(
+        OrchestrationTask task, int actualAgentCount, int maxAgentsPerTask, CancellationToken cancellationToken)
+    {
+        var detailsJson = $$"""{"limit":{{maxAgentsPerTask}},"actual":{{actualAgentCount}}}""";
+
+        try
+        {
+            var rejectionEvent = RejectionEvent.Create(
+                RejectionReason.AgentCapExceeded, requestId: null, traceId: task.TraceId, apiKeyId: null,
+                detailsJson: detailsJson);
+            await _rejectionEventRepository.AddAsync(rejectionEvent, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist RejectionEvent for AgentCapExceeded, task {TaskId}", task.Id);
+        }
+
+        var errorMessage =
+            $"Orchestrator selected {actualAgentCount} agents, exceeding the tenant cap of {maxAgentsPerTask}. " +
+            "Task failed without dispatching any agents.";
+        task.MarkFailed(errorMessage);
+        await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
+
+        _eventBus.Publish(task.Id, new SseEvent(
+            "task_failed",
+            task.Id,
+            new { taskId = task.Id, errorMessage },
+            DateTimeOffset.UtcNow));
+
+        _logger.LogWarning(
+            "Task {TaskId} failed at planning — agent cap exceeded ({Actual} > {Max})",
+            task.Id, actualAgentCount, maxAgentsPerTask);
     }
 
     private async Task<AgentExecutionResult> RunSubAgentAsync(

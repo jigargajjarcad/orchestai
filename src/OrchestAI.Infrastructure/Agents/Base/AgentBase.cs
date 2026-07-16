@@ -48,6 +48,8 @@ public abstract class AgentBase : IAgent
     protected readonly IModelPricingCache _modelPricingCache;
     protected readonly IOptions<RetryPolicyOptions> _retryOptions;
     protected readonly IToolRegistry _toolRegistry;
+    protected readonly ITaskToolCallBudget _taskToolCallBudget;
+    protected readonly IRejectionEventRepository _rejectionEventRepository;
     protected readonly ILogger _logger;
 
     protected AgentBase(
@@ -65,6 +67,8 @@ public abstract class AgentBase : IAgent
         IModelPricingCache modelPricingCache,
         IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
+        ITaskToolCallBudget taskToolCallBudget,
+        IRejectionEventRepository rejectionEventRepository,
         ILoggerFactory loggerFactory)
     {
         _llmProviderFactory = llmProviderFactory;
@@ -81,6 +85,8 @@ public abstract class AgentBase : IAgent
         _modelPricingCache = modelPricingCache;
         _retryOptions = retryOptions;
         _toolRegistry = toolRegistry;
+        _taskToolCallBudget = taskToolCallBudget;
+        _rejectionEventRepository = rejectionEventRepository;
         _logger = loggerFactory.CreateLogger(GetType());
     }
 
@@ -574,6 +580,27 @@ public abstract class AgentBase : IAgent
         ToolRequest request,
         CancellationToken cancellationToken)
     {
+        var budgetCheck = _taskToolCallBudget.TryIncrement();
+        if (!budgetCheck.Allowed)
+        {
+            var detailsJson = $$"""{"limit":{{budgetCheck.MaxToolCalls}},"actual":{{budgetCheck.CurrentCount}}}""";
+            try
+            {
+                var rejectionEvent = RejectionEvent.Create(
+                    RejectionReason.AgentCapExceeded, requestId: null, traceId: execution.SpanId, apiKeyId: null,
+                    detailsJson: detailsJson);
+                await _rejectionEventRepository.AddAsync(rejectionEvent, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to persist RejectionEvent for AgentCapExceeded, execution {ExecutionId}", execution.Id);
+            }
+
+            throw new AgentCapExceededException(
+                $"Task tool-call cap exceeded: {budgetCheck.CurrentCount} calls attempted, limit is {budgetCheck.MaxToolCalls}.");
+        }
+
         var inputJson = string.IsNullOrWhiteSpace(request.ArgsJson) ? "{}" : request.ArgsJson;
         var parameters = ParseParameters(inputJson);
 

@@ -32,6 +32,7 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
+        services.AddSingleton<ITaskToolCallBudget, AsyncLocalTaskToolCallBudget>();
 
         services.AddSingleton<UpdatedAtInterceptor>();
         services.AddSingleton<TenantScopingInterceptor>();

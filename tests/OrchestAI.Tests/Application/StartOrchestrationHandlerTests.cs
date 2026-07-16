@@ -20,6 +20,10 @@ public sealed class StartOrchestrationHandlerTests
     private readonly Mock<IApprovalGateway> _approvalGatewayMock;
     private readonly Mock<ITaskCheckpointRepository> _checkpointRepositoryMock;
     private readonly Mock<ITaskAdmissionReservationRepository> _reservationRepositoryMock;
+    private readonly Mock<ITenantLimitsProvider> _limitsProviderMock;
+    private readonly Mock<ICurrentTenantAccessor> _tenantAccessorMock;
+    private readonly Mock<IRejectionEventRepository> _rejectionEventRepositoryMock;
+    private readonly Mock<ITaskToolCallBudget> _toolCallBudgetMock;
     private readonly Mock<ILogger<StartOrchestrationHandler>> _loggerMock;
     private readonly StartOrchestrationHandler _handler;
 
@@ -40,6 +44,15 @@ public sealed class StartOrchestrationHandlerTests
         _reservationRepositoryMock
             .Setup(r => r.ReleaseAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        _limitsProviderMock
+            .Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 10, 100, 50m, 500m, 100));
+        _tenantAccessorMock = new Mock<ICurrentTenantAccessor>();
+        _tenantAccessorMock.Setup(a => a.TenantId).Returns(Guid.NewGuid());
+        _rejectionEventRepositoryMock = new Mock<IRejectionEventRepository>();
+        _toolCallBudgetMock = new Mock<ITaskToolCallBudget>();
+        _toolCallBudgetMock.Setup(b => b.BeginScope(It.IsAny<int>())).Returns(Mock.Of<IDisposable>());
         _loggerMock = new Mock<ILogger<StartOrchestrationHandler>>();
 
         _handler = new StartOrchestrationHandler(
@@ -50,6 +63,10 @@ public sealed class StartOrchestrationHandlerTests
             _approvalGatewayMock.Object,
             _checkpointRepositoryMock.Object,
             _reservationRepositoryMock.Object,
+            _limitsProviderMock.Object,
+            _tenantAccessorMock.Object,
+            _rejectionEventRepositoryMock.Object,
+            _toolCallBudgetMock.Object,
             _loggerMock.Object);
     }
 

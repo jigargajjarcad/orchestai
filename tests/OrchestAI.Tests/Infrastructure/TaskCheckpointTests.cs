@@ -11,6 +11,7 @@ using OrchestAI.Domain.Enums;
 using OrchestAI.Domain.Events;
 using OrchestAI.Domain.Interfaces;
 using OrchestAI.Domain.Models;
+using OrchestAI.Infrastructure.Agents;
 using OrchestAI.Infrastructure.Agents.Base;
 using OrchestAI.Infrastructure.Configuration;
 
@@ -121,6 +122,7 @@ public sealed class TaskCheckpointTests
             toolCallRepoMock.Object, checkpointRepoMock.Object, memoryRepoMock.Object, retryAttemptRepoMock.Object,
             piiRedactorMock.Object,
             eventBusMock.Object, agentOptions, modelPricingCacheMock.Object, retryOptions, toolRegistryMock.Object,
+            new AsyncLocalTaskToolCallBudget(), Mock.Of<IRejectionEventRepository>(),
             NullLoggerFactory.Instance);
 
         return (agent, new AgentMocks(providerMock, checkpointRepoMock, eventBusMock, toolRegistryMock));
@@ -152,10 +154,12 @@ public sealed class TaskCheckpointTests
             IModelPricingCache modelPricingCache,
             IOptions<RetryPolicyOptions> retryOptions,
             IToolRegistry toolRegistry,
+            ITaskToolCallBudget taskToolCallBudget,
+            IRejectionEventRepository rejectionEventRepository,
             ILoggerFactory loggerFactory)
             : base(llmProviderFactory, execRepo, msgRepo, costRepo, toolCallRepo, checkpointRepo,
                    memoryRepo, retryAttemptRepo, piiRedactor, eventBus, agentOptions, modelPricingCache, retryOptions,
-                   toolRegistry, loggerFactory)
+                   toolRegistry, taskToolCallBudget, rejectionEventRepository, loggerFactory)
         { }
     }
 

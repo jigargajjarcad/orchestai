@@ -4,6 +4,7 @@ using Moq;
 using OrchestAI.Application.Commands.StartOrchestration;
 using OrchestAI.Domain.Entities;
 using OrchestAI.Domain.Interfaces;
+using OrchestAI.Domain.Models;
 
 namespace OrchestAI.Tests.Application;
 
@@ -26,9 +27,20 @@ public sealed class StartOrchestrationReservationReleaseTests
         var checkpointRepoMock = new Mock<ITaskCheckpointRepository>();
         var reservationRepoMock = new Mock<ITaskAdmissionReservationRepository>();
 
+        var limitsProviderMock = new Mock<ITenantLimitsProvider>();
+        limitsProviderMock
+            .Setup(p => p.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedTenantLimits(120, 5, 10, 100, 50m, 500m, 100));
+        var tenantAccessorMock = new Mock<ICurrentTenantAccessor>();
+        tenantAccessorMock.Setup(a => a.TenantId).Returns(Guid.NewGuid());
+        var toolCallBudgetMock = new Mock<ITaskToolCallBudget>();
+        toolCallBudgetMock.Setup(b => b.BeginScope(It.IsAny<int>())).Returns(Mock.Of<IDisposable>());
+
         var handler = new StartOrchestrationHandler(
             taskRepoMock.Object, orchestratorMock.Object, agentFactoryMock.Object, eventBusMock.Object,
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
+            limitsProviderMock.Object, tenantAccessorMock.Object, Mock.Of<IRejectionEventRepository>(),
+            toolCallBudgetMock.Object,
             NullLogger<StartOrchestrationHandler>.Instance);
 
         return (handler, reservationRepoMock, orchestratorMock);

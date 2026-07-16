@@ -86,6 +86,8 @@ public sealed class ManagerReviewTests
             modelPricingCacheMock.Object,
             retryOptions,
             new Mock<IToolRegistry>().Object,
+            new AsyncLocalTaskToolCallBudget(),
+            Mock.Of<IRejectionEventRepository>(),
             NullLoggerFactory.Instance);
     }
 

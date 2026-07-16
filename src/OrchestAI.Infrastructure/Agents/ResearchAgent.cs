@@ -36,11 +36,13 @@ public sealed class ResearchAgent : AgentBase
         IModelPricingCache modelPricingCache,
         IOptions<RetryPolicyOptions> retryOptions,
         IToolRegistry toolRegistry,
+        ITaskToolCallBudget taskToolCallBudget,
+        IRejectionEventRepository rejectionEventRepository,
         ILoggerFactory loggerFactory)
         : base(llmProviderFactory, agentExecutionRepository, agentMessageRepository,
                costLedgerRepository, mcpToolCallRepository, checkpointRepository,
                memoryRepository, agentRetryAttemptRepository, piiRedactor, eventBus, agentOptions, modelPricingCache,
-               retryOptions, toolRegistry, loggerFactory)
+               retryOptions, toolRegistry, taskToolCallBudget, rejectionEventRepository, loggerFactory)
     {
     }
 }

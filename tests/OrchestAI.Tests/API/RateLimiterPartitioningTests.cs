@@ -43,6 +43,23 @@ public sealed class RateLimiterPartitioningTests
     }
 
     [Fact]
+    public void BuildGlobalLimiter_ExemptPathWithRealTenant_BypassesTenantBucket()
+    {
+        var limiter = RateLimiterSetup.BuildGlobalLimiter();
+        var context = CreateContext(Guid.NewGuid(), requestsPerMinute: 1, path: "/health");
+
+        // A real tenant with a bucket of just 1 request/minute would be exhausted after the first
+        // acquire if the exempt-path check weren't actually short-circuiting before the tenant
+        // partition is even resolved. This isolates IsExemptPath from the separate null-tenant
+        // fallback (which BuildGlobalLimiter_ExemptPath_NeverRejects above cannot distinguish from).
+        for (var i = 0; i < 100; i++)
+        {
+            using var lease = limiter.AttemptAcquire(context);
+            lease.IsAcquired.Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public void BuildGlobalLimiter_SingleTenantExceedsBucket_SubsequentRequestRejected()
     {
         var limiter = RateLimiterSetup.BuildGlobalLimiter();

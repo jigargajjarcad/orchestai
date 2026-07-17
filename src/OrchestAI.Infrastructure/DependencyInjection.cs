@@ -31,6 +31,8 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        RequiredConfigurationValidator.Validate(configuration);
+
         services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
         services.AddSingleton<ITaskToolCallBudget, AsyncLocalTaskToolCallBudget>();
 
@@ -94,11 +96,7 @@ public static class DependencyInjection
         services.AddSingleton<IPiiRedactor, RegexPiiRedactor>();
         services.AddSingleton<IApiKeyHasher, ApiKeyHasher>();
 
-        var apiKey = configuration["Anthropic:ApiKey"]
-            ?? throw new InvalidOperationException(
-                "Anthropic:ApiKey is not configured. Set the Anthropic__ApiKey environment variable.");
-
-        services.AddSingleton(new AnthropicClient(new APIAuthentication(apiKey)));
+        services.AddSingleton(new AnthropicClient(new APIAuthentication(configuration["Anthropic:ApiKey"]!)));
         services.AddSingleton<IAnthropicClientWrapper, AnthropicClientWrapper>();
 
         services.AddSingleton<ILlmProvider>(sp =>

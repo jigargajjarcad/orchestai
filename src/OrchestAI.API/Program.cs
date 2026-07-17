@@ -116,9 +116,20 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException)
 {
+    // HostAbortedException is deliberately excluded: EF Core design-time tooling (dotnet ef
+    // migrations add/list, database update) builds this host via reflection and throws this
+    // specific exception as its documented mechanism for capturing the built host without
+    // actually running it — the tool already got what it needed via a DiagnosticListener
+    // side-channel by this point. Catching it here and setting ExitCode=1 would poison every
+    // single `dotnet ef` invocation's exit code (they run in-process via reflection, not as a
+    // subprocess, so Environment.ExitCode is one shared mutable value), silently breaking any
+    // CI step that checks `dotnet ef`'s exit code — confirmed by actually running the command,
+    // not assumed. See docs/superpowers/plans/2026-07-17-week12-delivery-operational-safety.md
+    // Task 1 investigation note.
     Log.Fatal(ex, "OrchestAI API terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {

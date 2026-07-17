@@ -4,6 +4,7 @@ using OrchestAI.API.Filters;
 using OrchestAI.API.Middleware;
 using OrchestAI.API.RateLimiting;
 using OrchestAI.Application;
+using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure;
 using OrchestAI.Infrastructure.Data;
 using Serilog;
@@ -112,7 +113,25 @@ try
     app.UseMiddleware<TenantAuthenticationMiddleware>();
     app.UseRateLimiter();
     app.MapControllers();
-    app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }));
+
+    // Liveness: process is up, full stop — no dependency on the database or anything else.
+    // Railway/any orchestrator should never restart a container based on this alone failing
+    // for a reason unrelated to the process itself being wedged.
+    app.MapGet("/health/live", () => Results.Ok(new { status = "alive", timestamp = DateTimeOffset.UtcNow }));
+
+    // Readiness: only 200 if the DB is reachable AND there are no pending EF Core migrations
+    // (the running code's schema expectations match what's actually in the database). This is
+    // what railway.json's healthcheckPath points at — Railway must not route traffic to a
+    // container that isn't actually able to serve a real request yet.
+    app.MapGet("/health/ready", async (IReadinessChecker readinessChecker, CancellationToken cancellationToken) =>
+    {
+        var result = await readinessChecker.CheckAsync(cancellationToken).ConfigureAwait(false);
+        return result.IsReady
+            ? Results.Ok(new { status = "ready", timestamp = DateTimeOffset.UtcNow })
+            : Results.Json(
+                new { status = "not_ready", reason = result.Reason, timestamp = DateTimeOffset.UtcNow },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    });
 
     app.Run();
 }

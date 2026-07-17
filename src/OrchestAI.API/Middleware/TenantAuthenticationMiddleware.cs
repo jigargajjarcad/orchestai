@@ -98,8 +98,9 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
         // (admission/dispatch/enqueue) can't retroactively fix an already-created bucket. A
         // tenant that only ever hits read-only endpoints would never warm the cache at all under
         // the old code, so their configured RequestsPerMinute would never be enforced. See
-        // ADR-015 implementation note #9 ("cold-cache-at-first-request", fixed) and #10
-        // ("bucket immutability after limits change", accepted limitation, NOT fixed here).
+        // ADR-015 implementation note #9, which covers both "cold-cache-at-first-request"
+        // (fixed here) and "bucket immutability after limits change" (accepted limitation,
+        // NOT fixed here — see that same note).
         await _tenantLimitsProvider.GetAsync(tenant.Id, context.RequestAborted).ConfigureAwait(false);
 
         using (_tenantAccessor.SetTenant(tenant.Id))

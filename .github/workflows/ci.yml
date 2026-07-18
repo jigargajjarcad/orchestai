@@ -76,3 +76,140 @@ jobs:
           name: build-and-test-results
           path: TestResults/**/*.trx
           retention-days: 14
+
+  migration-validation:
+    name: migration-validation
+    runs-on: ubuntu-latest
+
+    services:
+      postgres-fresh:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestai
+          POSTGRES_USER: orchestai
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orchestai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-upgrade:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestai
+          POSTGRES_USER: orchestai
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U orchestai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install dotnet-ef and postgresql-client
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.0.28
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Restore and build
+        run: |
+          dotnet restore OrchestAI.sln
+          dotnet build OrchestAI.sln --no-restore --configuration Release
+
+      - name: Determine prior migration
+        id: migrations
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef migrations list \
+            --project src/OrchestAI.Infrastructure \
+            --startup-project src/OrchestAI.API \
+            --no-build > migrations-list-raw.txt 2>&1 || true
+          grep -E '^[0-9]{14}_' migrations-list-raw.txt > migrations-list.txt
+          LATEST=$(tail -1 migrations-list.txt)
+          PRIOR=$(tail -2 migrations-list.txt | head -1)
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "prior=$PRIOR" >> "$GITHUB_OUTPUT"
+          echo "Latest migration: $LATEST"
+          echo "Prior migration: $PRIOR"
+        env:
+          Anthropic__ApiKey: "sk-ant-ci-placeholder"
+          ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme"
+
+      - name: Scenario (a) — fresh install, apply all migrations to an empty database
+        run: >
+          dotnet ef database update
+          --project src/OrchestAI.Infrastructure
+          --startup-project src/OrchestAI.API
+          --connection "Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme"
+          > fresh-migration-output.txt 2>&1
+        env:
+          Anthropic__ApiKey: "sk-ant-ci-placeholder"
+
+      - name: Scenario (b) — upgrade path, migrate to prior version then apply latest
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef database update "${{ steps.migrations.outputs.prior }}" \
+            --project src/OrchestAI.Infrastructure \
+            --startup-project src/OrchestAI.API \
+            --connection "Host=localhost;Port=5433;Database=orchestai;Username=orchestai;Password=changeme" \
+            > upgrade-migration-step1-output.txt 2>&1
+          dotnet ef database update \
+            --project src/OrchestAI.Infrastructure \
+            --startup-project src/OrchestAI.API \
+            --connection "Host=localhost;Port=5433;Database=orchestai;Username=orchestai;Password=changeme" \
+            > upgrade-migration-step2-output.txt 2>&1
+        env:
+          Anthropic__ApiKey: "sk-ant-ci-placeholder"
+
+      - name: Run full test suite against the upgrade-path database
+        run: >
+          dotnet test tests/OrchestAI.Tests
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=upgrade-path-test-results.trx"
+          --results-directory ./TestResults
+        env:
+          Anthropic__ApiKey: "sk-ant-ci-placeholder"
+          ConnectionStrings__DefaultConnection: "Host=localhost;Port=5433;Database=orchestai;Username=orchestai;Password=changeme"
+
+      - name: Verify fresh-install and upgrade-path schemas converge
+        run: |
+          PGPASSWORD=changeme pg_dump --schema-only --no-owner --no-privileges \
+            -h localhost -p 5432 -U orchestai orchestai > fresh-schema.sql
+          PGPASSWORD=changeme pg_dump --schema-only --no-owner --no-privileges \
+            -h localhost -p 5433 -U orchestai orchestai > upgrade-schema.sql
+          if ! diff -u fresh-schema.sql upgrade-schema.sql > schema-diff.txt; then
+            echo "Fresh-install and upgrade-path schemas DO NOT converge:"
+            cat schema-diff.txt
+            exit 1
+          fi
+          echo "Schemas converge — fresh-install and upgrade-path are structurally identical."
+
+      - name: Upload migration validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-validation-artifacts
+          path: |
+            migrations-list-raw.txt
+            fresh-migration-output.txt
+            upgrade-migration-step1-output.txt
+            upgrade-migration-step2-output.txt
+            fresh-schema.sql
+            upgrade-schema.sql
+            schema-diff.txt
+            TestResults/**/*.trx
+          retention-days: 14

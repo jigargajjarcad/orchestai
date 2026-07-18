@@ -85,14 +85,34 @@ try
 
     var app = builder.Build();
 
-    // Auto-migrate on startup (safe for single-instance Railway deployments)
+    // Auto-migrate on startup (safe for single-instance Railway deployments). Checks
+    // connectivity FIRST (reusing the exact same Database.CanConnectAsync() signal
+    // DatabaseReadinessChecker itself uses) and only skips migration/seeding if the database is
+    // genuinely unreachable — the app still starts and serves /health/live; /health/ready will
+    // report "database unreachable" until the DB recovers. This is deliberately narrow: if the
+    // DB IS reachable but MigrateAsync() itself then throws (a real migration bug — bad SQL, a
+    // broken Down()/Up() — not a connectivity problem), that exception is NOT caught here; it
+    // propagates to the outer catch above and crashes the process loudly (Log.Fatal,
+    // ExitCode=1), exactly as any other startup failure. A genuine migration bug must never be
+    // silently downgraded to a Warning log — only a transient connectivity failure gets the
+    // graceful "live but not ready" treatment. See ADR-016.
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await dbContext.Database.MigrateAsync();
 
-        var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-        await seeder.SeedAsync();
+        if (await dbContext.Database.CanConnectAsync())
+        {
+            await dbContext.Database.MigrateAsync();
+
+            var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+            await seeder.SeedAsync();
+        }
+        else
+        {
+            Log.Warning(
+                "Database unreachable at startup — skipping migration/seeding. The app will " +
+                "continue to run; /health/ready will report not_ready until the database becomes reachable.");
+        }
     }
 
     app.UseSerilogRequestLogging();

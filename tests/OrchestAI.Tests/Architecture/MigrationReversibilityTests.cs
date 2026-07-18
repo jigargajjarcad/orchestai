@@ -5,7 +5,7 @@ namespace OrchestAI.Tests.Architecture;
 // Enforces the migration-reversibility policy from ADR-016: every migration's Down() must either
 // perform real migrationBuilder work (purely additive, structurally reversible) or throw
 // NotSupportedException with a documented reason (irreversible — data transformation, destructive
-// change). All 12 migrations that exist as of this test's introduction are purely additive and
+// change). All 13 migrations that exist as of this test's introduction are purely additive and
 // already have EF-generated, fully-reversible Down() bodies (confirmed by reading every one) — this
 // test exists to catch the FIRST future migration that ships an empty or thoughtless Down(), not
 // because any current migration violates the policy.

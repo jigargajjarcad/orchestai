@@ -1145,3 +1145,208 @@ one simply ages out of use, rather than requiring in-place mutation of an existi
   partition-key versioning (`{tenantId}:{limitsVersion}`, `SetTenantLimitsCommand` bumping the
   version on every update) to close Bug #2 (bucket immutability after a limits change), the
   implementation note directly above.
+
+## ADR-016: Delivery and Operational Safety
+
+**Status:** Accepted
+
+### Investigation — what already existed vs. what's net-new
+Before this week, there was no `.github/` directory at all — no CI, no Dependabot. Health checking
+was a single unconditional-200 `/health` endpoint with no DB dependency of any kind. Startup
+configuration validation existed for exactly one value (`Anthropic:ApiKey`, thrown from deep inside
+`AddInfrastructure`); `ConnectionStrings:DefaultConnection` had none. Every one of the 12 existing
+EF Core migrations was purely additive with an already-correct, EF-generated `Down()` — no migration
+reversibility policy existed because nothing had yet violated one. `IReadinessChecker`,
+`DatabaseReadinessChecker`, `RequiredConfigurationValidator`, and the entire `.github/` tree are
+net-new this week.
+
+### Confirmation #1 — CI triggers on push to `main`, not `pull_request`
+This project has merged locally and pushed directly to `main` for 11 prior weeks — no PR-based
+workflow exists or is being introduced now. A workflow gated only on `pull_request` events would
+simply never run in practice. `ci.yml` triggers on `push: branches: [main]`, functioning as a
+post-hoc safety net and portfolio signal (a green check on GitHub) rather than a pre-merge gate —
+the actual merge gate remains what it has always been: a clean local `dotnet build`/`dotnet test`
+before pushing. `workflow_dispatch` is also enabled, solely so a scratch branch can trigger a manual
+run (used to prove the gate actually catches failures — see the Tests section of this week's plan)
+without altering the `push` trigger itself.
+
+### Confirmation #2 — Liveness/readiness split, and the hosted-service readiness finding
+`/health/live` has zero dependencies and always returns `200` — a process that's up but can't reach
+its database should still be reported "alive" (it isn't crash-looping) while `/health/ready` alone
+governs whether Railway routes traffic to it. `/health/ready` is backed by `IReadinessChecker`
+(`DatabaseReadinessChecker` in Infrastructure): `200` only if `Database.CanConnectAsync()` succeeds
+**and** `Database.GetPendingMigrationsAsync()` returns empty, else `503` with a `reason`.
+`railway.json`'s `healthcheckPath` was moved from `/health` to `/health/ready` so Railway's
+redeploy health-gating actually reflects real DB/schema state, not a static always-200 stub.
+
+**Hosted-service readiness — investigated, explicitly ruled out.** Both existing `BackgroundService`s
+(`CostRollupBackgroundService`, `EvalRunBackgroundWorker`) were read in full. Neither has any
+meaningful asynchronous initialization phase: `CostRollupBackgroundService.ExecuteAsync`'s very
+first action inside its loop *is* the actual rollup work (no setup step precedes it);
+`EvalRunBackgroundWorker.ExecuteAsync`'s very first statement is `await _queue.DequeueAsync(...)` —
+it's immediately ready to process the moment `ExecuteAsync` starts. Neither service has a genuine
+"not ready yet" state for `/health/ready` to gate on. No readiness-gating mechanism was built for
+this — inventing one for a problem that doesn't exist would be exactly the kind of premature
+abstraction `DESIGN_PRINCIPLES.md` argues against. If a future hosted service *does* need real
+async init (e.g. warming a large in-memory index before it can safely process anything), this is the
+trigger to revisit — see below.
+
+**Startup-time DB outage — live but not ready, distinguished from a genuine migration failure
+(found and fixed in Task 3, commit `4596e07`).** Before this fix, `Program.cs`'s auto-migrate-at-
+startup called `dbContext.Database.MigrateAsync()` unconditionally before `app.Run()`. If the
+database was unreachable at container boot, `MigrateAsync()` threw before Kestrel ever bound a port,
+which meant the outer fail-fast catch (Confirmation #8, below) fired and crashed the whole process —
+so `/health/live` was, in practice, **not reachable** during a startup-time DB outage at all,
+directly contradicting this confirmation's own stated liveness goal ("`/health/live` returns 200 if
+the process is running, full stop"). A process that can't yet reach its database during a transient
+outage would fail to report "alive" purely because of a startup-ordering accident, not because the
+process itself was unhealthy.
+
+Fixed by checking `Database.CanConnectAsync()` first — reusing the exact same signal
+`DatabaseReadinessChecker` itself uses — before attempting migration. If the database is reachable,
+migration and seeding proceed exactly as before. If it is genuinely unreachable, migration/seeding
+is skipped (`Log.Warning`, not thrown) and the app continues starting normally: Kestrel binds,
+`/health/live` is unconditionally `200`, and `/health/ready` correctly reports `503 "database
+unreachable"` until the database recovers — live, but not ready, exactly matching the
+liveness/readiness contract this confirmation establishes for every other case.
+
+This fix is deliberately narrow. If the database **is** reachable but `MigrateAsync()` itself then
+throws — a genuine migration bug: bad SQL, a broken `Down()`/`Up()` — that exception is explicitly
+NOT caught by this new logic. It propagates unchanged to Confirmation #8's outer fail-fast catch and
+crashes the process loudly (`Log.Fatal`, `Environment.ExitCode = 1`), exactly as any other startup
+failure. A prior fix attempt wrapped the entire migrate-plus-seed block in a blanket
+`catch (Exception)` and was rejected during implementation, then reverted before landing: it would
+have silently downgraded a genuine migration bug to the same Warning-and-continue path used for a
+transient connectivity issue, masking exactly the class of failure Confirmation #8's fail-fast
+philosophy exists to surface loudly. A transient connectivity problem and a genuine migration defect
+must never be treated as the same event, and this fix's narrowness is what keeps them distinct.
+`Program.cs`'s comment at this call site points back here.
+
+**Why `/health/ready`'s migration check is not tautological despite `Program.cs` always
+auto-migrating at startup.** Since `Program.cs` unconditionally calls `dbContext.Database
+.MigrateAsync()` before `app.Run()` (when the database is reachable — see above), a container
+that's actually serving traffic has, by definition, already migrated itself — so immediately after
+startup, the pending-migrations check will always report zero pending. Its real value is a live
+drift detector, not a startup gate: if an operator manually reverts the database schema while the
+app container keeps running (exactly the scenario `RUNBOOK.md`'s migration-rollback guidance can
+require), `/health/ready` correctly flips to `503` on the very next poll, surfacing the code/schema
+mismatch instead of silently continuing to serve requests against a schema the running binary no
+longer matches.
+
+### Confirmation #3 — Migration validation proves schema convergence, not just test outcomes
+The `migration-validation` CI job runs two Postgres services in parallel (`postgres-fresh`,
+`postgres-upgrade`, different host ports) so both final schemas can be diffed directly. Scenario
+(a): `dotnet ef database update` applied to a genuinely empty database. Scenario (b): migrate to the
+migration immediately prior to latest, then apply latest on top — simulating a real production
+upgrade — followed by the **full test suite run a second time** against that upgraded database.
+Finally, `pg_dump --schema-only` both resulting databases and `diff` them: a non-empty diff fails
+the job even if every test on both paths passed, since fresh-install test success alone cannot prove
+an upgrade is safe (a constraint that's fine on an empty table but conflicts with existing data is
+exactly the class of bug this catches that test-outcome checking alone would miss).
+
+### Confirmation #4 — Container build validates the exact production artifact
+The `container-smoke-test` job runs `docker build -f Dockerfile .` from the repo root with no build
+args and no CI-only Dockerfile — the identical artifact `railway.json` (`"builder": "DOCKERFILE",
+"dockerfilePath": "Dockerfile"`, no `startCommand` override) has Railway build. The built image is
+then actually run (`docker run --network host`, real Postgres service, no pre-migration) and polled
+against `/health/ready` until healthy or a 60-second timeout — proving the container migrates and
+becomes ready unattended, mirroring a real fresh Railway deploy rather than a parallel, potentially
+divergent build path.
+
+### Confirmation #5 — Security scanning scope
+`dotnet list package --vulnerable --include-transitive` (its own exit code is always `0` regardless
+of findings — CI greps the text output for `High`/`Critical` markers and fails explicitly), a Trivy
+container-image scan (`HIGH,CRITICAL`, `ignore-unfixed: true` — scanning any real base image
+routinely surfaces OS-level CVEs with no published fix yet; failing on those would make the gate
+permanently red for reasons outside this project's control), a manual verification checklist item
+for GitHub secret scanning/push protection (a repo Settings toggle, not expressible in workflow
+YAML — public repos have secret scanning on by default, verified via the repo's Settings →
+Code security page, not a custom check), and `.github/dependabot.yml`. Dependabot is the one
+deliberate, expected exception to this project's otherwise PR-less workflow — its update PRs are
+reviewed and merged locally like everything else, not auto-merged.
+
+### Confirmation #6 — Branch protection scoped to not conflict with the existing workflow
+No "PR required before merge" setting — that would break the established local-merge-and-push
+habit this project has used for 11 prior weeks. What **is** required on `main`'s HEAD: all four CI
+job status checks (`build-and-test`, `migration-validation`, `container-smoke-test`,
+`security-scan`), `required_linear_history: true`, and `allow_force_pushes: false`. CI here is a
+second, independent, automated confirmation that runs *after* the existing local engineering gate
+(a clean worktree build/test before merge) — not a replacement for that discipline.
+
+### Confirmation #7 — Migration reversibility policy
+Every migration's `Down()` must either perform real `migrationBuilder` work (purely additive,
+structurally reversible — every one of the 12 existing migrations already qualifies) or throw
+`NotSupportedException` with a documented reason (irreversible — a data transformation or
+destructive change). Enforced going forward by `MigrationReversibilityTests`
+(`tests/OrchestAI.Tests/Architecture/`), a static-analysis test over migration source files that
+fails the build the moment a future migration ships an empty or thoughtless `Down()` — the same
+"enforced by a test, not just by review" pattern `LayeringTests` already established for
+architectural layering. **Production rollback does not mean executing migration `Down()`s against a
+live database** — see `RUNBOOK.md`: rollback means redeploying the previous application version
+against a schema that remains backward-compatible with it, following the same
+nullable-→-backfill→-non-null multi-step pattern Week 10 already established for any non-purely-
+additive change.
+
+### Confirmation #8 — Fail-fast configuration validation
+`RequiredConfigurationValidator.Validate` (Infrastructure, called as the first line of
+`AddInfrastructure`) checks `ConnectionStrings:DefaultConnection` and `Anthropic:ApiKey` together,
+throwing one `InvalidOperationException` listing every missing/blank key at once — replacing the old
+ad-hoc single-key check (`Anthropic:ApiKey` only; `ConnectionStrings:DefaultConnection` had zero
+validation and would only ever fail lazily, inside the auto-migrate call, with whatever exception
+Npgsql happened to throw). **`Admin:BootstrapSecret` is deliberately excluded from required
+validation** — `RequireAdminSecretFilter` already fails gracefully per-request (`503`) when it's
+unset, a correct, already-shipped posture for an operator-only admin-bootstrap surface; a fresh
+Railway deploy that hasn't configured admin bootstrap yet should still serve normal tenant traffic,
+not refuse to start entirely.
+
+A real bug was found and fixed alongside this: `Program.cs`'s top-level `catch (Exception ex)` never
+set a non-zero exit code, so a genuine startup failure (bad config, unreachable DB) logged Fatal and
+then exited `0` — which would defeat Railway's `restartPolicyType: ON_FAILURE` (a `0` exit reads as
+an intentional, successful shutdown, not something to restart from). Fixed by explicitly setting
+`Environment.ExitCode = 1` in that catch block. This interacts with a second, independently
+discovered bug: EF Core design-time tooling (`dotnet ef migrations list/add`, `database update`)
+invokes `Program.Main` via reflection *in the same process* and throws
+`Microsoft.Extensions.Hosting.HostAbortedException` as its documented mechanism for capturing the
+built host without running it — confirmed by actually running `dotnet ef migrations list` locally
+during this week's investigation, not assumed. Adding the exit-code fix to the *unconditional* catch
+would have poisoned `Environment.ExitCode` to `1` for every subsequent `dotnet ef` invocation in the
+same process (the tool's own successful-completion path never resets that shared mutable value),
+silently breaking any CI step that checks `dotnet ef`'s exit code — exactly the failure mode
+`DESIGN_PRINCIPLES.md`'s "Empirical verification over plausible-sounding review" section exists to
+catch. Fixed with the standard, documented pattern: `catch (Exception ex) when (ex is not
+HostAbortedException)`.
+
+### Confirmation #9 — Artifact retention on CI failure
+Every job redirects its own diagnostic command output to files (test `.trx`, migration command
+output, container logs, health-check polling responses, vulnerability-scan output) and uploads them
+via `actions/upload-artifact@v4` with `if: always()` — not conditioned on failure, since a clean
+run's artifacts are still useful as an audit trail and this avoids branching upload logic by
+job outcome. A bare "container smoke test failed" with nothing to inspect would force a re-run just
+to get diagnostic information; this optimizes for investigation speed over minimal storage use (14-
+day retention, GitHub Actions' artifact defaults otherwise apply).
+
+### Implementation notes
+**A real, empirically-confirmed bug was found purely by running a command, not by reading code.**
+See Confirmation #8 above — the `HostAbortedException`/exit-code interaction would not have been
+caught by review alone; it was only found by actually running `dotnet ef migrations list` during
+this week's investigation phase and observing the unexpected Fatal log line, then reasoning through
+why the naive exit-code fix would have made it worse, not better.
+
+**A real bug in the liveness/readiness split itself was found purely by re-reading the startup path
+against this ADR's own stated goal, not by a new failing test.** See Confirmation #2's
+startup-time-DB-outage material above — the auto-migrate-at-startup call unconditionally throwing
+into the fail-fast catch meant `/health/live` was unreachable during exactly the outage scenario it
+exists to remain reachable through. Fixed in Task 3, commit `4596e07`, by checking
+`Database.CanConnectAsync()` before attempting migration, while deliberately leaving a genuine
+`MigrateAsync()` failure on the fail-fast path untouched.
+
+### Trigger for revisiting
+- The first time a hosted service is added that genuinely needs asynchronous initialization before
+  it can safely process work (unlike `CostRollupBackgroundService`/`EvalRunBackgroundWorker` today)
+  — build a real readiness-gating mechanism for it at that point, not before.
+- The first time CI wall-clock time becomes a bottleneck on this project's own iteration speed —
+  revisit whether `migration-validation`'s duplicate full-test-suite run (once in `build-and-test`,
+  once against the upgrade-path DB) is worth splitting or caching further.
+- The first time a second application (not just Dependabot) needs to open a PR against this
+  otherwise PR-less workflow — revisit whether branch protection's `required_linear_history`
+  assumption still holds.

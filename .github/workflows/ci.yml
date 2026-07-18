@@ -213,3 +213,79 @@ jobs:
             schema-diff.txt
             TestResults/**/*.trx
           retention-days: 14
+
+  container-smoke-test:
+    name: container-smoke-test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestai
+          POSTGRES_USER: orchestai
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orchestai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Builds the exact root Dockerfile with no build args, no CI-only Dockerfile — the same
+      # artifact Railway builds from railway.json's "dockerfilePath": "Dockerfile". See
+      # confirmation #4 and this plan's Global Constraints.
+      - name: Build production image
+        run: docker build -f Dockerfile -t orchestai-api:ci .
+
+      - name: Run container
+        run: |
+          docker run -d --name orchestai-smoke \
+            --network host \
+            -e PORT=8080 \
+            -e ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme" \
+            -e Anthropic__ApiKey="sk-ant-ci-placeholder" \
+            orchestai-api:ci
+
+      - name: Poll /health/ready until healthy or timeout
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health/ready -o health-ready-response.json; then
+              echo "container reported ready after $((i * 2))s"
+              cat health-ready-response.json
+              exit 0
+            fi
+            echo "not ready yet (attempt $i/30)"
+            sleep 2
+          done
+          echo "TIMED OUT waiting for /health/ready"
+          exit 1
+
+      - name: Verify /health/live independently
+        run: curl -sf http://localhost:8080/health/live | tee health-live-response.json
+
+      - name: Capture container logs
+        if: always()
+        run: docker logs orchestai-smoke > container-smoke-logs.txt 2>&1 || true
+
+      - name: Tear down container
+        if: always()
+        run: |
+          docker stop orchestai-smoke || true
+          docker rm orchestai-smoke || true
+
+      - name: Upload smoke-test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-smoke-test-artifacts
+          path: |
+            container-smoke-logs.txt
+            health-ready-response.json
+            health-live-response.json
+          retention-days: 14

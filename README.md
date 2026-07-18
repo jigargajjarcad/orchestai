@@ -4,8 +4,9 @@
 
 **The .NET alternative to LangGraph, AutoGen, and CrewAI.** OrchestAI provides a complete CQRS-based framework for building multi-agent AI systems on .NET — with parallel and sequential execution, MCP tool integration, real-time SSE streaming, and a React playground UI.
 
+[![CI](https://github.com/jigargajjarcad/orchestai/actions/workflows/ci.yml/badge.svg)](https://github.com/jigargajjarcad/orchestai/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com)
-[![Tests](https://img.shields.io/badge/tests-182%20passing-16a34a)](tests/)
+[![Tests](https://img.shields.io/badge/tests-413%20passing-16a34a)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---

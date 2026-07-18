@@ -289,3 +289,59 @@ jobs:
             health-ready-response.json
             health-live-response.json
           retention-days: 14
+
+  security-scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore OrchestAI.sln
+
+      # `dotnet list package --vulnerable` always exits 0 regardless of findings — it's a
+      # reporting command, not a gate. This step greps its own output for High/Critical severity
+      # markers and fails explicitly, since there is no built-in --fail-on-severity flag.
+      - name: Scan NuGet packages for known vulnerabilities
+        run: |
+          dotnet list OrchestAI.sln package --vulnerable --include-transitive 2>&1 | tee vulnerable-packages.txt
+          if grep -qE '\s(High|Critical)\s' vulnerable-packages.txt; then
+            echo "High or Critical severity vulnerable package(s) found — see vulnerable-packages.txt"
+            exit 1
+          fi
+          echo "No High/Critical severity vulnerable packages found."
+
+      - name: Build production image for container scan
+        run: docker build -f Dockerfile -t orchestai-api:ci .
+
+      # ignore-unfixed:true is deliberate — scanning any real-world base image (including
+      # Microsoft's own aspnet:8.0) routinely turns up OS-level CVEs with no fix published yet;
+      # failing CI on those would make this gate permanently red for reasons outside this
+      # project's control. HIGH/CRITICAL with a known fix is the actionable signal this scan
+      # exists to catch.
+      - name: Scan container image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: orchestai-api:ci
+          format: table
+          output: trivy-results.txt
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Upload security-scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-artifacts
+          path: |
+            vulnerable-packages.txt
+            trivy-results.txt
+          retention-days: 14

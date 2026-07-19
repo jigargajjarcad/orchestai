@@ -1267,11 +1267,49 @@ reviewed and merged locally like everything else, not auto-merged.
 
 ### Confirmation #6 — Branch protection scoped to not conflict with the existing workflow
 No "PR required before merge" setting — that would break the established local-merge-and-push
-habit this project has used for 11 prior weeks. What **is** required on `main`'s HEAD: all four CI
-job status checks (`build-and-test`, `migration-validation`, `container-smoke-test`,
-`security-scan`), `required_linear_history: true`, and `allow_force_pushes: false`. CI here is a
-second, independent, automated confirmation that runs *after* the existing local engineering gate
-(a clean worktree build/test before merge) — not a replacement for that discipline.
+habit this project has used for 11 prior weeks. `main`'s branch protection is: `required_linear_history:
+true`, `allow_force_pushes: false`, `allow_deletions: false`, `enforce_admins: true` (deliberately —
+on a solo-owner repo, `enforce_admins: false` would exempt the only committer from all three of
+those protections, making them theater). CI here is a second, independent, automated confirmation
+that runs *after* the existing local engineering gate (a clean worktree build/test before merge) —
+not a replacement for that discipline.
+
+**A real, permanent GitHub limitation discovered while landing this exact change: `required_status_checks`
+cannot coexist with a direct-push-to-`main` workflow.** The original plan and this ADR's first draft
+specified requiring all four CI job status checks (`build-and-test`, `migration-validation`,
+`container-smoke-test`, `security-scan`) on `main`'s HEAD. Applying that setting and then attempting
+the very first real push to `main` under it (merging this week's own branch) failed immediately:
+`GH006: Protected branch update failed for refs/heads/main — 4 of 4 required status checks are
+expected`. `required_status_checks` does not distinguish "gate a PR merge" from "gate any push" — it
+blocks **any** ref update to the protected branch (a direct push included) unless that exact commit
+SHA already has recorded passing checks. Since a check can only be recorded by a workflow run that
+the push itself triggers, requiring it for a direct push creates an unbreakable deadlock: the commit
+cannot land until it has passing checks, and it cannot get checks run against it until it lands (or
+at least exists on the remote to trigger a workflow). This is not a misconfigured value — it is a
+fundamental mismatch between what the GitHub feature was designed for (gating a PR's merge, where
+the check runs against the PR branch *before* it becomes part of the target branch) and how this
+repo's main development flow actually works (no PRs, ever, for direct engineer pushes).
+
+Fixed by removing `required_status_checks` entirely from `main`'s protection, keeping every other
+setting (`enforce_admins`, `required_linear_history`, `allow_force_pushes: false`,
+`allow_deletions: false`) — those are structural rules with no status-check dependency, so they
+protect the branch with no risk of the same deadlock. This actually *restores* this confirmation's
+original intent rather than merely patching around a bug: the stated goal from the start was "CI as
+a visible signal and safety net, not a hard gate," precisely because this project has no PR-based
+merge flow — the originally-applied config accidentally implemented a hard gate, contradicting that
+intent. Verified by retrying the same push immediately after the fix: it succeeded, and the CI
+workflow still triggered and reported all four job check-runs as `success` against the landed commit
+(`gh api repos/.../commits/<sha>/check-runs`) — CI still runs and shows status on every push, it
+simply no longer blocks the ref update.
+
+**Accept explicitly, not implicitly: there is no GitHub branch-protection configuration that gives
+both "hard-gate on CI" and "never require a PR."** This is a real, permanent tradeoff of the
+platform, not a temporary gap to close later. One consequence worth stating plainly:
+Dependabot/security-update PRs — the one place PRs legitimately enter this otherwise PR-less
+workflow (Confirmation #5) — are **not** automatically blocked from merging by a failing check
+either, since the same `required_status_checks` removal applies to them too. Merging a Dependabot PR
+still requires manually confirming its CI run is green first; nothing in branch protection enforces
+that for you.
 
 ### Confirmation #7 — Migration reversibility policy
 Every migration's `Down()` must either perform real `migrationBuilder` work (purely additive,

@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-and-test-results
           path: TestResults/**/*.trx
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload migration validation artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: migration-validation-artifacts
           path: |
@@ -297,7 +297,7 @@ jobs:
 
       - name: Upload smoke-test artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-smoke-test-artifacts
           path: |
@@ -354,7 +354,7 @@ jobs:
 
       - name: Upload security-scan artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-scan-artifacts
           path: |

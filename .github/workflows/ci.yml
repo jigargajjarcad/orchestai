@@ -188,9 +188,14 @@ jobs:
       - name: Verify fresh-install and upgrade-path schemas converge
         run: |
           PGPASSWORD=changeme pg_dump --schema-only --no-owner --no-privileges \
-            -h localhost -p 5432 -U orchestai orchestai > fresh-schema.sql
+            -h localhost -p 5432 -U orchestai orchestai > fresh-schema-raw.sql
           PGPASSWORD=changeme pg_dump --schema-only --no-owner --no-privileges \
-            -h localhost -p 5433 -U orchestai orchestai > upgrade-schema.sql
+            -h localhost -p 5433 -U orchestai orchestai > upgrade-schema-raw.sql
+          # pg_dump 16.14+ emits a random per-invocation \restrict/\unrestrict security token —
+          # unique on every single dump regardless of actual schema content, so it must be
+          # stripped before diffing or two byte-identical schemas would always show as "different".
+          grep -v '^\\restrict \|^\\unrestrict ' fresh-schema-raw.sql > fresh-schema.sql
+          grep -v '^\\restrict \|^\\unrestrict ' upgrade-schema-raw.sql > upgrade-schema.sql
           if ! diff -u fresh-schema.sql upgrade-schema.sql > schema-diff.txt; then
             echo "Fresh-install and upgrade-path schemas DO NOT converge:"
             cat schema-diff.txt

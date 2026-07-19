@@ -1073,6 +1073,30 @@ through a real `AgentBase.InvokeToolAsync` call. This gap was identified during 
 implementation, re-confirmed during Task 8's review, and is tracked as the deferred Task 13
 follow-up (already committed at `1fa1fac`) rather than silently treated as covered by this ADR.
 
+**Task 13 is now closed.** `AgentToolCallCapIntegrationTests` drives a real `ResearchAgent`
+(and, for the parallel case, a real `CodeAgent`) with a real `AsyncLocalTaskToolCallBudget`
+through the real `StartOrchestrationHandler.Handle` — only the `ILlmProvider` and leaf
+`IMcpTool`s are faked. The primary test configures a cap of 2 against a single turn requesting 3
+tool calls and asserts the `OrchestrationTask` ends `Failed` (never `Completed`) with the exact
+`AgentBase.cs:601` wording surfacing all the way up through the persisted `AgentExecution` and
+`OrchestrationTask.ErrorMessage`, a `RejectionEvent` (`Reason == AgentCapExceeded`) was
+persisted, and the underlying tool was invoked exactly twice (not three times), proving the
+budget check runs before tool invocation rather than after. A masking-proof (temporarily
+short-circuiting the cap-exceeded branch in `AgentBase.InvokeToolAsync`, confirming both new
+tests fail, then reverting) confirmed the tests exercise the real mechanism rather than passing
+vacuously — with the cap disabled, both fake agents instead ran to `MaxAgenticIterations`,
+producing 60 tool invocations instead of the capped 4, which incidentally also demonstrates the
+cap's role as a runaway-loop guard. The second test configures `ExecutionMode.Parallel` with two
+concurrently-dispatched agents (via the real `Task.WhenAll` in `Handle`) sharing one budget
+scope, each requesting 3 tool calls against a shared cap of 4 (combined demand 6), with an
+artificial `Task.Delay` in each fake tool to force genuine thread-pool interleaving rather than
+synchronous continuation chaining; it asserts total successful invocations across both agents is
+exactly the cap (never more, never fewer) regardless of interleaving order, extending
+`AsyncLocalTaskToolCallBudgetTests.TryIncrement_ConcurrentIncrementsWithinOneScope_
+NeverExceedsCapAcrossParallelCallers` (Task 8, direct `TryIncrement()` calls) to prove the same
+guarantee holds when driven through real, concurrent agent execution. Full suite: 428/428
+(up from 426 after Tasks 1-2). Added in this commit.
+
 **A final whole-branch review found Confirmation #1's `ITenantLimitsProvider.GetSnapshot` handoff
 to `RateLimiterSetup.BuildGlobalLimiter` has two distinct bugs, only one of which this ADR's
 Task 9 design anticipated and only one of which is fixed here.**

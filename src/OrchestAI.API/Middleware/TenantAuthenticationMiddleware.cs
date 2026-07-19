@@ -112,7 +112,15 @@ public sealed class TenantAuthenticationMiddleware : IMiddleware
     private static bool IsExemptPath(PathString path) =>
         path.StartsWithSegments("/health") ||
         path.StartsWithSegments("/swagger") ||
-        path.StartsWithSegments("/api/v1/admin");
+        path.StartsWithSegments("/api/v1/admin") ||
+        // EventSource (browser-native SSE client) cannot send an Authorization header — a hard
+        // platform limitation. GET {id}/stream instead validates a short-lived, single-use,
+        // (tenantId, taskId)-bound ticket itself (see ITaskStreamTicketIssuer and
+        // TasksController.StreamAsync). Keep this clause textually identical to
+        // RateLimiterSetup.IsExemptPath's own "/stream" exemption — a future change to one
+        // without the other reintroduces exactly this bug (either in reverse, or unlimits the
+        // rate limiter). See Task 1, Phase 1 architecture/product validation.
+        (path.Value?.EndsWith("/stream", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private async Task MaybeRecordUsageAsync(ApiKey apiKey, CancellationToken cancellationToken)
     {

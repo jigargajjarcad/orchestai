@@ -439,7 +439,16 @@ export default function App() {
       await authenticatedFetch(`${API_BASE}/tasks/${id}/start`, { method: 'POST' })
       setTaskStatus('Running')
 
-      const es = new EventSource(`${API_BASE}/tasks/${id}/stream`)
+      // EventSource is a native browser API and cannot set custom request headers, so it can't
+      // carry the normal Authorization: Bearer header every other call uses. Mint a short-lived,
+      // single-use ticket bound to this task via a normal authenticated fetch() first, then pass
+      // it as a query parameter instead. See apiKey.js's file-level comment for why this is a
+      // deliberate, narrow exception rather than a precedent for other endpoints.
+      const ticketRes = await authenticatedFetch(`${API_BASE}/tasks/${id}/stream-ticket`, { method: 'POST' })
+      if (!ticketRes.ok) throw new Error(`Stream ticket request failed: ${ticketRes.status}`)
+      const { ticket } = await ticketRes.json()
+
+      const es = new EventSource(`${API_BASE}/tasks/${id}/stream?ticket=${encodeURIComponent(ticket)}`)
       eventSourceRef.current = es
 
       es.onmessage = (e) => {

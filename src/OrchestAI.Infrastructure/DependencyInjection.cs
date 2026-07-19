@@ -35,6 +35,10 @@ public static class DependencyInjection
 
         services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
         services.AddSingleton<ITaskToolCallBudget, AsyncLocalTaskToolCallBudget>();
+        // Owns its own in-memory ticket store — must stay Singleton, never Scoped/Transient, or a
+        // ticket minted on one request would be invisible to the request that tries to consume
+        // it. See ITaskStreamTicketIssuer / Task 1, Phase 1 architecture/product validation.
+        services.AddSingleton<ITaskStreamTicketIssuer, InMemoryTaskStreamTicketIssuer>();
 
         services.AddSingleton<UpdatedAtInterceptor>();
         services.AddSingleton<TenantScopingInterceptor>();

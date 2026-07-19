@@ -63,5 +63,10 @@ public static class RateLimiterSetup
         path.StartsWithSegments("/health") ||
         path.StartsWithSegments("/swagger") ||
         path.StartsWithSegments("/api/v1/admin") ||
+        // Keep this clause textually identical to TenantAuthenticationMiddleware.IsExemptPath's
+        // own "/stream" exemption (added in Task 1, Phase 1 architecture/product validation, so
+        // EventSource's inability to send an Authorization header doesn't 401 every browser
+        // client) — a future change to one without the other reintroduces exactly this bug,
+        // either in reverse or by leaving the stream endpoint unrate-limited.
         (path.Value?.EndsWith("/stream", StringComparison.OrdinalIgnoreCase) ?? false);
 }

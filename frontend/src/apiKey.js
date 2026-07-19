@@ -7,6 +7,17 @@
 // A production design needs a backend-for-frontend session, short-lived tokens, or httpOnly
 // cookies — not a long-lived machine API key living in browser JS at all. See ADR-014
 // confirmation #10.
+//
+// One deliberate exception: the SSE stream (App.jsx's `new EventSource(...)`) does NOT go through
+// authenticatedFetch and does NOT carry this Authorization header at all — EventSource is a
+// native browser API that cannot set custom request headers, a hard platform limitation, not an
+// oversight here. Instead, App.jsx first calls POST {id}/stream-ticket through authenticatedFetch
+// (a plain fetch(), so the Bearer header applies normally) to mint a short-lived, single-use,
+// task-bound ticket, then opens the EventSource with that ticket as a query parameter. The ticket
+// is intentionally NOT this long-lived API key — it expires in 60 seconds, works for exactly one
+// stream connection, and is scoped to exactly one task, so the "never sent as a query parameter"
+// rule above still holds for the actual API key. See ITaskStreamTicketIssuer, Task 1 (Phase 1
+// architecture/product validation).
 
 let currentApiKey = null
 

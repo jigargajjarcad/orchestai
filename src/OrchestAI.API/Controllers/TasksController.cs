@@ -23,6 +23,8 @@ public sealed class TasksController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IOrchestrationEventBus _eventBus;
+    private readonly ITaskStreamTicketIssuer _ticketIssuer;
+    private readonly ICurrentTenantAccessor _tenantAccessor;
     private readonly ILogger<TasksController> _logger;
 
     private static readonly JsonSerializerOptions SseJsonOptions = new()
@@ -30,13 +32,22 @@ public sealed class TasksController : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    // Must match InMemoryTaskStreamTicketIssuer's actual TTL — this is purely the value reported
+    // to the client (expiresInSeconds), not an enforcement mechanism; the issuer enforces the
+    // real expiry independently.
+    private const int StreamTicketTtlSeconds = 60;
+
     public TasksController(
         IMediator mediator,
         IOrchestrationEventBus eventBus,
+        ITaskStreamTicketIssuer ticketIssuer,
+        ICurrentTenantAccessor tenantAccessor,
         ILogger<TasksController> logger)
     {
         _mediator = mediator;
         _eventBus = eventBus;
+        _ticketIssuer = ticketIssuer;
+        _tenantAccessor = tenantAccessor;
         _logger = logger;
     }
 
@@ -315,10 +326,49 @@ public sealed class TasksController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>SSE stream for real-time task execution events.</summary>
-    [HttpGet("{id:guid}/stream")]
-    public async Task StreamAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Mints a short-lived (60s), single-use ticket bound to this task, for use as the
+    /// `?ticket=` query parameter on <see cref="StreamAsync"/>. Behind normal Bearer auth — this
+    /// call is a plain fetch() (via authenticatedFetch), not a browser EventSource, so it can send
+    /// the Authorization header like every other endpoint. See ITaskStreamTicketIssuer.</summary>
+    [HttpPost("{id:guid}/stream-ticket")]
+    [ProducesResponseType(typeof(IssueTaskStreamTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> IssueStreamTicketAsync(Guid id, CancellationToken cancellationToken)
     {
+        // Reuses the same tenant-scoped repository path as GetByIdAsync (respects the ADR-014
+        // global query filter) rather than a new unscoped existence check — a task belonging to
+        // another tenant must 404 here exactly as it does everywhere else.
+        var task = await _mediator.Send(new GetOrchestrationTaskQuery(id), cancellationToken);
+
+        if (task is null)
+            return NotFound(new ProblemDetails
+            {
+                Title = "Not Found",
+                Detail = $"Orchestration task {id} does not exist.",
+                Status = StatusCodes.Status404NotFound
+            });
+
+        // Guaranteed non-null: TenantAuthenticationMiddleware (which guards this endpoint — it is
+        // NOT in the /stream exemption) always sets the ambient tenant before any action runs.
+        var tenantId = _tenantAccessor.TenantId!.Value;
+        var ticket = _ticketIssuer.Issue(tenantId, id);
+
+        return Ok(new IssueTaskStreamTicketResponse(ticket, StreamTicketTtlSeconds));
+    }
+
+    /// <summary>SSE stream for real-time task execution events. Exempted from
+    /// TenantAuthenticationMiddleware (browser EventSource cannot send an Authorization header —
+    /// see IsExemptPath) — auth here is instead a single-use `?ticket=` minted by
+    /// <see cref="IssueStreamTicketAsync"/>.</summary>
+    [HttpGet("{id:guid}/stream")]
+    public async Task StreamAsync(Guid id, [FromQuery] string? ticket, CancellationToken cancellationToken)
+    {
+        if (!_ticketIssuer.TryConsume(ticket, id, out var tenantId))
+        {
+            Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+
         Response.ContentType = "text/event-stream";
         Response.Headers.Append("Cache-Control", "no-cache");
         Response.Headers.Append("X-Accel-Buffering", "no");
@@ -326,11 +376,18 @@ public sealed class TasksController : ControllerBase
 
         _logger.LogInformation("SSE client connected for task {TaskId}", id);
 
-        await foreach (var evt in _eventBus.SubscribeAsync(id, cancellationToken))
+        // Mirrors what TenantAuthenticationMiddleware does for every other request — the ticket
+        // path bypasses that middleware entirely (see IsExemptPath), so this is the only place
+        // that sets ambient tenant context for the subscription's lifetime; downstream code may
+        // read it during that lifetime.
+        using (_tenantAccessor.SetTenant(tenantId))
         {
-            var json = JsonSerializer.Serialize(evt, SseJsonOptions);
-            await Response.WriteAsync($"data: {json}\n\n", cancellationToken).ConfigureAwait(false);
-            await Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await foreach (var evt in _eventBus.SubscribeAsync(id, cancellationToken))
+            {
+                var json = JsonSerializer.Serialize(evt, SseJsonOptions);
+                await Response.WriteAsync($"data: {json}\n\n", cancellationToken).ConfigureAwait(false);
+                await Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         _logger.LogInformation("SSE stream ended for task {TaskId}", id);
@@ -347,3 +404,6 @@ public sealed class TasksController : ControllerBase
 
 /// <summary>Optional reviewer note attached to an approve/reject decision.</summary>
 public sealed record ApprovalRequest(string? Note);
+
+/// <summary>A short-lived, single-use ticket for opening GET {id}/stream without a Bearer header.</summary>
+public sealed record IssueTaskStreamTicketResponse(string Ticket, int ExpiresInSeconds);

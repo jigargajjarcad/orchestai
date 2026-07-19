@@ -698,6 +698,9 @@ production design needs a backend-for-frontend session, short-lived tokens, or h
 has no `.AllowCredentials()` and explicit allowed origins (unchanged this week) — relevant since
 a cookie-based future redesign would need to revisit this.
 
+### Confirmation #11 — Frontend stays internal/demo-only, bugs A/B fixed anyway
+The React frontend remains an internal development/demo playground — no further product investment (production session auth, self-serve tenant/API-key onboarding, UX redesign) is scheduled at this time. Two correctness bugs blocking the demo's baseline function were fixed regardless: Task 1 (EventSource cannot send `Authorization` headers, requiring a browser-compatible ticket mechanism) and Task 2 (orchestrator-planning failures left tasks stuck at `Running` instead of failing), both described in the Phase 1 plan's investigation (`docs/superpowers/plans/2026-07-19-phase1-architecture-product-validation.md`). These are independent-of-product-status baseline blockers needed for any demo to function. Revisit only if a future milestone explicitly calls for a public-facing demo (hiring conversation, real customer demo, actual end-user requirement) — not proactively.
+
 ### Decision 11 — `EvalSuite`/`EvalCase`/`EvalRun`/`EvalResult` becoming tenant-private is a deliberate behavior change
 Before this week, every eval suite was implicitly shared across all callers (there was no
 isolation concept at all). After this week, each suite belongs to exactly one tenant, and a

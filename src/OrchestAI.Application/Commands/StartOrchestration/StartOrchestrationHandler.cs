@@ -81,20 +81,33 @@ public sealed class StartOrchestrationHandler
 
             _logger.LogInformation("Task {TaskId} started, running orchestrator", request.TaskId);
 
-            var plan = await _orchestratorAgent
-                .PlanAsync(request.TaskId, task.UserPrompt, cancellationToken)
-                .ConfigureAwait(false);
+            OrchestrationPlan plan;
+            ResolvedTenantLimits limits;
 
-            _logger.LogInformation(
-                "Orchestrator selected {AgentCount} agents for task {TaskId}: {Agents}",
-                plan.SelectedAgents.Count,
-                request.TaskId,
-                string.Join(", ", plan.SelectedAgents));
+            try
+            {
+                plan = await _orchestratorAgent
+                    .PlanAsync(request.TaskId, task.UserPrompt, cancellationToken)
+                    .ConfigureAwait(false);
 
-            var tenantId = _tenantAccessor.TenantId
-                ?? throw new InvalidOperationException(
-                    $"StartOrchestrationHandler ran with no ambient tenant for task {request.TaskId}.");
-            var limits = await _limitsProvider.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation(
+                    "Orchestrator selected {AgentCount} agents for task {TaskId}: {Agents}",
+                    plan.SelectedAgents.Count,
+                    request.TaskId,
+                    string.Join(", ", plan.SelectedAgents));
+
+                var tenantId = _tenantAccessor.TenantId
+                    ?? throw new InvalidOperationException(
+                        $"StartOrchestrationHandler ran with no ambient tenant for task {request.TaskId}.");
+                limits = await _limitsProvider.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Orchestrator planning failed for task {TaskId}", request.TaskId);
+                await FailTaskAsync(
+                    task, $"Orchestrator planning failed: {ex.Message}", cancellationToken).ConfigureAwait(false);
+                return new StartOrchestrationResponse(request.TaskId, []);
+            }
 
             if (plan.SelectedAgents.Count > limits.MaxAgentsPerTask)
             {
@@ -192,23 +205,17 @@ public sealed class StartOrchestrationHandler
 
                 _logger.LogInformation(
                     "Task {TaskId} completed. Cost: ${CostUsd:F4}", request.TaskId, task.TotalCostUsd);
+
+                await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
             }
             else
             {
                 var errorSummary = string.Join("; ", failedResults.Select(r => r.ErrorMessage));
-                task.MarkFailed(errorSummary, synthesizedOutput);
-
-                _eventBus.Publish(request.TaskId, new SseEvent(
-                    "task_failed",
-                    request.TaskId,
-                    new { taskId = request.TaskId, errorMessage = errorSummary },
-                    DateTimeOffset.UtcNow));
+                await FailTaskAsync(task, errorSummary, cancellationToken, synthesizedOutput).ConfigureAwait(false);
 
                 _logger.LogWarning(
                     "Task {TaskId} failed with {FailedCount} agent failures", request.TaskId, failedResults.Count);
             }
-
-            await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
 
             return new StartOrchestrationResponse(
                 request.TaskId,
@@ -255,7 +262,22 @@ public sealed class StartOrchestrationHandler
         var errorMessage =
             $"Orchestrator selected {actualAgentCount} agents, exceeding the tenant cap of {maxAgentsPerTask}. " +
             "Task failed without dispatching any agents.";
-        task.MarkFailed(errorMessage);
+        await FailTaskAsync(task, errorMessage, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogWarning(
+            "Task {TaskId} failed at planning — agent cap exceeded ({Actual} > {Max})",
+            task.Id, actualAgentCount, maxAgentsPerTask);
+    }
+
+    // Single place that marks a task Failed, persists it, and publishes the task_failed SSE
+    // event — used by the planning-failure catch above, the sub-agent-failure branch, and
+    // FailWithAgentCapRejectionAsync, so there is exactly one implementation of "how a task
+    // fails" instead of three near-identical copies. Each caller still logs its own message,
+    // since the reason/log level genuinely differs per call site.
+    private async Task FailTaskAsync(
+        OrchestrationTask task, string errorMessage, CancellationToken cancellationToken, string? finalResult = null)
+    {
+        task.MarkFailed(errorMessage, finalResult);
         await _taskRepository.UpdateAsync(task, cancellationToken).ConfigureAwait(false);
 
         _eventBus.Publish(task.Id, new SseEvent(
@@ -263,10 +285,6 @@ public sealed class StartOrchestrationHandler
             task.Id,
             new { taskId = task.Id, errorMessage },
             DateTimeOffset.UtcNow));
-
-        _logger.LogWarning(
-            "Task {TaskId} failed at planning — agent cap exceeded ({Actual} > {Max})",
-            task.Id, actualAgentCount, maxAgentsPerTask);
     }
 
     private async Task<AgentExecutionResult> RunSubAgentAsync(

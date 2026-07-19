@@ -92,7 +92,7 @@ incident:
   `AbuseProtectionOptions.ReservationStalenessMinutes` (default 30 minutes). No reconciliation sweep
   deletes these orphaned rows; if they become numerous enough to matter, that's the trigger to build
   one (not yet needed).
-- **`/health/ready`'s migration check is a live drift detector, not a startup gate** (ADR-16
+- **`/health/ready`'s migration check is a live drift detector, not a startup gate** (ADR-016
   confirmation #2). Since `Program.cs` always auto-migrates at startup, immediately-post-startup this
   check is always trivially "no pending migrations." It only becomes meaningful if the schema drifts
   out from under a running container after the fact (e.g. a manual production DB change) — expected

@@ -38,13 +38,13 @@ SSE Stream → React UI
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  React UI (Vite + TailwindCSS) — dev/demo playground only   │
-│  EventSource  ←  SSE stream        (see note below)          │
+│  EventSource  ←  SSE stream        (see note below)         │
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP / SSE
 ┌────────────────────────▼────────────────────────────────────┐
 │  ASP.NET Core API  (OrchestAI.API)                          │
-│  TenantAuthenticationMiddleware → rate limiter → Controllers │
-│  → MediatR                                                   │
+│  TenantAuthenticationMiddleware → rate limiter → Controllers│
+│  → MediatR                                                  │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  CQRS Layer  (OrchestAI.Application)                │   │
@@ -218,8 +218,8 @@ return a single unified `429` shape:
 and are persisted as a `RejectionEvent`, queryable via `GET /api/v1/rejections?limit=50`
 (recent rate-limit/concurrency/budget/agent-cap/queue rejections for the caller's tenant).
 
-This enforcement state is in-process memory only (not Redis-backed) — see ADR-014's "In-memory
-state is an accepted limitation" confirmation for the single-instance-deployment caveat.
+This enforcement state is in-process memory only (not Redis-backed) — see ADR-015 Confirmation #2's
+"In-memory state is an accepted limitation" confirmation for the single-instance-deployment caveat.
 
 ---
 

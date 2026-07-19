@@ -137,7 +137,7 @@ jobs:
             --project src/OrchestAI.Infrastructure \
             --startup-project src/OrchestAI.API \
             --no-build --configuration Release > migrations-list-raw.txt 2>&1 || true
-          grep -E '^[0-9]{14}_' migrations-list-raw.txt > migrations-list.txt
+          grep -oE '^[0-9]{14}_[A-Za-z0-9]+' migrations-list-raw.txt > migrations-list.txt
           LATEST=$(tail -1 migrations-list.txt)
           PRIOR=$(tail -2 migrations-list.txt | head -1)
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
@@ -327,7 +327,7 @@ jobs:
       # project's control. HIGH/CRITICAL with a known fix is the actionable signal this scan
       # exists to catch.
       - name: Scan container image with Trivy
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: orchestai-api:ci
           format: table

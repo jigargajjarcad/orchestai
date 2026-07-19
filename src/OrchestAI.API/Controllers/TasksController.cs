@@ -392,14 +392,6 @@ public sealed class TasksController : ControllerBase
 
         _logger.LogInformation("SSE stream ended for task {TaskId}", id);
     }
-
-    /// <summary>Health check endpoint.</summary>
-    [HttpGet("/api/v1/health")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult Health()
-    {
-        return Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow });
-    }
 }
 
 /// <summary>Optional reviewer note attached to an approve/reject decision.</summary>

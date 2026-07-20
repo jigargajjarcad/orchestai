@@ -12,6 +12,8 @@ using OrchestAI.Domain.Interfaces;
 using OrchestAI.Infrastructure;
 using OrchestAI.Infrastructure.Data;
 
+// PREREQUISITE: Run ../../scripts/pack-local-nuget.sh to populate artifacts/nupkgs/ local feed before restore.
+
 var configuration = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", optional: false)
     .AddEnvironmentVariables()

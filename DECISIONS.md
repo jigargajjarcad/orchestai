@@ -1415,3 +1415,158 @@ exists to remain reachable through. Fixed in Task 3, commit `4596e07`, by checki
 - The first time a second application (not just Dependabot) needs to open a PR against this
   otherwise PR-less workflow — revisit whether branch protection's `required_linear_history`
   assumption still holds.
+
+## ADR-017: Library Packaging Boundary
+
+Phase 2 tested whether OrchestAI's core (Domain + Application + Infrastructure) separates
+cleanly from "the app that happens to host it" — packaged locally, consumed from a genuinely
+separate console project outside `OrchestAI.sln`, via `PackageReference` against a local NuGet
+feed, with no ASP.NET Core host involved. See `docs/superpowers/plans/2026-07-20-phase2-packaging-experiment.md`
+for the full task-by-task record and `spikes/phase2-console-consumer/` for the working proof.
+
+### Confirmation #1 — What "core" means, and that the existing guardrail already covers it
+
+`OrchestAI.Domain` has zero package references. `OrchestAI.Application` depends only on
+Domain. `OrchestAI.Infrastructure` depends on Domain and Application plus third-party
+packages (EF Core/Npgsql, Anthropic.SDK, etc.) — never on `Microsoft.AspNetCore.*` or
+`OrchestAI.API`. `tests/OrchestAI.Tests/Architecture/LayeringTests.cs` (written during Weeks
+9–10) already asserts every one of these boundaries via NetArchTest, including the
+ASP.NET-Core-leakage checks added after two real violations (Task 8's action filter, Task 9's
+middleware). No gap found; no new architecture test was needed.
+
+### Confirmation #2 — Tenant context has a clean non-HTTP entry point already
+
+`ICurrentTenantAccessor.SetTenant(Guid tenantId)` (Domain interface,
+`AsyncLocalCurrentTenantAccessor` in Infrastructure) is a plain `IDisposable`-scoped API with
+no HTTP dependency. `TenantAuthenticationMiddleware` is one caller of it, not its owner — the
+console consumer in `spikes/phase2-console-consumer/Program.cs` calls the exact same method
+directly. `TenantScopingInterceptor` reads the same ambient accessor to auto-stamp and
+validate `TenantId` on every write, so this protection is not weakened for a direct consumer.
+
+### Confirmation #3 — Admission control is a data-layer guarantee, not a middleware one; HTTP rate limiting is explicitly out of scope for library consumers
+
+Two previously-conflated protections turned out to be structurally different.
+`AdmitOrchestrationTaskCommand` performs the tenant's concurrency/budget check via an atomic
+`Pending → Running` compare-and-swap (`OrchestrationAdmissionRepository.TryAdmitAsync`), and
+`StartOrchestrationHandler` refuses to run a task that isn't already `Running`
+(`InvalidOperationException` otherwise) — this is enforced by the domain state machine itself,
+regardless of caller, and a direct library consumer cannot bypass it even by skipping the
+"expected" call order. Per-minute HTTP rate limiting (`RateLimiterSetup`,
+`PartitionedRateLimiter`) is genuinely API-host-only and unavailable outside an HTTP pipeline —
+confirmed as the correct, deliberate scope, not a gap: rate limiting exists to protect a host
+from an untrusted network caller, and that threat model doesn't apply to in-process code
+calling its own embedded library. No host-agnostic rate limiter was built.
+
+### Confirmation #4 — Postgres/EF Core stays a direct dependency of the packaged core
+
+`OrchestAI.Infrastructure` depends on `Npgsql.EntityFrameworkCore.PostgreSQL` directly for its
+own `AppDbContext`. This is an accepted limitation for this experimental phase, not a defect —
+abstracting persistence further was explicitly out of scope. (Separately,
+`Microsoft.Data.SqlClient` is present for `AdoDatabaseQueryExecutor`, the `DataAgent`'s
+tenant-configurable database query tool — unrelated to OrchestAI's own storage.)
+
+### Confirmation #5 — Local packaging mechanism
+
+Plain `dotnet pack` on each of the three `.csproj` files (no hand-written `.nuspec`) correctly
+converts `ProjectReference` into NuGet `<dependency>` entries at matching versions — verified
+by inspecting the extracted `.nuspec`. A project-scoped `NuGet.Config` pointing at the local
+output folder, consumed via `<PackageReference>` from a project genuinely outside
+`OrchestAI.sln`, restores and builds successfully. See `scripts/pack-local-nuget.sh` and
+`spikes/phase2-console-consumer/NuGet.Config`.
+
+### Confirmation #6 — One real packaging gap found and fixed: agent config has no shipped default
+
+`AgentOptions.Models`/`MaxTokens` default to empty dictionaries and are not covered by
+`RequiredConfigurationValidator`'s deliberately narrow fail-fast scope (see
+`feedback_fail_fast_scope_by_necessity`) — a consumer supplying only the two required keys
+hits an undocumented `KeyNotFoundException` deep inside `AgentBase.ExecuteAsync` on first
+agent dispatch, not at startup. Classified as a packaging issue (missing shipped
+default/sample), not an architecture problem — the config system itself is unchanged.
+Fixed by shipping `docs/packaging/minimal-appsettings.json` and
+`docs/packaging/README.md`, documenting exactly which keys are required-and-checked,
+required-but-unchecked, and code-defaulted.
+
+### Confirmation #7 — The HTTP API's dispatch pattern is HTTP-specific, not a consumer requirement
+
+`TasksController.StartAsync` admits synchronously then dispatches `StartOrchestrationCommand`
+via fire-and-forget `Task.Run` + a fresh DI scope, so the HTTP response can return 202 before
+the agent pipeline finishes — this exists solely to avoid blocking an HTTP request for the
+duration of agent execution. `StartOrchestrationHandler.Handle` itself runs the full pipeline
+synchronously and returns the final result directly. A direct library consumer has no
+"don't block the response" constraint and gets a *simpler* flow than the HTTP API's own by
+just `await`-ing the command chain directly — confirmed live in
+`spikes/phase2-console-consumer/Program.cs`, which never touches SSE, tickets, or
+`Task.Run`.
+
+### Confirmation #7a — Live execution surfaced a real gap: migrating schema is not the same as seeding it
+
+The plan's own draft `Program.cs` (Task 3) migrated the database but never seeded it, and
+crashed on the first live run with `Npgsql.PostgresException 23503`
+(`FK_OrchestrationTasks_Users_UserId`) — `DatabaseSeeder.DevUserId` is just a well-known GUID
+constant; the actual `Users` row only exists after `DatabaseSeeder.SeedAsync()` runs, which
+`OrchestAI.API/Program.cs:99-108` calls and the spike's first draft didn't.
+`DatabaseSeeder.SeedAsync()` already calls `MigrateAsync()` itself as its first line and also
+seeds `ModelPricing` rows (needed for real cost calculation, not just the FK). Fixed
+(commit `fbaa512`) by mirroring the API host's exact startup pattern — resolve
+`DatabaseSeeder` from a scope, call `SeedAsync()` — rather than reimplementing a partial
+version of it. Classified as packaging/consumer-composition-root responsibility, not an
+architecture problem: `DatabaseSeeder` already existed, already did the right thing, and was
+simply never invoked outside the one host that happened to call it. This is exactly the kind
+of gap that only surfaces by actually running the thing, not by reading the code — the same
+lesson Phase 1 already established for HTTP/SSE surfaces, now confirmed for a packaging
+boundary too.
+
+### Confirmation #7b — Live execution surfaced a second real gap: `IConfiguration` is not free outside ASP.NET Core
+
+The second live attempt failed with `InvalidOperationException: Unable to resolve service for
+type 'Microsoft.Extensions.Configuration.IConfiguration' while attempting to activate
+'OrchestAI.Infrastructure.Tools.DatabaseTool'`. `DatabaseTool` (`src/OrchestAI.Infrastructure/Tools/DatabaseTool.cs:24,59`)
+takes `IConfiguration` directly — not `IOptions<T>` — because `_configuration.GetConnectionString(database)`
+is a genuine dynamic, per-tool-call, arbitrary-named lookup that `IOptions<T>`'s fixed-shape
+binding can't express; this is correct design in `DatabaseTool`, not a bug. The actual gap:
+`AddInfrastructure(IConfiguration configuration)` uses the `configuration` parameter to bind
+`IOptions<T>` classes but never registers `IConfiguration` itself into the container.
+`OrchestAI.API` never noticed because `WebApplicationBuilder`/the Generic Host auto-registers
+`IConfiguration` as a singleton — a bare `new ServiceCollection()` doesn't get that for free.
+Fixed (commit `54a8350`) with one line in the console consumer's composition root,
+`services.AddSingleton<IConfiguration>(configuration);`, added before `AddInfrastructure(...)`.
+Classified as a packaging issue: a real, load-bearing host-coupling assumption that was
+invisible until tested outside ASP.NET Core, fixed cheaply on the consumer side per this
+phase's no-core-code-changes constraint. Flagging, not fixing now: `AddInfrastructure()` could
+defensively self-register `IConfiguration` (e.g. `services.TryAddSingleton(configuration)`) so
+future non-ASP.NET-Core consumers don't have to rediscover this — a cheap one-line hardening
+worth a follow-up task, not urgent enough to justify a mid-phase core-project exception here.
+
+### Confirmation #8 — Answering the five success-criteria questions
+
+- **Can OrchestAI be consumed cleanly as libraries from outside this repository?** Yes —
+  proven live, not just argued: `dotnet pack` → local feed → separate console project →
+  `dotnet restore`/`build`/`run` → a real Anthropic API call → `Completed` with a real
+  one-sentence answer ("The capital of France is Paris."), cost $0.0019, 1406/182 tokens
+  in/out — no API host process or port listener present before or after the run. Two real
+  bugs surfaced and were fixed along the way (Confirmations #7a, #7b) — the proof is stronger
+  for having hit and cleared them, not weaker.
+- **Does the architecture expose a pleasant or awkward public API?** Pleasant for the
+  scope tested — two-line composition root (`AddApplication()` + `AddInfrastructure(config)`),
+  a direct `await`-able command chain, a clean tenant-scope API. The warts found
+  (Confirmations #6, #7a, #7b) were documentation/composition-root gaps, not architectural
+  ones — nothing about the layering itself was wrong.
+- **Which specific APIs feel awkward, and why?** `AgentOptions.Models`/`MaxTokens` — no
+  fail-fast, no shipped default (fixed by documentation). Composition-root responsibilities
+  (seeding, `IConfiguration` registration, logging) that ASP.NET Core provides for free and a
+  bare `ServiceCollection` doesn't — expected of any MS-DI-based library, not unique to
+  OrchestAI, but worth documenting explicitly since it wasn't before this phase.
+- **Is each friction point superficial or architectural?** All findings landed in
+  "packaging" or "ergonomics"; none required reopening a Weeks 7–12 decision. Zero items
+  escalated to the architectural-boundary category.
+- **Is Phase 3 (the real sample application) still the correct next milestone, unchanged?**
+  Yes — nothing here suggests adjusting Phase 3's scope or premise.
+
+### Confirmation #9 — Track A (employment/IP) is not tracked anywhere in this repository
+
+While investigating, a grep across `DECISIONS.md` and every `*.md` file in the repo for
+"Track A" returned zero hits — the employment/IP question referenced as a standing parallel
+track has never been written down anywhere durable in this codebase, only discussed in
+conversation. This doesn't block Phase 2, but it's flagged here as a live open dependency for
+Phase 3, independent of packaging: worth capturing in at least a private, durable note before
+Phase 3 starts, so it isn't resting entirely on chat history.

@@ -1,5 +1,4 @@
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -25,14 +24,16 @@ services.AddInfrastructure(configuration);
 
 await using var provider = services.BuildServiceProvider();
 
-// AddInfrastructure() only registers IDbContextFactory<AppDbContext> — nothing runs
-// migrations automatically outside the ASP.NET Core host's own Program.cs startup block.
-// A library consumer owns this step exactly like OrchestAI.API's Program.cs does.
+// AddInfrastructure() only registers the DbContext/DatabaseSeeder — nothing runs
+// migrations or seeding automatically outside the ASP.NET Core host's own Program.cs
+// startup block. A library consumer owns this step exactly like OrchestAI.API's
+// Program.cs does: resolve DatabaseSeeder from a scope and call SeedAsync(), which
+// migrates the schema AND seeds the dev user + model pricing rows this spike depends
+// on (DatabaseSeeder.SeedAsync() calls MigrateAsync() itself as its first line).
 await using (var scope = provider.CreateAsyncScope())
 {
-    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-    await using var dbContext = await dbContextFactory.CreateDbContextAsync();
-    await dbContext.Database.MigrateAsync();
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    await seeder.SeedAsync();
 }
 
 // No HTTP request exists to resolve a tenant from — this is the direct, non-HTTP

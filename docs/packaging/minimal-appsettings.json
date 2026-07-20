@@ -1,0 +1,39 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme"
+  },
+  "Anthropic": {
+    "ApiKey": ""
+  },
+  "Agents": {
+    "Models": {
+      "Orchestrator": "anthropic/claude-haiku-4-5-20251001",
+      "Research": "anthropic/claude-haiku-4-5-20251001",
+      "Writer": "anthropic/claude-haiku-4-5-20251001",
+      "Code": "anthropic/claude-haiku-4-5-20251001",
+      "Data": "anthropic/claude-haiku-4-5-20251001",
+      "Browser": "anthropic/claude-haiku-4-5-20251001"
+    },
+    "MaxTokens": {
+      "Orchestrator": 1024,
+      "Research": 4096,
+      "Writer": 8192,
+      "Code": 4096,
+      "Data": 4096,
+      "Browser": 2048
+    }
+  },
+  "Tools": {
+    "Firecrawl": {
+      "ApiKey": "",
+      "BaseUrl": "https://api.firecrawl.dev/v1"
+    },
+    "Perplexity": {
+      "ApiKey": "",
+      "BaseUrl": "https://api.perplexity.ai"
+    },
+    "FileSystem": {
+      "SandboxPath": "./agent-workspace"
+    }
+  }
+}

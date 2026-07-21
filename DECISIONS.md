@@ -1570,3 +1570,10 @@ track has never been written down anywhere durable in this codebase, only discus
 conversation. This doesn't block Phase 2, but it's flagged here as a live open dependency for
 Phase 3, independent of packaging: worth capturing in at least a private, durable note before
 Phase 3 starts, so it isn't resting entirely on chat history.
+
+### Confirmation #10 — Track A resolved (2026-07-21)
+
+The Track A dependency flagged in Confirmation #9 is resolved. The prior employment agreement
+has been reviewed directly, confirming there are no employment, IP, confidentiality, or other
+contractual restrictions preventing independent development of OrchestAI or the future sample
+application. Phase 3 is no longer blocked on this item.

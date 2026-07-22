@@ -35,6 +35,7 @@ public sealed class AgentBaseProviderTests
     private readonly IOptions<AgentOptions> _agentOptions;
     private readonly Mock<IModelPricingCache> _modelPricingCacheMock;
     private readonly IOptions<RetryPolicyOptions> _retryOptions;
+    private readonly Mock<IRejectionEventRepository> _rejectionEventRepoMock;
 
     public AgentBaseProviderTests()
     {
@@ -68,6 +69,10 @@ public sealed class AgentBaseProviderTests
         {
             MaxAttempts = 3, InitialDelayMs = 1, MaxDelayMs = 5, BackoffMultiplier = 2.0, JitterMs = 1
         });
+        _rejectionEventRepoMock = new Mock<IRejectionEventRepository>();
+        _rejectionEventRepoMock
+            .Setup(r => r.AddAsync(It.IsAny<RejectionEvent>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _execRepoMock.Setup(r => r.AddAsync(It.IsAny<AgentExecution>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -107,7 +112,7 @@ public sealed class AgentBaseProviderTests
             _retryOptions,
             _toolRegistryMock.Object,
             new AsyncLocalTaskToolCallBudget(),
-            Mock.Of<IRejectionEventRepository>(),
+            _rejectionEventRepoMock.Object,
             NullLoggerFactory.Instance);
     }
 
@@ -428,6 +433,71 @@ public sealed class AgentBaseProviderTests
         result.InputTokens.Should().Be(350);  // 200 + 150
         result.OutputTokens.Should().Be(175); // 100 + 75
         result.CostUsd.Should().BeGreaterThan(0m);
+    }
+
+    // Closes the gap found during Phase 3 live verification (docs/phase3-domain-notes.md):
+    // exhausting MaxAgenticIterations mid-tool-call previously fell through to
+    // FinalizeSuccessAsync using whatever stray "let me search more" text the model attached to
+    // its final, un-synthesized turn — a silently-truncated result reported as Completed. This
+    // must fail cleanly instead, reusing the exact RejectionEvent/AgentCapExceededException
+    // mechanism already proven for MaxToolCallsPerTask (AgentToolCallCapIntegrationTests), per
+    // the same reject-vs-truncate principle established in ADR-015 Confirmation #7.
+    [Fact]
+    public async Task ExecuteAsync_ExhaustsIterationCapMidToolUse_FailsWithRealErrorAndRejectionEvent()
+    {
+        const string toolName = "test_tool";
+
+        var mockTool = new Mock<IMcpTool>();
+        mockTool.Setup(t => t.ToolName).Returns(toolName);
+        mockTool.Setup(t => t.Description).Returns("A test tool");
+        mockTool.Setup(t => t.GetInputSchema()).Returns(new ToolInputSchema("object", new Dictionary<string, ToolProperty>(), []));
+        mockTool.Setup(t => t.ExecuteAsync(It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new McpToolResult(true, "still searching"));
+
+        _toolRegistryMock.Setup(r => r.GetTools(It.IsAny<IReadOnlyList<string>>())).Returns([mockTool.Object]);
+        _toolRegistryMock.Setup(r => r.Get(toolName)).Returns(mockTool.Object);
+
+        // Every turn requests another tool call and carries a stray "let me keep searching"
+        // aside — the exact real-world shape that previously got persisted as if it were the
+        // agent's real final answer. The model never reaches end_turn/max_tokens within the
+        // 10-iteration budget (MaxAgenticIterations is not configurable and is not touched by
+        // this fix — this test proves what happens when the existing cap is hit, not where it's set).
+        _providerMock
+            .Setup(p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurn(
+                "tool_use", "Let me search for more details.",
+                [new ToolRequest("call_n", toolName, "{}")], 50, 20));
+
+        AgentExecution? capturedExecution = null;
+        _execRepoMock
+            .Setup(r => r.UpdateAsync(It.IsAny<AgentExecution>(), It.IsAny<CancellationToken>()))
+            .Callback<AgentExecution, CancellationToken>((e, _) => capturedExecution = e)
+            .Returns(Task.CompletedTask);
+
+        var agent = BuildAgent();
+        var result = await agent.ExecuteAsync(TaskId, UserId, "Investigate something", CancellationToken.None);
+
+        // Must fail cleanly — never silently succeed with the stray "let me search more" text
+        // as the reported output.
+        result.Success.Should().BeFalse();
+        result.Output.Should().BeEmpty();
+        result.ErrorMessage.Should().NotBeNullOrEmpty();
+        result.ErrorMessage.Should().NotContain("Let me search for more details.");
+
+        capturedExecution.Should().NotBeNull();
+        capturedExecution!.Status.Should().Be(ExecutionStatus.Failed);
+        capturedExecution.ErrorMessage.Should().Be(result.ErrorMessage);
+
+        // The loop stops at exactly the configured cap — not earlier, not later.
+        _providerMock.Verify(
+            p => p.SendAsync(It.IsAny<AgentConversation>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(10));
+
+        // Reuses the same RejectionEvent + RejectionReason.AgentCapExceeded surface already
+        // proven for MaxToolCallsPerTask — same observable rejection list, different cap.
+        _rejectionEventRepoMock.Verify(
+            r => r.AddAsync(It.Is<RejectionEvent>(e => e.Reason == RejectionReason.AgentCapExceeded), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     // Concrete subclass of AgentBase used for testing

@@ -129,6 +129,7 @@ public abstract class AgentBase : IAgent
             var totalCostUsd = 0m;
             var finalText = string.Empty;
             var sequenceNumber = 1;
+            var reachedFinalTurn = false;
 
             for (int iteration = 0; iteration < MaxAgenticIterations; iteration++)
             {
@@ -163,7 +164,10 @@ public abstract class AgentBase : IAgent
                 }
 
                 if (turn.StopReason == "end_turn" || turn.StopReason == "max_tokens")
+                {
+                    reachedFinalTurn = true;
                     break;
+                }
 
                 if (turn.StopReason == "tool_use" && turn.ToolRequests.Count > 0)
                 {
@@ -184,7 +188,38 @@ public abstract class AgentBase : IAgent
                     continue;
                 }
 
+                reachedFinalTurn = true;
                 break;
+            }
+
+            // The loop above exhausted MaxAgenticIterations without ever reaching end_turn/
+            // max_tokens (or the unexpected-stop-reason fallback) — the last thing that happened
+            // was a tool_use turn's `continue`, with no iteration left to send those tool
+            // results back for a real synthesis turn. `finalText` at this point is at best stale
+            // (whatever aside the model attached to that unresolved tool_use turn) and must never
+            // be reported as a successful answer. Reject cleanly instead — same
+            // RejectionEvent/AgentCapExceededException mechanism InvokeToolAsync already uses for
+            // MaxToolCallsPerTask, per ADR-015 Confirmation #7's reject-vs-truncate principle.
+            if (!reachedFinalTurn)
+            {
+                var detailsJson = $$"""{"limit":{{MaxAgenticIterations}}}""";
+                try
+                {
+                    var rejectionEvent = RejectionEvent.Create(
+                        RejectionReason.AgentCapExceeded, requestId: null, traceId: execution.SpanId, apiKeyId: null,
+                        detailsJson: detailsJson);
+                    await _rejectionEventRepository.AddAsync(rejectionEvent, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to persist RejectionEvent for AgentIterationCapExceeded, execution {ExecutionId}",
+                        execution.Id);
+                }
+
+                throw new AgentCapExceededException(
+                    $"Agent {AgentType} exceeded its maximum of {MaxAgenticIterations} tool-use " +
+                    "iterations without reaching a final answer.");
             }
 
             var executionResult = await FinalizeSuccessAsync(

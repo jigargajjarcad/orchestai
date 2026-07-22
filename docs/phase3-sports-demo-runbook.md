@@ -76,6 +76,13 @@ Response (201):
 
 ## 1. Create the task
 
+Note: the `userPrompt` below states the historical date range (Dec 12, 2017 - Jan 13, 2018)
+explicitly and more than once — this is load-bearing, not redundant wording. An earlier
+attempt using only "last 9 games" (no year) caused the orchestrator's generated Research
+sub-prompt to anchor on "recent" instead of the seeded historical window, so every live
+Perplexity query researched the athlete's current season instead of 2017-18. Keep the explicit
+date range if you ever edit this prompt.
+
 ```
 POST /api/v1/tasks
 Authorization: Bearer <rawKey>

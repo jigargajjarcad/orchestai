@@ -119,3 +119,70 @@ outstanding (see the 2026-07-21 checkpoint above). It confirms the workflow is h
 buildable as scoped, with no architectural blocker found; the gaps found were runbook/prompt
 issues fixed without touching the orchestration engine, plus two named, unresolved,
 out-of-scope findings for future follow-up.
+
+## 2026-07-22 — Attempt 3: MaxTokens truncation fix verified; a second, more serious defect found
+
+`AgentOptions.MaxTokens["Orchestrator"]` was raised from 1024 to 4096
+(`src/OrchestAI.API/appsettings.json:42`, commit `7930614`) — a pure configuration change, no
+orchestration engine, agent behavior, or workflow logic touched. Full test suite reverified at
+428/428 (unchanged) before and after the change.
+
+A third live, full-cost run (Anthropic + Perplexity) confirmed the fix and re-confirmed both of
+Attempt 2's positive results: agent selection was again exactly `Data`+`Research`, and all 33
+live Perplexity queries this run stayed correctly scoped to the 2017-18 window (0/33 drift).
+`finalResult` no longer truncates — the synthesis stage's `outputTokens` landed at 760, well
+under the new 4096 cap, ending on a complete, natural sentence. `totalCostUsd: 0.089367`,
+`totalInputTokens: 79599`, `totalOutputTokens: 6422`.
+
+**However, this run could not answer the deeper question it was meant to test** (whether the
+reconciliation stage explains *why* the two evidence streams aren't in conflict, versus merely
+juxtaposing them) — because the contextual evidence never reached the reconciliation stage
+intact. This surfaced a second defect, independent of the MaxTokens issue and more serious than
+a cosmetic gap:
+
+**The defect:** `AgentBase.cs:22` hardcodes `MaxAgenticIterations = 10` — a per-turn cap on any
+agent's tool-use loop, shared by every agent type, unrelated to `MaxToolCallsPerTask` (the
+already-correctly-designed cross-agent task-wide budget from ADR-015). This run's `Research`
+agent needed 33 real Perplexity calls (vs. Attempt 2's 16 — real, expected variance in how much
+digging a given case requires) and hit the 10-turn cap mid-tool-call. The loop discarded the
+just-fetched results and exited, leaving whatever incidental "let me search more" aside the
+model had appended to its *prior* turn as the agent's persisted `outputResult` — the task still
+reported `status: Completed`, with no error, warning, or `RejectionEvent` anywhere in the
+execution record. The Orchestrator's reconciliation stage correctly detected the input was
+broken and declined to fabricate a synthesis, but that means the specific behavior this run was
+designed to probe (explanation vs. juxtaposition) remains genuinely untested.
+
+**This is not filed alongside the SQL-dialect self-correction noise as a low-priority,
+indefinitely-deferred item.** It is a materially more serious finding, for a specific, precedented
+reason: this project already established and enforced, in Week 11 / ADR-015 Confirmation #7,
+that hitting an orchestrator-level cap must **reject the task cleanly — `Failed` status, a
+specific error message, a `RejectionEvent`** — never silently truncate a plan or drop a result
+while reporting success, "because a partially-executed task that looks `Completed`... is a
+worse failure mode than a task that's visibly `Failed`" (quoted verbatim from that confirmation).
+`MaxAgenticIterations` hitting its cap mid-tool-call and persisting a placeholder sentence as a
+real answer — with the task still marked `Completed` — is exactly that anti-pattern, one layer
+down (a per-agent turn budget instead of a per-task tool-call budget) that had simply never been
+stress-tested with an agent needing more than 10 turns until this run happened to need 33.
+
+Consistent with that same precedent, **the correct fix is not "raise `MaxAgenticIterations`"** —
+raising a hard cap only postpones the identical silent-success failure at a higher number, the
+same way raising `MaxTokens` would have only postponed the truncation bug rather than fixing why
+a hard cutoff mid-truncates instead of failing cleanly. The right fix is: when an agent's
+tool-use loop is exhausted while still mid-turn (i.e., the model just requested more tool calls
+and got no chance to synthesize a final answer), the execution should be marked failed with a
+real, observable error — not silently persisted as a successful completion with placeholder
+text. This is a correctness/observability gap across every agent type, not something specific to
+the Sports workflow, and it deserves its own narrow follow-up task before this MVP is genuinely
+demo-ready — the same tier of seriousness as the (now-fixed) truncation bug, for the same
+underlying reason: an artifact that silently looks successful while actually being broken
+undermines the entire evidentiary premise this demo depends on.
+
+No further live run was attempted after this finding. Attempt 3 needed roughly double Attempt
+2's Perplexity queries (33 vs. 16) purely from case-to-case variance in how much digging the
+research agent judges necessary — meaning a fourth attempt hitting the same 10-turn wall is
+plausible, not unlikely, and spending another real-cost run on that coin flip would produce no
+new information if it failed again the same way. This does not change Sports's classification
+as a working, honestly-buildable candidate (the underlying facts a correctly-synthesizing
+Research agent would have surfaced are the same facts Attempt 2 already reconciled
+successfully) — it identifies a real, load-bearing implementation gap to close, separately from
+domain selection, before relying on this MVP as evidence in front of Track B.

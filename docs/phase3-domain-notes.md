@@ -186,3 +186,49 @@ as a working, honestly-buildable candidate (the underlying facts a correctly-syn
 Research agent would have surfaced are the same facts Attempt 2 already reconciled
 successfully) — it identifies a real, load-bearing implementation gap to close, separately from
 domain selection, before relying on this MVP as evidence in front of Track B.
+
+## 2026-07-22 — MaxAgenticIterations completeness defect fixed and tested; live re-run inconclusive by design
+
+The `MaxAgenticIterations` defect flagged as a priority item in the entry above is fixed
+(commit `9667b61`). `AgentBase.ExecuteAsync`'s tool-use loop now tracks whether it actually
+reached a final answer (`end_turn`/`max_tokens`, via a `reachedFinalTurn` flag). If the loop
+instead exhausts its 10-iteration budget while still mid-tool-call — the exact condition that
+previously left a stray "let me search more" placeholder persisted as a successful `Completed`
+result — it now persists a `RejectionEvent` and throws `AgentCapExceededException`, the same
+mechanism `InvokeToolAsync` already uses for `MaxToolCallsPerTask`. The existing catch-all in
+`ExecuteAsync` converts this into a normal `Failed` `AgentExecutionResult` via
+`FinalizeFailureAsync` — the identical reject-vs-truncate pattern Week 11/ADR-015
+Confirmation #7 already established, now applied one layer down. `MaxAgenticIterations` itself
+is unchanged (still 10); this fix is scoped strictly to what happens when the cap is hit, not
+where it's set.
+
+A new unit test, `ExecuteAsync_ExhaustsIterationCapMidToolUse_FailsWithRealErrorAndRejectionEvent`
+(`tests/OrchestAI.Tests/Infrastructure/AgentBaseProviderTests.cs`), drives a real `AgentBase`
+subclass through 10 consecutive `tool_use` turns that never reach `end_turn`, and proves: the
+result is `Failed` (not `Success`), the persisted `AgentExecution.ErrorMessage` is the real,
+specific cap-exceeded message (not the stray placeholder text), and a `RejectionEvent` with
+`RejectionReason.AgentCapExceeded` was written. Full suite: 429/429 (428 baseline + this one new
+test), no regressions.
+
+A fourth live, full-cost run (Anthropic + Perplexity, same seeded Kawhi Leonard data, same
+`userPrompt`, unmodified) was performed against the fix to try to observe the cap-hit path live.
+**The cap was not hit this run** — Research converged normally at 17 Perplexity queries (within
+the range already observed across attempts 1-3: 8/16/33), the task completed normally
+(`status: Completed`, `errorMessage: null`, `GET /api/v1/rejections` returned empty), and the
+final reconciliation was genuine and well-formed: it explicitly identified a real contradiction
+(the box-score trend read as a successful comeback, but Leonard was shut down indefinitely just
+4 days after his last strong game in the window — invisible in the statistics alone) and traced
+each claim back to its source. This is a valid, unremarkable outcome, not a failure of this
+verification pass — Perplexity's query count is inherently variable run-to-run and cannot be
+forced deterministically. **Stated plainly, without rounding up:** this live run does not itself
+demonstrate the fix's cap-hit behavior (the `reachedFinalTurn` flag, the `AgentCapExceededException`
+throw, or the `RejectionEvent` persistence) — that behavior remains verified by the unit test
+above, not by live evidence. A future live run happening to need more than 10 turns would be the
+next opportunity to observe it end-to-end; none is scheduled solely to chase that outcome.
+
+With this fix in place, both defects the Phase 3 live-verification process surfaced (the
+`MaxTokens` truncation and this `MaxAgenticIterations` completeness gap) are now closed. The one
+remaining named, deliberately out-of-scope item is the `db_query` SQL-dialect self-correction
+friction (noise, not a regression, the agent recovers unaided every time it's occurred). This
+does not lock Sports as the Phase 3 domain — Track B external human feedback remains the
+outstanding gate before any further Phase 3 commitment.

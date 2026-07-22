@@ -119,6 +119,14 @@ Following this section end-to-end gets you a running API, a bootstrapped tenant 
 frontend that's actually able to authenticate against it — a bare `POST /tasks` with no API key
 will 401.
 
+Note on port: in the `Development` environment (the `dotnet run` default —
+`src/OrchestAI.API/Properties/launchSettings.json` sets `ASPNETCORE_ENVIRONMENT=Development`),
+`appsettings.Development.json`'s `Kestrel:Endpoints:Http:Url` pins the API to
+**`http://localhost:5000`**, which wins over both the `PORT`-based fallback in `Program.cs` and
+any `--urls` flag. The steps below use `5000` accordingly — don't substitute `8080` (that's only
+the container/Railway default, from `Program.cs`'s `PORT ?? "8080"` fallback, which doesn't apply
+here).
+
 ```bash
 # 1. Clone
 git clone https://github.com/your-username/orchestai.git
@@ -133,27 +141,30 @@ export Admin__BootstrapSecret=<pick-any-long-random-string>   # gates the admin 
 export Tools__Firecrawl__ApiKey=fc-...   # optional
 export Tools__Perplexity__ApiKey=pplx-... # optional
 dotnet run --project src/OrchestAI.API
-# API: http://localhost:8080  ·  Swagger: http://localhost:8080/swagger
+# API: http://localhost:5000  ·  Swagger: http://localhost:5000/swagger
 
-# 4. Bootstrap a tenant (separate terminal — the admin endpoints are gated by
-#    X-Admin-Secret, matching Admin__BootstrapSecret from step 3, NOT a tenant API key)
-curl -s -X POST http://localhost:8080/api/v1/admin/tenants \
+# 4 & 5. Bootstrap a tenant + mint an API key (separate terminal). Either run the two admin
+#    curl calls by hand, or use the bundled convenience script, which calls the exact same
+#    admin-gated endpoints and just saves you the manual JSON parsing:
+ADMIN_SECRET=<same-value-as-Admin__BootstrapSecret> ./scripts/bootstrap-local-dev.sh
+
+# — or by hand: —
+curl -s -X POST http://localhost:5000/api/v1/admin/tenants \
   -H "X-Admin-Secret: <same-value-as-Admin__BootstrapSecret>" \
   -H "Content-Type: application/json" \
   -d '{"name": "Local Dev", "slug": "local-dev"}'
 # → { "tenantId": "...", "name": "Local Dev", "slug": "local-dev", "createdAt": "..." }
 
-# 5. Mint an API key for that tenant — the response's rawKey is shown exactly once
-curl -s -X POST http://localhost:8080/api/v1/admin/api-keys \
+curl -s -X POST http://localhost:5000/api/v1/admin/api-keys \
   -H "X-Admin-Secret: <same-value-as-Admin__BootstrapSecret>" \
   -H "Content-Type: application/json" \
-  -d '{"tenantId": "<tenantId-from-step-4>", "displayName": "local-dev-key"}'
+  -d '{"tenantId": "<tenantId-from-previous-step>", "displayName": "local-dev-key"}'
 # → { "apiKeyId": "...", "rawKey": "<save-this-now>", "publicKeyId": "...", "createdAt": "..." }
 
 # 6. Run the frontend (separate terminal)
-export VITE_API_URL=http://localhost:8080
+export VITE_API_URL=http://localhost:5000
 cd frontend && npm install && npm run dev
-# UI: http://localhost:5173 — on first load it prompts for an API key; paste the rawKey from step 5
+# UI: http://localhost:5173 — on first load it prompts for an API key; paste the rawKey from step 4/5
 ```
 
 ---

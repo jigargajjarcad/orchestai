@@ -232,3 +232,61 @@ remaining named, deliberately out-of-scope item is the `db_query` SQL-dialect se
 friction (noise, not a regression, the agent recovers unaided every time it's occurred). This
 does not lock Sports as the Phase 3 domain — Track B external human feedback remains the
 outstanding gate before any further Phase 3 commitment.
+
+## 2026-07-22 — Sequencing decision: Track B deferred, no longer a blocking gate
+
+**Track A** (employment/IP) is complete and resolved — see `DECISIONS.md` ADR-017
+Confirmation #10. No change to that status here; restated only for clarity alongside Track B
+below.
+
+**Track B** (external human validation) is deliberately deferred. This is a sequencing decision,
+not a status change on Track B itself: **Track B has not been completed, not been satisfied,
+and not been replaced by any form of simulated or AI-persona feedback.** External human
+validation of this project has not been performed. That remains true after this entry as much
+as before it — nothing below should be read as, or is intended to imply, that the reality-check
+role Track B was created to serve has been fulfilled by other means.
+
+Track B was introduced (see the 2026-07-21 checkpoint above and the repeated framing throughout
+every entry in this file since) specifically to provide an external product-value reality check
+before committing further engineering work to a specific Phase 3 domain — gathering real
+feedback on the actual running system, without presenting Sports (or any other candidate) as the
+predetermined answer, before locking the domain and building further on top of it. That reason
+is not being revised or erased. What's changing is only the sequencing: rather than gating all
+further planned project work on obtaining that feedback first, the project will complete its
+planned engineering scope and establish the full end-to-end product, and seek external
+validation afterward — at completion or at another appropriate milestone — rather than before
+continuing.
+
+**Accepted risk, stated plainly:** deferring Track B means accepting, as a known and deliberate
+risk, that further Phase 3 (and subsequent) engineering proceeds without the external
+product-value check Track B was meant to provide before that point. If that check would have
+surfaced a reason to redirect effort, this decision accepts the cost of learning that later
+rather than now. This is a conscious tradeoff, not an oversight, and not a claim that the risk
+doesn't exist.
+
+**What this does and does not change:**
+
+- Track B is no longer a blocking prerequisite for Phase 3 or for subsequent planned project
+  work. The 2026-07-21 checkpoint's original wording ("No Phase 3 planning or implementation
+  should begin until Track B feedback has been gathered") is superseded by this entry — that
+  historical entry is left unedited above as the record of what was originally decided and why,
+  not corrected or erased.
+- The architecture-fit investigation that eliminated Incident Investigation and Cybersecurity
+  Investigation, and identified Sports/Athlete Performance as the working candidate (2026-07-21
+  checkpoint), is not being reopened or re-run. Nothing in this entry constitutes new
+  architectural analysis, and no new validation gate is being substituted in Track B's place.
+- **Sports/Athlete Performance remains the current Phase 3 working domain** — a working
+  candidate on the strength of the completed architecture-fit investigation, still not a
+  formally locked domain in the sense Track B feedback would have provided; the difference is
+  only that formal domain-locking is no longer conditioned on Track B happening first.
+- Phase 3 Sports MVP engineering work is complete and verified: the table/seed/runbook/live-run
+  work (Attempts 1-2, this file's 2026-07-22 entries above) and the two defects it surfaced
+  (`MaxTokens` truncation, `MaxAgenticIterations` completeness — both fixed, tested, and merged
+  per the entries immediately above) are done.
+- No production code is being changed by this entry — this is a documentation/status update
+  only.
+
+**Resulting status:** the project proceeds with its remaining planned roadmap work without
+waiting for Track B. Track B may be revisited later — once the broader project is complete, or
+at another appropriate milestone — if external validation is judged useful to seek at that
+point.

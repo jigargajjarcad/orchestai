@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/jigargajjarcad/orchestai/actions/workflows/ci.yml/badge.svg)](https://github.com/jigargajjarcad/orchestai/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com)
-[![Tests](https://img.shields.io/badge/tests-428%20passing-16a34a)](tests/)
+[![Tests](https://img.shields.io/badge/tests-429%20passing-16a34a)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---
@@ -448,7 +448,7 @@ orchestai/
 │   ├── OrchestAI.Domain/        ← Entities, interfaces, enums, domain models
 │   └── OrchestAI.Infrastructure/← Agents, MCP tools, EF Core, repositories
 ├── tests/
-│   └── OrchestAI.Tests/         ← 428 xUnit tests (unit + integration)
+│   └── OrchestAI.Tests/         ← 429 xUnit tests (unit + integration)
 ├── frontend/                    ← React 19 + Vite dev/demo playground UI
 ├── .github/workflows/ci.yml     ← build-and-test, migration-validation, container-smoke-test, security-scan
 ├── Dockerfile                   ← Multi-stage .NET 8 build
@@ -464,7 +464,7 @@ orchestai/
 
 ```bash
 dotnet test tests/OrchestAI.Tests
-# Passed! - Failed: 0, Passed: 428, Skipped: 0
+# Passed! - Failed: 0, Passed: 429, Skipped: 0
 ```
 
 ---

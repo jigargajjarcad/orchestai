@@ -235,31 +235,257 @@ fashion").
 
 ---
 
-## 7. Migration Order and Rationale
+## 7. Migration Order and Rationale — Tasks
 
-- [ ] **Step 1 — Token module.** Build `frontend/src/theme/tokens.js` (and, only if decision 1
-  in §8 chooses the CSS-custom-property option, a matching `tokens.css`), transcribing
-  `DESIGN.md`/`.impeccable/design.json` value-for-value. Resolve the flagged micro-
-  inconsistencies (§8 decisions 2/3/5) as directed by your answers, not by default choice.
-- [ ] **Step 2 — Remove dead CSS.** Strip `index.css`'s unused Vite-template variables/rules
-  (confirmed dead regardless of decision 1's outcome).
-- [ ] **Step 3 — Build the component set** in `frontend/src/components/`: `Label`,
-  `StatusBadge`, `Panel`, `Button`, `Input`/`TextArea`, `NavItem`/`Nav`, and the minimal
-  state-text primitive — each consuming Step 1's token module, each covering the exact prop
-  surface in §4's table.
-- [ ] **Step 4 — Migrate `App.jsx`** onto the Step 3 components first — it has the widest
-  variety of shapes (nav, form fields, all three status-card types, tool-call rows, the
-  markdown color overrides), so migrating it first proves the component APIs against the
-  broadest real usage before the narrower `ObservabilityPage.jsx`/`EvalsPage.jsx` migrations.
-- [ ] **Step 5 — Migrate `ObservabilityPage.jsx`** onto the same components (its
-  `panelStyle`/`labelStyle`/`selectStyle` constants and `SubNav` are direct replacements); leave
-  `SpanRow`/`BarChart` internals untouched except color/typography token references.
-- [ ] **Step 6 — Migrate `EvalsPage.jsx`** the same way (`panelStyle`/`labelStyle`/
-  `selectStyle`/`buttonStyle`, `SubNav`).
-- [ ] **Step 7 — Migrate `ApiKeyPrompt.jsx`'s input/button only** (approved, §8 decision 4).
-- [ ] **Step 8 — Verification pass** (see §9).
-- [ ] **Step 9 — Final sweep:** grep the three page files for any remaining literal hex value
-  from `DESIGN.md`'s palette that should have moved to the token module but didn't.
+Six tasks, strictly sequential (each depends on the previous). Do not reorder. Global
+constraints binding every task: no new npm dependency; no routing/responsive/onboarding-
+copy/accessibility/auth/feature-behavior change; no Table/chart/markdown-override
+componentization; preserve all existing state/handler logic exactly, touch only JSX markup and
+style sourcing.
+
+### Task 1: Design token module + dead CSS cleanup
+
+**Files:** Create `frontend/src/theme/tokens.js`. Modify `frontend/src/index.css`.
+
+**Spec:**
+- Read `DESIGN.md` (full file) and `.impeccable/design.json` (full file) as the source of truth.
+  Transcribe every named color (crust, base, mantle, surface0, surface2, overlay0, subtext0,
+  text, trace-blue, signal-green, alert-red, beacon-yellow, agent-mauve, agent-sky, agent-peach,
+  status-running/completed/failed/pending/warning, error-bg), the 4 typography styles
+  (heading/title/body/label — family, size, weight, line-height, letter-spacing), the 4 radii
+  (sm/md/lg/xl), and the 5 spacing steps (xs/sm/md/lg/xl) into `tokens.js` as plain named
+  JS exports (e.g. `export const colors = { crust: '#11111b', ... }`, `export const radii = {...}`,
+  `export const spacing = {...}`, `export const typography = {...}`).
+- **Approved architecture (§8 decision 1 — final, do not deviate):** plain JS constants only.
+  Do NOT create a `tokens.css`, CSS custom properties, or any CSS Modules/CSS-in-JS file.
+- Also export precomputed alpha-suffixed variants for the status-badge pattern, using the
+  codebase's existing 2-digit-hex-alpha-suffix technique (e.g. a badge background at hex+`33`
+  for 20% — verify the exact 2-digit hex for 20% is `33`, and confirm the border alpha the
+  codebase already uses at ~50-60%, e.g. `${color}99`/`${color}A0`-equivalent 2-digit suffixes —
+  derive the precise hex pairs mathematically, do not guess) for each of the 5 status colors,
+  named clearly (e.g. `statusBadgeAlpha = { background: '33', border: '99' }` as suffix
+  constants, or fully precomputed per-color strings — implementer's choice, whichever is
+  cleanest to consume from `StatusBadge` in Task 2).
+- **`index.css` cleanup:** delete the unused Vite-template `:root` custom properties, the
+  `@media (prefers-color-scheme: dark)` block, and the unused `#root`/`h1`/`h2`/`code` selectors
+  — all confirmed dead (never referenced by any real page component; the real UI's layout is
+  driven entirely by inline styles in the JSX files). Keep only what, if anything, is still
+  genuinely load-bearing (verify by grepping `App.jsx`/`ObservabilityPage.jsx`/`EvalsPage.jsx`
+  for any class name or element selector `index.css` defines before deleting each rule).
+- Do not touch `App.css` (confirmed live: global box-sizing reset + body background/color/font).
+- No other file changes. No new dependency.
+
+**Verification:** `npm run build` and `npm run lint` clean. No visual change yet (tokens.js is
+not consumed by anything until Task 2) — confirm by running the app and comparing to the
+existing baseline screenshots at `/tmp/m1-verify/baseline/*.png` (paths given in dispatch
+context) if easy to do; not blocking if the dev server isn't already running for this task,
+since no component consumes the tokens yet.
+
+---
+
+### Task 2: Shared component primitives
+
+**Files:** Create `frontend/src/components/Label.jsx`, `StatusBadge.jsx`, `Panel.jsx`,
+`Button.jsx`, `Input.jsx` (export both a text-input and a textarea variant from this one file),
+`NavItem.jsx` (export both `NavItem` and a thin `Nav` row wrapper from this one file), and one
+minimal state-text primitive file (name it `StateText.jsx`, exporting a single component with a
+`tone` prop of `'muted'` or `'error'`).
+
+**Depends on:** Task 1's `frontend/src/theme/tokens.js` — every component imports from it, no
+component computes a raw hex/px value itself.
+
+**Spec — build exactly these seven, nothing more:**
+- **`Label`**: renders the Label typography style (11px/700/uppercase/0.07em letter-spacing) in
+  its token color. Props: `children`. No variant props needed.
+- **`StatusBadge`**: renders the tinted-pill pattern (`.impeccable/design.json`'s
+  `.ds-status-badge`: background at the status color's ~20% alpha, border at ~50-60% alpha,
+  full-opacity status-color text, 4px radius, `2px 10px` padding, uppercase 11px/700/0.05-0.06em
+  label). Props: `status` (one of `Pending`/`Running`/`WaitingForApproval`/`Completed`/`Failed`/
+  `Skipped` — cover all six current values, found across `App.jsx`'s `STATUS_COLORS` and
+  `ObservabilityPage.jsx`'s `STATUS_COLORS`), optional `label` override (defaults to `status`
+  uppercased). **Approved (§8 decision 3 — final): standardize on exactly 20% background alpha
+  for every status, resolving the current 18%-vs-20% drift. This is the one deliberate,
+  approved visual change in this milestone — do not treat any other alpha/color/spacing value as
+  eligible for silent adjustment.**
+- **`Panel`**: base card surface (`base` background, `surface0` 1px border, `xl` radius,
+  `16px 18px` padding — matches `.ds-panel`). Optional `accentStatus` prop: when set, adds the
+  3px status-tinted `border-left` and switches the outer border to a status-tinted ~40% alpha
+  (matches `.ds-status-card`). Props: `children`, `accentStatus?`.
+- **`Button`**: two variants only — `primary` (trace-blue background, crust text, 700 weight,
+  matches `.ds-btn-primary` exactly, including its disabled state dropping to `surface0`
+  background / `overlay0` text) and `ghost` (transparent background, colored 1px border at ~50%
+  alpha, text matching the border's base color — used for Cancel/secondary actions). **Approved
+  (§8 decision 2 — final): do NOT add `success` or `danger` variants.** `ApprovalCard`'s
+  Approve/Reject buttons are explicitly NOT migrated onto this component in this milestone —
+  leave them exactly as they are in `App.jsx` (local one-off styles), untouched, in Task 3.
+  Props: `variant` (`primary`|`ghost`), `disabled`, `onClick`, `type`, `children`.
+- **`Input`**: text-input variant matching `.ds-input` (1px `surface0` border, `#181825`
+  background, 7-10px padding, no custom focus ring — none exists in the current design, don't
+  invent one) and a `TextArea` variant (same visual treatment, `resize: vertical`). Both render
+  an optional `Label` above the field per `DESIGN.md:227-228`'s documented rule ("always the
+  Label typography style directly above the field, never inline placeholder-only"). Props:
+  `label`, `value`, `onChange`, and pass through any other native input/textarea props
+  (`placeholder`, `rows`, `required`, `type`, etc.) unchanged.
+- **`NavItem`** + **`Nav`**: flat text nav button — transparent background normally, `surface0`
+  background fill + text brightened from `overlay0` to `text` when active, no hover-lift, no
+  shadow (matches `DESIGN.md`'s Navigation section exactly). `NavItem` props: `active`,
+  `onClick`, `children`. `Nav` is a thin `display:flex, gap:4` row wrapper, nothing more.
+- **`StateText`**: single-purpose text wrapper for loading/empty/error inline copy. Props:
+  `children`, `tone` (`'muted'` renders in `overlay0`/`surface2`-family color at Body size;
+  `'error'` renders in `alert-red`). **Do not change any existing copy/wording when this is
+  consumed in Tasks 3-5 — this component only carries the styling, the text stays identical to
+  today.**
+
+**Explicitly do not build in this task (per the plan's §4):** any Table component, any chart
+component, any markdown-override component. These stay untouched, per Tasks 3-5's scope.
+
+**Verification:** `npm run build` and `npm run lint` clean. These components aren't consumed by
+any page yet, so no visual change to verify live yet — a quick self-check that each component
+renders without throwing (e.g. a scratch, disposable render in the dev server, removed before
+committing) is sufficient; do not add a permanent test file (no test framework exists, and
+adding one is out of scope for this milestone).
+
+---
+
+### Task 3: Migrate `App.jsx`
+
+**Files:** Modify `frontend/src/App.jsx` only.
+
+**Depends on:** Task 1 (`tokens.js`) and Task 2 (all seven components).
+
+**Spec — migrate onto the Task 2 components, preserving every existing prop/state/handler
+exactly:**
+- `STATUS_COLORS` map (lines 12-18): replace direct consumption with `StatusBadge` wherever a
+  status pill is rendered — this covers both the `AgentCard` badge (lines 76-85) and the
+  header's task-status badge (lines 656-671, the one previously at 18% alpha — this is exactly
+  where Task 2's approved 20%-alpha `StatusBadge` resolves that drift).
+- `ToolCallRow` (lines 20-53): keep its own structure (this is a well-formed, single-purpose
+  component, extract as-is per §4) but source its colors from `tokens.js` instead of literal hex.
+- `AgentCard` (lines 55-127): its outer wrapper becomes `<Panel accentStatus={execution.status}>`;
+  its status badge becomes `<StatusBadge status={execution.status} />`; its message/tool-call
+  child content keeps its current structure, colors sourced from tokens.
+- `ApprovalCard` (lines 129-218): its outer wrapper becomes `<Panel accentStatus="WaitingForApproval">`
+  (or equivalent — the card already only ever renders in the waiting-for-approval context); its
+  textarea becomes the Task 2 `TextArea`. **Its Approve/Reject/Cancel/Confirm-Reject buttons stay
+  exactly as local one-off styles — do NOT migrate them onto the new `Button` component (§8
+  decision 2, final).** No visual change to these four buttons at all.
+- `ManagerReviewCard` (lines 220-253): outer wrapper becomes `<Panel accentStatus={...}>` using
+  its own narrower running/completed color logic (do not force it onto the full 6-value
+  `StatusBadge` status set if its running/completed distinction doesn't map 1:1 — use
+  `StatusBadge` if it fits cleanly, otherwise keep its badge-equivalent element local; use your
+  judgment and note the choice in your report).
+- `MemoriesPage` (lines 255-333): its eyebrow label becomes `Label`; its "Loading…" and "No
+  memories saved yet…" text becomes `StateText` (`tone="muted"`, same wording); its error banner
+  becomes `StateText` (`tone="error"`, same wording). **Leave its `<table>` markup untouched**
+  (Table componentization is explicitly out of scope — §4).
+- Header nav (lines 610-651): the four copy-pasted button blocks become `<Nav>` wrapping four
+  `<NavItem active={view==='...'} onClick={...}>`.
+- The input form (lines 686-729): `Task Title`/`Prompt` fields become `Input`/`TextArea` with
+  their `Label`; the checkbox row stays a native `<input type="checkbox">` (no shared component
+  covers checkboxes in this milestone — leave its current inline styling as-is, it's a single,
+  simple usage); the submit button becomes `<Button variant="primary">`.
+- The error banner (line ~732) becomes `StateText` (`tone="error"`, same wording).
+- Final-result panel (lines 763-799): outer wrapper becomes `Panel`; its "Waiting for agents…" /
+  "Submit a task to see results here." text becomes `StateText` (`tone="muted"`, same wording).
+  The `ReactMarkdown` `components` prop color values (lines 778-787) move to `tokens.js`
+  references, but the override map itself stays local to this file (not a shared component,
+  per §4).
+
+**Do not touch:** any `useState`/`useEffect`/handler function, the SSE event-handling switch
+statement, any API call, any prop shape passed between functions — only JSX markup and inline
+`style` objects change.
+
+**Verification:** `npm run build`/`npm run lint` clean. Live-verify against the running
+dev server + API described in the dispatch context: load the app, confirm the ApiKeyPrompt
+screen, set a key, confirm the Playground empty state, submit a task and observe the
+Pending→Running→Failed flow (a real Anthropic call will fail in this environment — that is
+expected and fine, the point is confirming the UI states render correctly), and check the
+Memories page. Compare each against the matching baseline screenshot named in your dispatch.
+
+---
+
+### Task 4: Migrate `ObservabilityPage.jsx`
+
+**Files:** Modify `frontend/src/ObservabilityPage.jsx` only.
+
+**Depends on:** Tasks 1-3 (reuses the same components; migrating `App.jsx` first should have
+already proven their APIs).
+
+**Spec:**
+- Its `AGENT_COLORS`/`STATUS_COLORS` maps (lines 7-22) and shared `panelStyle`/`labelStyle`/
+  `selectStyle` constants (lines 44-67) are replaced by `Panel`/`Label`/`tokens.js` imports —
+  delete the locally-declared constants once nothing references them.
+- `SubNav` (lines 69-94): becomes `Nav`/`NavItem`, same as `App.jsx`'s header nav.
+- `TaskPicker`/`DateRangePicker` (lines 96-125): their `<select>`/`<input type=date>` elements
+  keep native semantics (no shared "Select" component exists in this milestone's scope) but
+  adopt the `Input`-equivalent visual treatment/token colors where it fits the existing
+  `selectStyle` shape; use `Label` for their field labels.
+- Status badges in `SummaryView` (lines 277-282) and `ComparisonSide` (lines 513-517) become
+  `StatusBadge`.
+- **Leave `SpanRow` (lines 147-194) and `BarChart` (lines 327-356) structurally untouched** —
+  only their literal color/typography values move to `tokens.js` references; their positioning
+  math, rendering logic, and markup shape do not change (§4).
+- **Leave all `<table>` markup untouched** (`DashboardView`'s breakdown table,
+  `ErrorRateTable`) — Table componentization is explicitly out of scope (§4).
+- Loading/error text (e.g. "No data in this range.", error messages) becomes `StateText`.
+
+**Verification:** `npm run build`/`npm run lint` clean. Live-verify: click through all 5
+Observability sub-views (Timeline, Summary, Cost Dashboard, Error Rates, Compare) against the
+running dev server + API, comparing each to its matching baseline screenshot named in your
+dispatch.
+
+---
+
+### Task 5: Migrate `EvalsPage.jsx`
+
+**Files:** Modify `frontend/src/EvalsPage.jsx` only.
+
+**Depends on:** Tasks 1-4.
+
+**Spec:**
+- Its own, independently-declared `panelStyle`/`labelStyle`/`selectStyle`/`buttonStyle`
+  constants (lines 7-41) are replaced by `Panel`/`Label`/`Input`/`Button` imports — delete the
+  local constants once unused.
+- `SubNav` (lines 43-63): becomes `Nav`/`NavItem`, same pattern as the other two files.
+- Form fields across `RunView`/`PostHocView` (subject version, baseline-run select, rubric
+  textarea, date/agent-type/max-traces fields) become `Input`/`TextArea` with `Label`; trigger/
+  submit/refresh buttons become `Button variant="primary"`.
+- Pass/fail colored text (lines 244-246, 281-283) sources its green/red from `tokens.js` instead
+  of literal hex — this is plain inline text color, not necessarily a `StatusBadge` usage; use
+  judgment on whether any of these read naturally as a `StatusBadge` (e.g. a pass/fail pill) or
+  should stay plain colored text as today — do not change the visual *treatment* (pill vs. plain
+  text), only the color *source*.
+- **Leave all `<table>` markup untouched** (results table, regression table) — Table
+  componentization is explicitly out of scope (§4).
+- Loading/empty/error text becomes `StateText`.
+
+**Verification:** `npm run build`/`npm run lint` clean. Live-verify: click through all 4 Evals
+sub-views (Suites, Run, Results, Post-Hoc) against the running dev server + API, comparing each
+to its matching baseline screenshot named in your dispatch.
+
+---
+
+### Task 6: Migrate `ApiKeyPrompt.jsx` (input/button only)
+
+**Files:** Modify `frontend/src/ApiKeyPrompt.jsx` only.
+
+**Depends on:** Task 2 (`Input`, `Button`).
+
+**Spec — approved narrow scope (§8 decision 4, final):**
+- Replace its `<input type="password">` with the Task 2 `Input` component and its `<button>`
+  with `Button variant="primary"` — mechanical substitution only, same behavior
+  (`onSubmitted`/`setApiKey` calls unchanged), same value/onChange wiring, same position in the
+  layout.
+- **Do NOT change:** the surrounding `<div>`/`<h2>`/`<p>` copy, layout, centering, or the
+  `fontFamily: 'sans-serif'` override on the outer wrapper (`ApiKeyPrompt.jsx:14`) — this
+  remains exactly as it is, deferred to Milestone 2/A7. Do not add a `Label` above this input
+  either, since the current design has no label here and adding one would be a layout/copy
+  change beyond "swap the input and button primitives."
+
+**Verification:** `npm run build`/`npm run lint` clean. Live-verify: load the app fresh (no key
+set) and confirm the `ApiKeyPrompt` screen still behaves identically — typing a key and
+clicking Continue still transitions to the Playground — comparing to the baseline screenshot
+named in your dispatch.
 
 ---
 

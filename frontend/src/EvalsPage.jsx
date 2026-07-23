@@ -222,7 +222,9 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
       </Panel>
 
       {resultsError && (
-        <Panel style={{ color: colors.overlay0, fontSize: 12 }}>{resultsError}</Panel>
+        <Panel>
+          <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{resultsError}</StateText>
+        </Panel>
       )}
 
       {results && (
@@ -297,7 +299,9 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
         </Panel>
       )}
       {regressionError && (
-        <Panel style={{ color: colors.overlay0, fontSize: 12 }}>{regressionError}</Panel>
+        <Panel>
+          <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{regressionError}</StateText>
+        </Panel>
       )}
     </div>
   )

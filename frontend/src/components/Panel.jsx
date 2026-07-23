@@ -6,9 +6,12 @@
 //
 // Optional `accentStatus` switches on the "Status-Accented Card" pattern
 // (.ds-status-card): a 3px status-tinted border-left plus an outer border
-// re-tinted to the same status color at ~40% alpha (see tokens.js's
-// `panelAccentBorderAlphaSuffix` for the alpha resolution). Status base
-// colors mirror App.jsx/ObservabilityPage.jsx's STATUS_COLORS maps.
+// re-tinted to the same status color at `panelAccentBorderAlphaSuffix`
+// (~25.1% alpha) — this deliberately preserves the exact rendering already
+// shipped today by AgentCard/ApprovalCard/ManagerReviewCard's `${statusColor}
+// 40` border, not DESIGN.md's stated-but-uncorrected 40% intent; see
+// tokens.js for the full resolution. Status base colors mirror
+// App.jsx/ObservabilityPage.jsx's STATUS_COLORS maps.
 
 import { colors, radii, panelAccentBorderAlphaSuffix } from '../theme/tokens'
 

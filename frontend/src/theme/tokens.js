@@ -201,14 +201,22 @@ export const statusBadgeColors = {
 // `rgba(22, 163, 74, 0.25)` (25%) — which traces back to the running app's
 // `${statusColor}40` string-concatenation in AgentCard/ManagerReviewCard
 // (App.jsx): the literal two-char suffix "40" is hex, not a percentage, so
-// it renders as 64/255 = 25.1% alpha, not the intended 40%. This is the same
-// class of hex-suffix-as-decimal-string drift already resolved above for the
-// status badge (18% worked example vs. the twice-stated, round 20% figure).
-// Applying the identical resolution methodology: favor the explicit,
-// unhedged documented percentage (40%) over the buggy rendered artifact.
-//   40% of 255 = 0.40 * 255 = 102.0 -> 102 = 0x66
+// it renders as 64/255 = 25.1% alpha, not the documented 40%. This is the
+// same class of hex-suffix-as-decimal-string transcription slip already
+// documented above for the status badge (18% worked example vs. the
+// twice-stated, round 20% figure) — except, unlike the badge alpha, this one
+// is NOT being corrected in Milestone 1. The Milestone 1 acceptance rule
+// authorizes exactly one intentional visual change: the StatusBadge
+// standardization to 20% background alpha. Panel's accentStatus border is
+// about to replace AgentCard/ApprovalCard/ManagerReviewCard's existing
+// `${statusColor}40` border in Task 3, and that migration must render
+// identically to what's shipped today — so this constant deliberately
+// preserves the current (buggy) 25.1% rendering rather than "fixing" it to
+// match DESIGN.md's prose. Fixing it to true 40% is deferred to a future
+// milestone alongside the badge-alpha-style cleanup, not done here.
+//   Current shipped literal: `${statusColor}40` -> hex "40" = 64/255 = 25.1%
 // ---------------------------------------------------------------------------
-export const panelAccentBorderAlphaSuffix = '66' // 40% alpha
+export const panelAccentBorderAlphaSuffix = '40' // ~25.1% alpha (preserves today's shipped rendering; DESIGN.md's stated intent is 40%, not corrected here — see comment above)
 
 // ---------------------------------------------------------------------------
 // Button ghost-variant border alpha (Task 2 addition)

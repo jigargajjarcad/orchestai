@@ -4,22 +4,22 @@ import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
 import { hasApiKey, authenticatedFetch } from './apiKey'
 import ApiKeyPrompt from './ApiKeyPrompt'
+import { colors, radii, spacing } from './theme/tokens'
+import { StatusBadge } from './components/StatusBadge'
+import { Panel } from './components/Panel'
+import { Button } from './components/Button'
+import { Input, TextArea } from './components/Input'
+import { Nav, NavItem } from './components/NavItem'
+import { StateText } from './components/StateText'
+import { Label } from './components/Label'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 
-const STATUS_COLORS = {
-  Pending: '#6b7280',
-  Running: '#2563eb',
-  WaitingForApproval: '#f59e0b',
-  Completed: '#16a34a',
-  Failed: '#dc2626',
-}
-
 function ToolCallRow({ toolCall }) {
   const isRunning = toolCall.durationMs == null
-  const color = isRunning ? '#f59e0b' : (toolCall.success ? '#16a34a' : '#dc2626')
+  const color = isRunning ? colors.statusWarning : (toolCall.success ? colors.statusCompleted : colors.statusFailed)
   const label = isRunning ? '⏳' : (toolCall.success ? '✓' : '✗')
   const duration = toolCall.durationMs != null ? ` · ${toolCall.durationMs}ms` : ''
 
@@ -29,23 +29,23 @@ function ToolCallRow({ toolCall }) {
       alignItems: 'flex-start',
       gap: 8,
       padding: '5px 8px',
-      background: '#181825',
+      background: colors.mantle,
       borderLeft: `3px solid ${color}`,
-      borderRadius: '0 4px 4px 0',
+      borderRadius: `0 ${radii.md} ${radii.md} 0`,
       marginTop: 4,
       fontSize: 12,
     }}>
       <span style={{ color, flexShrink: 0, minWidth: 14 }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ color: '#89b4fa', fontWeight: 600 }}>{toolCall.name}</span>
-        <span style={{ color: '#585b70' }}>{duration}</span>
+        <span style={{ color: colors.traceBlue, fontWeight: 600 }}>{toolCall.name}</span>
+        <span style={{ color: colors.surface2 }}>{duration}</span>
         {toolCall.output && (
-          <div style={{ color: '#a6adc8', marginTop: 2, wordBreak: 'break-word' }}>
+          <div style={{ color: colors.subtext0, marginTop: 2, wordBreak: 'break-word' }}>
             {toolCall.output.length > 120 ? toolCall.output.slice(0, 120) + '…' : toolCall.output}
           </div>
         )}
         {toolCall.error && (
-          <div style={{ color: '#f38ba8', marginTop: 2 }}>{toolCall.error}</div>
+          <div style={{ color: colors.alertRed, marginTop: 2 }}>{toolCall.error}</div>
         )}
       </div>
     </div>
@@ -53,75 +53,59 @@ function ToolCallRow({ toolCall }) {
 }
 
 function AgentCard({ execution, memoryCount, savedMemories }) {
-  const statusColor = STATUS_COLORS[execution.status] ?? '#6b7280'
-
   return (
-    <div style={{
-      border: `1px solid ${statusColor}40`,
-      borderLeft: `3px solid ${statusColor}`,
-      borderRadius: 8,
-      padding: '12px 14px',
-      marginBottom: 10,
-      background: '#1e1e2e',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <strong style={{ color: '#cdd6f4', fontSize: 14 }}>{execution.agentType}</strong>
-          {memoryCount > 0 && (
-            <span title={`${memoryCount} saved ${memoryCount === 1 ? 'memory' : 'memories'} for this agent`} style={{ fontSize: 11, color: '#a6adc8' }}>
-              🧠 {memoryCount}
-            </span>
-          )}
+    <div style={{ marginBottom: 10 }}>
+      <Panel accentStatus={execution.status}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <strong style={{ color: colors.text, fontSize: 14 }}>{execution.agentType}</strong>
+            {memoryCount > 0 && (
+              <span title={`${memoryCount} saved ${memoryCount === 1 ? 'memory' : 'memories'} for this agent`} style={{ fontSize: 11, color: colors.subtext0 }}>
+                🧠 {memoryCount}
+              </span>
+            )}
+          </div>
+          <StatusBadge status={execution.status} />
         </div>
-        <span style={{
-          background: `${statusColor}20`,
-          color: statusColor,
-          border: `1px solid ${statusColor}60`,
-          borderRadius: 4,
-          padding: '1px 8px',
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-        }}>{execution.status.toUpperCase()}</span>
-      </div>
 
-      {execution.messages?.map((msg, i) => (
-        <div key={i} style={{
-          background: '#181825',
-          borderRadius: 4,
-          padding: '6px 10px',
-          marginTop: 4,
-          fontSize: 12,
-          color: '#a6adc8',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          maxHeight: 160,
-          overflow: 'auto',
-        }}>
-          {msg}
-        </div>
-      ))}
+        {execution.messages?.map((msg, i) => (
+          <div key={i} style={{
+            background: colors.mantle,
+            borderRadius: radii.md,
+            padding: '6px 10px',
+            marginTop: 4,
+            fontSize: 12,
+            color: colors.subtext0,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            maxHeight: 160,
+            overflow: 'auto',
+          }}>
+            {msg}
+          </div>
+        ))}
 
-      {execution.toolCalls?.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          {execution.toolCalls.map((tc, i) => (
-            <ToolCallRow key={i} toolCall={tc} />
-          ))}
-        </div>
-      )}
+        {execution.toolCalls?.length > 0 && (
+          <div style={{ marginTop: 6 }}>
+            {execution.toolCalls.map((tc, i) => (
+              <ToolCallRow key={i} toolCall={tc} />
+            ))}
+          </div>
+        )}
 
-      {execution.costUsd > 0 && (
-        <div style={{ fontSize: 11, color: '#585b70', marginTop: 8, display: 'flex', gap: 12 }}>
-          <span>{execution.inputTokens}in + {execution.outputTokens}out tokens</span>
-          <span style={{ color: '#6c7086' }}>${Number(execution.costUsd).toFixed(6)}</span>
-        </div>
-      )}
+        {execution.costUsd > 0 && (
+          <div style={{ fontSize: 11, color: colors.surface2, marginTop: 8, display: 'flex', gap: 12 }}>
+            <span>{execution.inputTokens}in + {execution.outputTokens}out tokens</span>
+            <span style={{ color: colors.overlay0 }}>${Number(execution.costUsd).toFixed(6)}</span>
+          </div>
+        )}
 
-      {savedMemories > 0 && (
-        <div style={{ fontSize: 11, color: '#a6e3a1', marginTop: 6 }}>
-          🧠 Saved {savedMemories} {savedMemories === 1 ? 'memory' : 'memories'}
-        </div>
-      )}
+        {savedMemories > 0 && (
+          <div style={{ fontSize: 11, color: colors.signalGreen, marginTop: 6 }}>
+            🧠 Saved {savedMemories} {savedMemories === 1 ? 'memory' : 'memories'}
+          </div>
+        )}
+      </Panel>
     </div>
   )
 }
@@ -134,17 +118,17 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
     <div style={{
       border: '1px solid #f59e0b60',
       borderLeft: '3px solid #f59e0b',
-      borderRadius: 8,
+      borderRadius: radii.xl,
       padding: '14px 16px',
       marginBottom: 14,
-      background: '#1e1e2e',
+      background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span>⏸</span>
-        <strong style={{ color: '#f59e0b', fontSize: 13 }}>Waiting for Your Approval</strong>
+        <strong style={{ color: colors.statusWarning, fontSize: 13 }}>Waiting for Your Approval</strong>
       </div>
-      <div style={{ fontSize: 12, color: '#cdd6f4', marginBottom: 8, lineHeight: 1.5 }}>{request.plan}</div>
-      <div style={{ fontSize: 11, color: '#a6adc8', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: colors.text, marginBottom: 8, lineHeight: 1.5 }}>{request.plan}</div>
+      <div style={{ fontSize: 11, color: colors.subtext0, marginBottom: 12 }}>
         <div>Agents selected: {request.selectedAgents?.join(', ')}</div>
         <div>Mode: {request.executionMode}</div>
       </div>
@@ -156,7 +140,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
             disabled={busy}
             style={{
               flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
-              background: '#16a34a', color: '#11111b', fontWeight: 700, fontSize: 12,
+              background: colors.statusCompleted, color: colors.crust, fontWeight: 700, fontSize: 12,
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -167,7 +151,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
             disabled={busy}
             style={{
               flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #dc262680',
-              background: 'transparent', color: '#f38ba8', fontWeight: 700, fontSize: 12,
+              background: 'transparent', color: colors.alertRed, fontWeight: 700, fontSize: 12,
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -176,16 +160,12 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
         </div>
       ) : (
         <div>
-          <textarea
+          <TextArea
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="Reason for rejection (optional)"
             rows={2}
-            style={{
-              width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #313244',
-              background: '#181825', color: '#cdd6f4', fontSize: 12, resize: 'vertical',
-              boxSizing: 'border-box', marginBottom: 8,
-            }}
+            style={{ padding: '6px 8px', fontSize: 12, marginBottom: 8 }}
           />
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -193,7 +173,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
               disabled={busy}
               style={{
                 flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
-                background: '#dc2626', color: '#11111b', fontWeight: 700, fontSize: 12,
+                background: colors.statusFailed, color: colors.crust, fontWeight: 700, fontSize: 12,
                 cursor: busy ? 'not-allowed' : 'pointer',
               }}
             >
@@ -204,7 +184,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
               disabled={busy}
               style={{
                 flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #313244',
-                background: 'transparent', color: '#a6adc8', fontWeight: 700, fontSize: 12,
+                background: 'transparent', color: colors.subtext0, fontWeight: 700, fontSize: 12,
                 cursor: busy ? 'not-allowed' : 'pointer',
               }}
             >
@@ -219,35 +199,28 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
 
 function ManagerReviewCard({ review }) {
   const isRunning = review.status === 'running'
-  const color = isRunning ? '#f59e0b' : '#16a34a'
+  // Panel's accentStatus prop only understands execution-status keys
+  // (Pending/Running/WaitingForApproval/Completed/Failed/Skipped). This
+  // card's own running/completed states are colored orange/green — which
+  // happen to be exactly Panel's WaitingForApproval/Completed accent colors
+  // — so those keys are reused here purely for their color values, with
+  // StatusBadge's `label` override supplying the correct RUNNING/COMPLETED
+  // display text instead of WAITINGFORAPPROVAL/COMPLETED.
+  const accentStatus = isRunning ? 'WaitingForApproval' : 'Completed'
 
   return (
-    <div style={{
-      border: `1px solid ${color}40`,
-      borderLeft: `3px solid ${color}`,
-      borderRadius: 8,
-      padding: '12px 14px',
-      marginBottom: 10,
-      background: '#1e1e2e',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong style={{ color: '#cdd6f4', fontSize: 14 }}>🎯 Manager Review</strong>
-        <span style={{
-          background: `${color}20`,
-          color,
-          border: `1px solid ${color}60`,
-          borderRadius: 4,
-          padding: '1px 8px',
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-        }}>{isRunning ? 'RUNNING' : 'COMPLETED'}</span>
-      </div>
-      <div style={{ fontSize: 12, color: '#a6adc8', marginTop: 8 }}>
-        {isRunning
-          ? 'Synthesizing and quality-checking all agent outputs…'
-          : 'Synthesized and quality-checked all agent outputs into the final result.'}
-      </div>
+    <div style={{ marginBottom: 10 }}>
+      <Panel accentStatus={accentStatus}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong style={{ color: colors.text, fontSize: 14 }}>🎯 Manager Review</strong>
+          <StatusBadge status={accentStatus} label={isRunning ? 'Running' : 'Completed'} />
+        </div>
+        <div style={{ fontSize: 12, color: colors.subtext0, marginTop: 8 }}>
+          {isRunning
+            ? 'Synthesizing and quality-checking all agent outputs…'
+            : 'Synthesized and quality-checked all agent outputs into the final result.'}
+        </div>
+      </Panel>
     </div>
   )
 }
@@ -281,20 +254,20 @@ function MemoriesPage({ onDelete }) {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>
-        Agent Memories
+      <div style={{ marginBottom: 16 }}>
+        <Label>Agent Memories</Label>
       </div>
 
       {error && (
-        <div style={{ background: '#2d1b1b', border: '1px solid #dc262680', borderRadius: 6, padding: '10px 12px', marginBottom: 16, color: '#f38ba8', fontSize: 12 }}>
-          {error}
+        <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
+          <StateText tone="error">{error}</StateText>
         </div>
       )}
 
       {memories == null ? (
-        <div style={{ color: '#585b70', fontSize: 13 }}>Loading…</div>
+        <StateText tone="muted">Loading…</StateText>
       ) : memories.length === 0 ? (
-        <div style={{ color: '#585b70', fontSize: 13 }}>No memories saved yet — run a task and agents will start remembering things.</div>
+        <StateText tone="muted">No memories saved yet — run a task and agents will start remembering things.</StateText>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
@@ -591,7 +564,6 @@ export default function App() {
   useEffect(() => () => eventSourceRef.current?.close(), [])
 
   const isActive = taskStatus === 'Running' || taskStatus === 'WaitingForApproval'
-  const statusColor = STATUS_COLORS[taskStatus] ?? '#6b7280'
 
   if (!keySet) {
     return <ApiKeyPrompt onSubmitted={() => setKeySet(true)} />
@@ -607,64 +579,27 @@ export default function App() {
           <p style={{ color: '#585b70', margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
         </div>
 
-        <nav style={{ display: 'flex', gap: 4 }}>
-          <button
-            onClick={() => setView('playground')}
-            style={{
-              background: view === 'playground' ? '#313244' : 'transparent',
-              color: view === 'playground' ? '#cdd6f4' : '#6c7086',
-              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
+        <Nav>
+          <NavItem active={view === 'playground'} onClick={() => setView('playground')}>
             Playground
-          </button>
-          <button
-            onClick={() => setView('memories')}
-            style={{
-              background: view === 'memories' ? '#313244' : 'transparent',
-              color: view === 'memories' ? '#cdd6f4' : '#6c7086',
-              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
+          </NavItem>
+          <NavItem active={view === 'memories'} onClick={() => setView('memories')}>
             🧠 Memories
-          </button>
-          <button
-            onClick={() => setView('observability')}
-            style={{
-              background: view === 'observability' ? '#313244' : 'transparent',
-              color: view === 'observability' ? '#cdd6f4' : '#6c7086',
-              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
+          </NavItem>
+          <NavItem active={view === 'observability'} onClick={() => setView('observability')}>
             📊 Observability
-          </button>
-          <button
-            onClick={() => setView('evals')}
-            style={{
-              background: view === 'evals' ? '#313244' : 'transparent',
-              color: view === 'evals' ? '#cdd6f4' : '#6c7086',
-              border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
+          </NavItem>
+          <NavItem active={view === 'evals'} onClick={() => setView('evals')}>
             🎯 Evals
-          </button>
-        </nav>
+          </NavItem>
+        </Nav>
 
         {taskId && view === 'playground' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 11, color: '#585b70' }}>{taskId.slice(0, 8)}…</span>
-            <span style={{
-              background: `${statusColor}18`,
-              color: statusColor,
-              border: `1px solid ${statusColor}50`,
-              borderRadius: 4,
-              padding: '2px 10px',
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-            }}>{taskStatus}</span>
+            <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
+            <StatusBadge status={taskStatus} />
             {totalCost != null && (
-              <span style={{ fontSize: 11, color: '#6c7086' }}>
+              <span style={{ fontSize: 11, color: colors.overlay0 }}>
                 ${Number(totalCost).toFixed(6)} total
               </span>
             )}
@@ -685,27 +620,27 @@ export default function App() {
         <div style={{ borderRight: '1px solid #1e1e2e', padding: 20, overflowY: 'auto' }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
             <div style={{ marginBottom: 10 }}>
-              <label style={{ display: 'block', marginBottom: 4, fontSize: 11, color: '#6c7086', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Task Title</label>
-              <input
+              <Input
+                label="Task Title"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="e.g. Research LangGraph"
                 required
-                style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #313244', background: '#1e1e2e', color: '#cdd6f4', fontSize: 13, boxSizing: 'border-box', outline: 'none' }}
+                style={{ padding: '7px 10px', background: colors.base, outline: 'none' }}
               />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', marginBottom: 4, fontSize: 11, color: '#6c7086', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Prompt</label>
-              <textarea
+              <TextArea
+                label="Prompt"
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 rows={5}
                 placeholder="Describe what you need the agents to do..."
                 required
-                style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #313244', background: '#1e1e2e', color: '#cdd6f4', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', outline: 'none' }}
+                style={{ padding: '7px 10px', background: colors.base, outline: 'none' }}
               />
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: '#a6adc8', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: colors.subtext0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={requireApproval}
@@ -713,24 +648,14 @@ export default function App() {
               />
               Require human approval before agents run
             </label>
-            <button
-              type="submit"
-              disabled={submitting || isActive}
-              style={{
-                width: '100%', padding: '9px 0', borderRadius: 6, border: 'none',
-                background: submitting || isActive ? '#313244' : '#89b4fa',
-                color: submitting || isActive ? '#6c7086' : '#1e1e2e',
-                fontWeight: 700, fontSize: 13, cursor: submitting || isActive ? 'not-allowed' : 'pointer',
-                transition: 'background 0.15s',
-              }}
-            >
+            <Button type="submit" variant="primary" disabled={submitting || isActive}>
               {isActive ? '⏳ Running…' : 'Run Agents'}
-            </button>
+            </Button>
           </form>
 
           {error && (
-            <div style={{ background: '#2d1b1b', border: '1px solid #dc262680', borderRadius: 6, padding: '10px 12px', marginBottom: 16, color: '#f38ba8', fontSize: 12 }}>
-              {error}
+            <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
+              <StateText tone="error">{error}</StateText>
             </div>
           )}
 
@@ -764,36 +689,32 @@ export default function App() {
           {finalResult ? (
             <div>
               <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>Final Result</div>
-              <div style={{
-                background: '#1e1e2e',
-                border: '1px solid #313244',
-                borderRadius: 8,
-                padding: '20px 24px',
-                fontSize: 13,
-                lineHeight: 1.7,
-                color: '#cdd6f4',
-              }}>
-                <ReactMarkdown
-                  components={{
-                    h1: ({ children }) => <h1 style={{ color: '#89b4fa', fontSize: 20, marginTop: 0 }}>{children}</h1>,
-                    h2: ({ children }) => <h2 style={{ color: '#89b4fa', fontSize: 17 }}>{children}</h2>,
-                    h3: ({ children }) => <h3 style={{ color: '#89dceb', fontSize: 15 }}>{children}</h3>,
-                    code: ({ inline, children }) => inline
-                      ? <code style={{ background: '#313244', borderRadius: 3, padding: '1px 5px', fontSize: 12 }}>{children}</code>
-                      : <pre style={{ background: '#181825', borderRadius: 6, padding: '12px 16px', overflow: 'auto' }}><code style={{ fontSize: 12 }}>{children}</code></pre>,
-                    a: ({ href, children }) => <a href={href} style={{ color: '#89b4fa' }} target="_blank" rel="noreferrer">{children}</a>,
-                    p: ({ children }) => <p style={{ margin: '0 0 12px' }}>{children}</p>,
-                    ul: ({ children }) => <ul style={{ paddingLeft: 20, margin: '0 0 12px' }}>{children}</ul>,
-                    li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
-                  }}
-                >
-                  {finalResult}
-                </ReactMarkdown>
-              </div>
+              <Panel>
+                <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
+                  <ReactMarkdown
+                    components={{
+                      h1: ({ children }) => <h1 style={{ color: colors.traceBlue, fontSize: 20, marginTop: 0 }}>{children}</h1>,
+                      h2: ({ children }) => <h2 style={{ color: colors.traceBlue, fontSize: 17 }}>{children}</h2>,
+                      h3: ({ children }) => <h3 style={{ color: colors.agentSky, fontSize: 15 }}>{children}</h3>,
+                      code: ({ inline, children }) => inline
+                        ? <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 12 }}>{children}</code>
+                        : <pre style={{ background: colors.mantle, borderRadius: 6, padding: '12px 16px', overflow: 'auto' }}><code style={{ fontSize: 12 }}>{children}</code></pre>,
+                      a: ({ href, children }) => <a href={href} style={{ color: colors.traceBlue }} target="_blank" rel="noreferrer">{children}</a>,
+                      p: ({ children }) => <p style={{ margin: '0 0 12px' }}>{children}</p>,
+                      ul: ({ children }) => <ul style={{ paddingLeft: 20, margin: '0 0 12px' }}>{children}</ul>,
+                      li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+                    }}
+                  >
+                    {finalResult}
+                  </ReactMarkdown>
+                </div>
+              </Panel>
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#313244', fontSize: 13 }}>
-              {isActive ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <StateText tone="muted">
+                {isActive ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
+              </StateText>
             </div>
           )}
         </div>

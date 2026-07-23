@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenAI;
 using OrchestAI.Application.Configuration;
 using OrchestAI.Domain.Interfaces;
@@ -32,6 +33,15 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         RequiredConfigurationValidator.Validate(configuration);
+
+        // ASP.NET Core's own host (WebApplicationBuilder) already registers IConfiguration
+        // before this method ever runs, so TryAddSingleton is a no-op there — this only fills
+        // the gap for a bare ServiceCollection consumer (e.g. a console app composing
+        // AddApplication()/AddInfrastructure() directly), where nothing else registers it and
+        // constructors like DatabaseTool's (which take IConfiguration directly, for its
+        // per-call named connection-string lookup) would otherwise fail to resolve. See
+        // ADR-017 Confirmation #7b.
+        services.TryAddSingleton(configuration);
 
         services.AddSingleton<ICurrentTenantAccessor, AsyncLocalCurrentTenantAccessor>();
         services.AddSingleton<ITaskToolCallBudget, AsyncLocalTaskToolCallBudget>();

@@ -53,11 +53,22 @@ scale) and 4 pre-written component CSS blocks (`.ds-status-badge`, `.ds-btn-prim
 imported or used anywhere in `frontend/src/`; every value is instead retyped as a literal hex
 string or px number in each JSX file.
 
-**[Fact]** `frontend/src/index.css` (111 lines) is the unmodified Vite React template's CSS —
-light/dark purple-accent theme variables, `#root { width: 1126px; ...; text-align: center }` —
-none of it is referenced by the actual dark-only, grid-laid-out UI that `App.jsx` renders. It
-is dead code today, confirmed by the fact that none of its selectors/variables appear anywhere
-in `App.jsx`/`ObservabilityPage.jsx`/`EvalsPage.jsx`.
+**[Fact — corrected during Task 1, was wrong in the original plan]** `frontend/src/index.css`
+(111 lines) is the unmodified Vite React template's CSS, but it is **not entirely dead** — the
+original plan claimed this based on a class-name/variable grep, which cannot detect bare
+element-selector leakage. Task 1's implementer verified real rendering via `getComputedStyle`
+on the built app and found it splits into two groups:
+- **Genuinely dead, safe to remove:** `#root`'s fixed-width/`text-align:center` block,
+  `#social .button-icon` (no `#social` element exists anywhere), the `@media (max-width: 1024px)`
+  responsive `font-size` override nested under `:root`, and `p { margin: 0 }` (a true no-op —
+  `App.css`'s `* { margin: 0 }` already wins on specificity).
+- **Live, currently affecting real rendering — NOT removed in Milestone 1 (see the two new
+  deferred decisions in §8):** the `:root` color/font custom properties, the `h1, h2` element
+  selectors, the `code` element selector, and the `@media (prefers-color-scheme: dark)` block
+  that redefines those same custom properties. `App.jsx`'s `<h1>` and `ApiKeyPrompt.jsx`'s
+  `<h2>` only set some inline properties (not `font-family`/`letter-spacing`), and
+  `EvalsPage.jsx`'s `<code>` snippet (line 71) has no inline style at all — so these "leftover"
+  rules fill in the properties inline styles don't cover, and currently render live.
 
 **[Fact]** `frontend/src/App.css` (11 lines) is a minimal, still-relevant global reset (box-
 sizing, body background/color/font-family) — this one *is* live and load-bearing.
@@ -87,7 +98,7 @@ about what "preserve the visual identity exactly" means for typography (see §8,
 | `EvalsPage.jsx` | 475 | Its own, independently-declared `panelStyle`/`labelStyle`/`selectStyle`/`buttonStyle` constants (7-41) — near-identical to, but a separate copy from, `ObservabilityPage.jsx`'s; `SubNav` (43-63, a third copy of the nav-item pattern); status-colored pass/fail text (244-246, 281-283) |
 | `ApiKeyPrompt.jsx` | 45 | One `<input>`, one `<button>` — see §5 for whether these are in scope |
 | `App.css` | 11 | Live global reset — left alone |
-| `index.css` | 111 | Dead Vite-template CSS vars — removal/replacement is part of this milestone |
+| `index.css` | 111 | Partially dead Vite-template CSS — only the genuinely-unused subset is removed this milestone; the live `h1`/`h2`/`code`/`:root`-vars rules are left exactly as-is (two new deferred decisions, §8) |
 
 **Concrete evidence of drift from copy-paste-without-a-shared-source (the actual justification
 for this milestone, not a hypothetical one):**
@@ -144,12 +155,12 @@ change consistent with "extract tokens," not a rearchitecture of how styling is 
   not, without `color-mix()` and a broader styling-pattern change.
 
 **[Alternative — considered, not chosen]** Real CSS custom properties in `index.css`
-(replacing its current dead Vite-template variables) consumed via `var(--token)` from CSS
-classes, closer to what `.impeccable/design.json`'s pre-written `.ds-*` classes anticipate. This
-was rejected for Milestone 1 (§8, decision 1) as a larger, genuine architecture change — every
-inline `style={{}}` object would need to become a CSS class, or a hybrid — bigger than
-"extraction," and arguably overlapping with A2's component work in an entangled way rather than
-a clean two-step build.
+(replacing its current Vite-template variables — which, per the correction above, are not all
+dead) consumed via `var(--token)` from CSS classes, closer to what `.impeccable/design.json`'s
+pre-written `.ds-*` classes anticipate. This was rejected for Milestone 1 (§8, decision 1) as a
+larger, genuine architecture change — every inline `style={{}}` object would need to become a
+CSS class, or a hybrid — bigger than "extraction," and arguably overlapping with A2's component
+work in an entangled way rather than a clean two-step build.
 
 Token file contents (regardless of which option is approved) are a direct, value-for-value
 transcription from `DESIGN.md:100-269`/`.impeccable/design.json:6-79` — colors (crust through
@@ -159,8 +170,10 @@ status-warning), the 4 typography styles (heading/title/body/label), the 4 radii
 the codebase's existing 2-digit-hex-alpha-suffix technique exactly (no new technique
 introduced).
 
-`index.css`'s dead custom properties are removed either way — they are unused today regardless
-of which token option is chosen, so their removal isn't contingent on the decision in §8.
+Only `index.css`'s genuinely-dead rules (§1's corrected list) are removed either way — that
+subset's removal isn't contingent on the decision in §8. The live `h1`/`h2`/`code`/`:root`-vars
+rules are untouched regardless of which token option is chosen — see the two deferred decisions
+in §8.
 
 ---
 
@@ -266,12 +279,19 @@ style sourcing.
   named clearly (e.g. `statusBadgeAlpha = { background: '33', border: '99' }` as suffix
   constants, or fully precomputed per-color strings — implementer's choice, whichever is
   cleanest to consume from `StatusBadge` in Task 2).
-- **`index.css` cleanup:** delete the unused Vite-template `:root` custom properties, the
-  `@media (prefers-color-scheme: dark)` block, and the unused `#root`/`h1`/`h2`/`code` selectors
-  — all confirmed dead (never referenced by any real page component; the real UI's layout is
-  driven entirely by inline styles in the JSX files). Keep only what, if anything, is still
-  genuinely load-bearing (verify by grepping `App.jsx`/`ObservabilityPage.jsx`/`EvalsPage.jsx`
-  for any class name or element selector `index.css` defines before deleting each rule).
+- **`index.css` cleanup — corrected scope (post-discovery):** `index.css` is **not** entirely
+  dead. Verify each rule's live/dead status by real `getComputedStyle` output on the built app
+  (a class-name/variable grep is not sufficient — it cannot detect bare element-selector
+  leakage), not by assumption. Delete only: `#root`'s fixed-width/`text-align:center` block,
+  `#social .button-icon`, the `@media (max-width: 1024px)` responsive `font-size` override
+  nested under `:root`, and `p { margin: 0 }` (a true no-op given `App.css`'s
+  `* { margin: 0 }`). **Do NOT delete or modify** the `:root` color/font custom properties, the
+  `h1, h2` selectors, the `code` selector, or the `@media (prefers-color-scheme: dark)` block —
+  these are live today (they fill in `font-family`/`letter-spacing`/colors that
+  `App.jsx`'s `<h1>`, `ApiKeyPrompt.jsx`'s `<h2>`, and `EvalsPage.jsx`'s `<code>` don't set
+  inline) and fixing them is an approved-later, not approved-now, visual change — see the two
+  deferred decisions in §8. Leaving them in place, unmodified, is correct for this task, not an
+  incomplete cleanup.
 - Do not touch `App.css` (confirmed live: global box-sizing reset + body background/color/font).
 - No other file changes. No new dependency.
 
@@ -529,6 +549,50 @@ Not resolved here, and not to be treated as resolved by Milestone 1's inaction:
   question either way — their current rendering is preserved exactly, as inherited, pending that
   future decision.
 
+### Deferred design decision recorded for Milestone 2/3: heading (`h1`/`h2`) typography leak
+
+Discovered during Task 1, not anticipated by the original plan (which incorrectly assumed
+`index.css` was entirely dead — corrected in §1). **Explicitly deferred by the human, decided
+2026-07-23: Option 1 — defer, do not fix in Milestone 1.**
+
+- `App.jsx`'s page-title `<h1>` and `ApiKeyPrompt.jsx`'s `<h2>` set only some inline style
+  properties (`fontSize`/`fontWeight`/`color`/`margin`), not `font-family` or `letter-spacing`.
+  `index.css`'s leftover `h1, h2 { font-family: var(--heading); ... letter-spacing: -1.68px; }`
+  (and `h2`'s own `-0.24px`/`500`-weight rule) fills in those two properties, so both headings
+  currently render in `system-ui, "Segoe UI", Roboto, sans-serif` with negative letter-spacing —
+  not the mono font-stack `DESIGN.md` documents everywhere else.
+- This conflicts with `DESIGN.md`'s own "No-Serif Rule" (§3: "Nothing in this system is ever set
+  in a serif or humanist sans"), but is **intentionally not fixed in Milestone 1** — correcting
+  it is a real, additional visual change beyond this milestone's one approved change (the
+  `StatusBadge` 20% alpha), and is not this task's or this milestone's call to make.
+- The underlying cause (legacy Vite-template `index.css` rules leaking through because the real
+  inline styles don't cover every property the browser needs) is left exactly as-is, unmodified,
+  in Task 1's `index.css` cleanup — not deleted, not corrected.
+- A future milestone (2 or 3) must explicitly decide whether to correct the heading
+  `font-family`/`letter-spacing` to match the `heading` token, and how (fixing the inline style
+  directly vs. finally retiring the legacy `index.css` rule it depends on).
+
+### Deferred design decision recorded for Milestone 2/3: `EvalsPage` `<code>` chip styling
+
+Discovered during Task 1, alongside the heading finding above. **Explicitly deferred by the
+human, decided 2026-07-23: Option 1 — defer, do not fix in Milestone 1.**
+
+- `EvalsPage.jsx:71`'s inline `<code>POST /api/v1/eval-suites</code>` snippet carries no inline
+  style at all — its entire appearance (font, background, text color, padding, radius) comes
+  from `index.css`'s leftover `code { ... }` rule, which currently renders it as a light-cream
+  chip (`background: rgb(244, 243, 236)`) with near-black text (`color: rgb(8, 6, 13)`) sitting
+  inside an otherwise all-dark Catppuccin Mocha panel — already visible in the pre-Task-1
+  baseline screenshot (`/tmp/m1-verify/baseline/08-evals-suites.png`).
+- This is visually inconsistent with the dark, Catppuccin-based product design documented in
+  `DESIGN.md`, but is **intentionally not fixed in Milestone 1** for the same reason as the
+  heading finding above — it is a real, additional visual change beyond this milestone's one
+  approved change, not this task's call.
+- The underlying `index.css` `code` rule is left exactly as-is, unmodified, in Task 1's cleanup
+  — not deleted, not corrected, not silently overridden by a new inline style.
+- A future milestone (2 or 3) must explicitly decide how to fix this — likely either an inline
+  style on this specific `<code>` element sourced from `tokens.js`, or a small shared inline-code
+  treatment if more call sites like it turn up during Milestone 3's page-content work.
+
 ---
 
 ## 9. Testing and Verification Strategy
@@ -578,7 +642,10 @@ diff or a build alone (the same practice that caught real bugs in Phase 1 and Ph
 - No component computes a raw token-eligible hex/px value inline anymore — only genuinely
   one-off layout numbers (grid columns, chart-specific pixel math, `maxHeight` scroll boxes)
   remain as local literals.
-- `index.css`'s dead Vite-template variables are removed.
+- `index.css`'s genuinely-dead rules are removed (`#root`, `#social .button-icon`, the `:root`
+  responsive font-size override, `p { margin: 0 }`); its live `h1`/`h2`/`code`/`:root`-vars rules
+  are left exactly as-is, per the two deferred decisions in §8 — this is intended, not
+  incomplete.
 - Visual output is unchanged from today except for the specific points §8 explicitly resolves.
 
 **A2 — Reusable component system**

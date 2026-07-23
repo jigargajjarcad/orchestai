@@ -15,6 +15,11 @@
 // Both variants render an optional Label directly above the field, per
 // DESIGN.md:227-228 ("always the Label typography style directly above the
 // field, never inline placeholder-only").
+//
+// Optional `labelStyle` is threaded to the inner `Label`'s own `style`
+// override — needed for call sites whose original label wasn't bold, unlike
+// Label's default (matches Input/TextArea/Panel/Button/StateText's existing
+// override pattern).
 
 import { colors, radii, typography } from '../theme/tokens'
 import { Label } from './Label'
@@ -30,12 +35,12 @@ const fieldStyle = {
   fontSize: typography.body.fontSize,
 }
 
-export function Input({ label, value, onChange, style, ...rest }) {
+export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
   return (
     <div>
       {label && (
         <div style={{ marginBottom: 4 }}>
-          <Label>{label}</Label>
+          <Label style={labelStyle}>{label}</Label>
         </div>
       )}
       <input
@@ -48,12 +53,12 @@ export function Input({ label, value, onChange, style, ...rest }) {
   )
 }
 
-export function TextArea({ label, value, onChange, style, ...rest }) {
+export function TextArea({ label, labelStyle, value, onChange, style, ...rest }) {
   return (
     <div>
       {label && (
         <div style={{ marginBottom: 4 }}>
-          <Label>{label}</Label>
+          <Label style={labelStyle}>{label}</Label>
         </div>
       )}
       <textarea

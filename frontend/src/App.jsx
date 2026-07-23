@@ -55,7 +55,7 @@ function ToolCallRow({ toolCall }) {
 function AgentCard({ execution, memoryCount, savedMemories }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <Panel accentStatus={execution.status}>
+      <Panel accentStatus={execution.status} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <strong style={{ color: colors.text, fontSize: 14 }}>{execution.agentType}</strong>
@@ -65,7 +65,7 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
               </span>
             )}
           </div>
-          <StatusBadge status={execution.status} />
+          <StatusBadge status={execution.status} borderAlphaSuffix="60" style={{ padding: '1px 8px', letterSpacing: '0.05em' }} />
         </div>
 
         {execution.messages?.map((msg, i) => (
@@ -210,10 +210,10 @@ function ManagerReviewCard({ review }) {
 
   return (
     <div style={{ marginBottom: 10 }}>
-      <Panel accentStatus={accentStatus}>
+      <Panel accentStatus={accentStatus} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <strong style={{ color: colors.text, fontSize: 14 }}>🎯 Manager Review</strong>
-          <StatusBadge status={accentStatus} label={isRunning ? 'Running' : 'Completed'} />
+          <StatusBadge status={accentStatus} label={isRunning ? 'Running' : 'Completed'} borderAlphaSuffix="60" style={{ padding: '1px 8px', letterSpacing: '0.05em' }} />
         </div>
         <div style={{ fontSize: 12, color: colors.subtext0, marginTop: 8 }}>
           {isRunning
@@ -255,12 +255,12 @@ function MemoriesPage({ onDelete }) {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ marginBottom: 16 }}>
-        <Label>Agent Memories</Label>
+        <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
       </div>
 
       {error && (
         <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
-          <StateText tone="error">{error}</StateText>
+          <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>
         </div>
       )}
 
@@ -597,7 +597,7 @@ export default function App() {
         {taskId && view === 'playground' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
-            <StatusBadge status={taskStatus} />
+            <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
             {totalCost != null && (
               <span style={{ fontSize: 11, color: colors.overlay0 }}>
                 ${Number(totalCost).toFixed(6)} total
@@ -622,6 +622,7 @@ export default function App() {
             <div style={{ marginBottom: 10 }}>
               <Input
                 label="Task Title"
+                labelStyle={{ fontWeight: 400 }}
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="e.g. Research LangGraph"
@@ -632,6 +633,7 @@ export default function App() {
             <div style={{ marginBottom: 14 }}>
               <TextArea
                 label="Prompt"
+                labelStyle={{ fontWeight: 400 }}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 rows={5}
@@ -648,14 +650,19 @@ export default function App() {
               />
               Require human approval before agents run
             </label>
-            <Button type="submit" variant="primary" disabled={submitting || isActive}>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={submitting || isActive}
+              style={{ ...(submitting || isActive ? {} : { color: colors.base }), transition: 'background 0.15s' }}
+            >
               {isActive ? '⏳ Running…' : 'Run Agents'}
             </Button>
           </form>
 
           {error && (
             <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
-              <StateText tone="error">{error}</StateText>
+              <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>
             </div>
           )}
 
@@ -689,7 +696,7 @@ export default function App() {
           {finalResult ? (
             <div>
               <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>Final Result</div>
-              <Panel>
+              <Panel style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
                   <ReactMarkdown
                     components={{
@@ -712,7 +719,7 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <StateText tone="muted">
+              <StateText tone="muted" style={{ color: colors.surface0 }}>
                 {isActive ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
               </StateText>
             </div>

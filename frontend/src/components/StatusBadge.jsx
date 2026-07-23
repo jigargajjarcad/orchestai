@@ -14,8 +14,15 @@
 // that require pixel parity with today's one-off inline styles. Uppercasing
 // is CSS (`textTransform`), not a JS `.toUpperCase()` call, specifically so
 // `style={{ textTransform: 'none' }}` can opt a call site out of it.
+//
+// Optional `borderAlphaSuffix` overrides just the border's hex alpha suffix
+// (default `statusBadgeAlphaSuffix.border`, 55%) — needed because some
+// pre-existing call sites used a different border alpha than the canonical
+// one before migrating onto this component, and background alpha (the one
+// approved normalization) must stay untouched while border alpha is
+// restored to its original per-site value.
 
-import { typography, radii, statusBadgeColors } from '../theme/tokens'
+import { typography, radii, statusBadgeColors, statusBadgeAlphaSuffix } from '../theme/tokens'
 
 const STATUS_TO_PALETTE_KEY = {
   Pending: 'pending',
@@ -26,7 +33,7 @@ const STATUS_TO_PALETTE_KEY = {
   Skipped: 'skipped',
 }
 
-export function StatusBadge({ status, label, style }) {
+export function StatusBadge({ status, label, style, borderAlphaSuffix }) {
   const paletteKey = STATUS_TO_PALETTE_KEY[status] ?? 'pending'
   const palette = statusBadgeColors[paletteKey]
   const text = (label ?? status ?? '').toString()
@@ -36,7 +43,7 @@ export function StatusBadge({ status, label, style }) {
       style={{
         display: 'inline-block',
         background: palette.background,
-        border: `1px solid ${palette.border}`,
+        border: `1px solid ${palette.text}${borderAlphaSuffix ?? statusBadgeAlphaSuffix.border}`,
         color: palette.text,
         borderRadius: radii.md,
         padding: '2px 10px',

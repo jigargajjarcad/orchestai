@@ -16,11 +16,26 @@ namespace OrchestAI.Tests.Infrastructure;
 // helps the first case without double-registering or replacing the instance in the second.
 public sealed class DependencyInjectionTests
 {
+    // Includes all six OrchestAI.Domain.Enums.AgentType entries so this remains a genuinely valid
+    // configuration under RequiredConfigurationValidator, which AddInfrastructure calls first —
+    // these tests exercise the real AddInfrastructure end-to-end, not a stub of it.
     private static IConfiguration BuildValidConfig() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Port=5432;Database=orchestai;Username=orchestai;Password=changeme",
-            ["Anthropic:ApiKey"] = "sk-ant-real-key"
+            ["Anthropic:ApiKey"] = "sk-ant-real-key",
+            ["Agents:Models:Orchestrator"] = "claude-sonnet-4-6",
+            ["Agents:Models:Research"] = "claude-sonnet-4-6",
+            ["Agents:Models:Writer"] = "claude-sonnet-4-6",
+            ["Agents:Models:Code"] = "claude-sonnet-4-6",
+            ["Agents:Models:Data"] = "claude-sonnet-4-6",
+            ["Agents:Models:Browser"] = "claude-sonnet-4-6",
+            ["Agents:MaxTokens:Orchestrator"] = "4096",
+            ["Agents:MaxTokens:Research"] = "4096",
+            ["Agents:MaxTokens:Writer"] = "4096",
+            ["Agents:MaxTokens:Code"] = "4096",
+            ["Agents:MaxTokens:Data"] = "4096",
+            ["Agents:MaxTokens:Browser"] = "4096"
         }).Build();
 
     [Fact]

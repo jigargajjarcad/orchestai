@@ -10,7 +10,7 @@
 
 import { colors, radii, spacing } from '../theme/tokens'
 
-export function NavItem({ active, onClick, children }) {
+export function NavItem({ active, onClick, children, style }) {
   return (
     <button
       onClick={onClick}
@@ -22,6 +22,7 @@ export function NavItem({ active, onClick, children }) {
         padding: '5px 12px',
         fontSize: 12,
         cursor: 'pointer',
+        ...style,
       }}
     >
       {children}

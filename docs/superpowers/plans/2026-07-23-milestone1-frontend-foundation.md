@@ -398,11 +398,23 @@ exactly:**
 - `AgentCard` (lines 55-127): its outer wrapper becomes `<Panel accentStatus={execution.status}>`;
   its status badge becomes `<StatusBadge status={execution.status} />`; its message/tool-call
   child content keeps its current structure, colors sourced from tokens.
-- `ApprovalCard` (lines 129-218): its outer wrapper becomes `<Panel accentStatus="WaitingForApproval">`
-  (or equivalent — the card already only ever renders in the waiting-for-approval context); its
-  textarea becomes the Task 2 `TextArea`. **Its Approve/Reject/Cancel/Confirm-Reject buttons stay
-  exactly as local one-off styles — do NOT migrate them onto the new `Button` component (§8
-  decision 2, final).** No visual change to these four buttons at all.
+- `ApprovalCard` (lines 129-218): **its outer wrapper does NOT become `<Panel accentStatus=...>`
+  — corrected during Task 2's review.** `ApprovalCard`'s current border (`App.jsx:135`,
+  `'1px solid #f59e0b60'`) is a hardcoded hex suffix `60` (~37.6% alpha) — a different literal
+  from `AgentCard`/`ManagerReviewCard`'s `` `${statusColor}40` ``/`` `${color}40` `` (~25.1%
+  alpha) pattern that `Panel`'s `accentStatus` prop was built to reproduce. An earlier version of
+  this plan incorrectly generalized all three components as sharing one pattern; Task 2's task
+  reviewer caught this before Task 3 could act on the false premise and silently shift
+  `ApprovalCard`'s border alpha from ~37.6% to ~25.1% while believing it preserved current
+  rendering. **Keep `ApprovalCard`'s outer wrapper as a local one-off `<div>` with its exact
+  current border string (`'1px solid #f59e0b60'`, `borderLeft: '3px solid #f59e0b'`) — same
+  treatment as its buttons below, for the same reason (preserve current rendering exactly rather
+  than force it through a shared abstraction that doesn't actually match).** Only its textarea
+  becomes the Task 2 `TextArea`; its inner background/radius/padding may still source from
+  `tokens.js` values directly (`colors.base`, `radii.xl`, etc.) without needing the `Panel`
+  component itself. **Its Approve/Reject/Cancel/Confirm-Reject buttons stay exactly as local
+  one-off styles — do NOT migrate them onto the new `Button` component (§8 decision 2, final).**
+  No visual change to this card at all — neither its buttons nor its outer border.
 - `ManagerReviewCard` (lines 220-253): outer wrapper becomes `<Panel accentStatus={...}>` using
   its own narrower running/completed color logic (do not force it onto the full 6-value
   `StatusBadge` status set if its running/completed distinction doesn't map 1:1 — use
@@ -609,27 +621,39 @@ human, decided 2026-07-23: Option 1 — defer, do not fix in Milestone 1.**
 
 ### Deferred design decision recorded for Milestone 2/3: status-accented card border alpha
 
-Discovered during Task 2 (building `Panel`'s `accentStatus` prop, which replaces `AgentCard`/
-`ApprovalCard`/`ManagerReviewCard`'s existing status-tinted outer border in Task 3). **Resolved
-by directly applying the human's own standing rule for this milestone, not a new question:**
-"the only intentional visual change authorized in this milestone is the approved `StatusBadge`
-standardization to 20% background alpha."
+Discovered during Task 2 (building `Panel`'s `accentStatus` prop, which replaces `AgentCard`'s
+and `ManagerReviewCard`'s existing status-tinted outer border in Task 3 — **not**
+`ApprovalCard`'s, corrected below). **Resolved by directly applying the human's own standing
+rule for this milestone, not a new question:** "the only intentional visual change authorized in
+this milestone is the approved `StatusBadge` standardization to 20% background alpha."
 
-- The current app's `AgentCard`/`ApprovalCard`/`ManagerReviewCard` all write
-  `` border: `1px solid ${statusColor}40` `` — the literal string `"40"` is a **hex** alpha
-  suffix (64/255 ≈ 25.1% decimal), not the percentage it appears to spell out.
+- **Correction (caught by Task 2's task reviewer, not caught when this entry was first
+  written):** only `AgentCard` (`App.jsx:60`) and `ManagerReviewCard` (`App.jsx:226`) write
+  `` border: `1px solid ${statusColor}40` ``/`` `1px solid ${color}40` `` — the literal string
+  `"40"` is a **hex** alpha suffix (64/255 ≈ 25.1% decimal), not the percentage it appears to
+  spell out. `ApprovalCard` does **not** share this pattern: its border (`App.jsx:135`) is a
+  hardcoded, different literal, `'1px solid #f59e0b60'` (hex suffix `60`, ≈37.6% decimal). An
+  earlier version of this entry, and Task 2's own report, incorrectly generalized all three
+  components as sharing one pattern — this is now corrected here and in Task 3's `ApprovalCard`
+  spec above, which keeps `ApprovalCard`'s outer border as a local one-off rather than migrating
+  it onto `Panel`'s `accentStatus` prop.
 - `DESIGN.md`'s prose (Cards/Panels, §5) states this border should be "40% alpha," plainly and
   without a range or hedge — the same class of hex-vs-percentage transcription slip already
   documented for the status-badge alpha (18% rendered vs. 20% documented) and independently
   re-confirmed here: `.impeccable/design.json`'s own `.ds-status-card` worked CSS example uses
-  `rgba(22, 163, 74, 0.25)` — 25%, matching the buggy rendered value, not the documented 40%.
+  `rgba(22, 163, 74, 0.25)` — 25%, matching `AgentCard`/`ManagerReviewCard`'s buggy rendered
+  value, not the documented 40% (and also not `ApprovalCard`'s own, differently-buggy 37.6%).
 - Unlike the badge alpha, this correction was **not** pre-approved anywhere in §8, so per the
-  milestone's standing rule it is **not** applied. `tokens.js`'s `panelAccentBorderAlphaSuffix`
-  is set to `'40'` (the literal hex suffix already in production today, ~25.1% decimal) —
-  preserving current rendering exactly, not "fixing" it to the documented-but-never-approved 40%.
-- A future milestone (2 or 3) must explicitly decide whether to correct this border alpha to
-  match `DESIGN.md`'s documented 40%, the same way a future milestone must decide the heading and
-  code-chip questions above.
+  milestone's standing rule it is **not** applied to `AgentCard`/`ManagerReviewCard`.
+  `tokens.js`'s `panelAccentBorderAlphaSuffix` is set to `'40'` (the literal hex suffix already
+  in production today for these two components, ~25.1% decimal) — preserving current rendering
+  exactly, not "fixing" it to the documented-but-never-approved 40%. `ApprovalCard`'s own,
+  separate ~37.6%-alpha border is preserved by simply not touching it at all (Task 3, corrected).
+- A future milestone (2 or 3) must explicitly decide whether to correct any of these three
+  cards' border alpha to match `DESIGN.md`'s documented 40% — and, separately, whether
+  `ApprovalCard`'s border should ever be reconciled with the other two cards' alpha or kept as
+  its own intentionally-distinct treatment — the same way a future milestone must decide the
+  heading and code-chip questions above.
 
 ---
 

@@ -1,75 +1,61 @@
 // frontend/src/EvalsPage.jsx
 import { useState, useEffect } from 'react'
 import { authenticatedFetch } from './apiKey'
+import { colors, radii } from './theme/tokens'
+import { Panel } from './components/Panel'
+import { Label } from './components/Label'
+import { Input, TextArea } from './components/Input'
+import { Button } from './components/Button'
+import { Nav, NavItem } from './components/NavItem'
+import { StateText } from './components/StateText'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 
-const panelStyle = {
-  background: '#1e1e2e',
-  border: '1px solid #313244',
-  borderRadius: 8,
-  padding: '16px 18px',
-}
-
-const labelStyle = {
-  fontSize: 11,
-  color: '#6c7086',
-  textTransform: 'uppercase',
-  letterSpacing: '0.07em',
-  marginBottom: 8,
-}
-
+// <select>/native date & number inputs aren't a good fit for the Input component
+// (whose fieldStyle padding/fontSize differ from this file's original look) —
+// styled directly from tokens.js values instead. Matches the original selectStyle
+// shape exactly (padding, borderRadius, border, background, color, fontSize,
+// outline), just with hardcoded hex replaced by token references.
 const selectStyle = {
   padding: '6px 10px',
-  borderRadius: 6,
-  border: '1px solid #313244',
-  background: '#181825',
-  color: '#cdd6f4',
+  borderRadius: radii.lg,
+  border: `1px solid ${colors.surface0}`,
+  background: colors.mantle,
+  color: colors.text,
   fontSize: 12,
   outline: 'none',
-}
-
-const buttonStyle = {
-  padding: '6px 14px',
-  borderRadius: 6,
-  border: 'none',
-  background: '#89b4fa',
-  color: '#11111b',
-  fontSize: 12,
-  fontWeight: 700,
-  cursor: 'pointer',
 }
 
 function SubNav({ subView, setSubView }) {
   const tabs = [['suites', 'Suites'], ['run', 'Run'], ['results', 'Results'], ['posthoc', 'Post-Hoc']]
   return (
-    <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #1e1e2e', paddingBottom: 12 }}>
-      {tabs.map(([key, label]) => (
-        <button
-          key={key}
-          onClick={() => setSubView(key)}
-          style={{
-            background: subView === key ? '#313244' : 'transparent',
-            color: subView === key ? '#cdd6f4' : '#6c7086',
-            border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer',
-            fontWeight: subView === key ? 700 : 400,
-          }}
-        >
-          {label}
-        </button>
-      ))}
+    <div style={{ marginBottom: 20, borderBottom: `1px solid ${colors.base}`, paddingBottom: 12 }}>
+      <Nav>
+        {tabs.map(([key, label]) => (
+          <NavItem
+            key={key}
+            active={subView === key}
+            onClick={() => setSubView(key)}
+            style={{ padding: '6px 14px', fontWeight: subView === key ? 700 : 400 }}
+          >
+            {label}
+          </NavItem>
+        ))}
+      </Nav>
     </div>
   )
 }
 
 function SuitesView({ suites, selectedSuiteId, onSelect }) {
   return (
-    <div style={panelStyle}>
-      <div style={labelStyle}>Eval Suites</div>
+    <Panel>
+      <div style={{ marginBottom: 8 }}>
+        <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
+      </div>
       {suites.length === 0 && (
-        <p style={{ color: '#6c7086', fontSize: 13 }}>
+        <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 13 }}>
           No suites yet — create one via <code>POST /api/v1/eval-suites</code>.
-        </p>
+        </StateText>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {suites.map(s => (
@@ -77,19 +63,19 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
             key={s.id}
             onClick={() => onSelect(s.id)}
             style={{
-              padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
-              background: selectedSuiteId === s.id ? '#313244' : '#181825',
-              border: selectedSuiteId === s.id ? '1px solid #89b4fa' : '1px solid #313244',
+              padding: '10px 12px', borderRadius: radii.lg, cursor: 'pointer',
+              background: selectedSuiteId === s.id ? colors.surface0 : colors.mantle,
+              border: selectedSuiteId === s.id ? `1px solid ${colors.traceBlue}` : `1px solid ${colors.surface0}`,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#cdd6f4' }}>{s.name}</div>
-            <div style={{ fontSize: 11, color: '#6c7086' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: colors.text }}>{s.name}</div>
+            <div style={{ fontSize: 11, color: colors.overlay0 }}>
               {s.targetAgentType} · {s.description}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -109,7 +95,11 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   }, [selectedSuiteId])
 
   if (!selectedSuiteId) {
-    return <div style={panelStyle}><p style={{ color: '#6c7086', fontSize: 13 }}>Select a suite first.</p></div>
+    return (
+      <Panel>
+        <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 13 }}>Select a suite first.</StateText>
+      </Panel>
+    )
   }
 
   const trigger = () => {
@@ -131,20 +121,26 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   }
 
   return (
-    <div style={panelStyle}>
-      <div style={labelStyle}>Trigger a run — {suite?.name}</div>
+    <Panel>
+      <div style={{ marginBottom: 8 }}>
+        <Label style={{ fontWeight: 400 }}>Trigger a run — {suite?.name}</Label>
+      </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
-          <div style={labelStyle}>Subject version</div>
-          <input
+          <div style={{ marginBottom: 8 }}>
+            <Label style={{ fontWeight: 400 }}>Subject version</Label>
+          </div>
+          <Input
             value={subjectVersion}
             onChange={e => setSubjectVersion(e.target.value)}
             placeholder="git SHA or prompt version"
-            style={{ ...selectStyle, width: 220 }}
+            style={{ padding: '6px 10px', fontSize: 12, outline: 'none', width: 220 }}
           />
         </div>
         <div>
-          <div style={labelStyle}>Baseline run</div>
+          <div style={{ marginBottom: 8 }}>
+            <Label style={{ fontWeight: 400 }}>Baseline run</Label>
+          </div>
           <select value={baselineRunId} onChange={e => setBaselineRunId(e.target.value)} style={{ ...selectStyle, width: 260 }}>
             <option value="">None (first run for this suite)</option>
             {runs.map(r => (
@@ -154,10 +150,17 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
             ))}
           </select>
         </div>
-        <button onClick={trigger} disabled={!subjectVersion} style={buttonStyle}>Run suite</button>
+        <Button
+          variant="primary"
+          onClick={trigger}
+          disabled={!subjectVersion}
+          style={{ padding: '6px 14px', width: 'auto', fontSize: 12, background: colors.traceBlue, color: colors.crust }}
+        >
+          Run suite
+        </Button>
       </div>
-      {error && <p style={{ color: '#f38ba8', fontSize: 12, marginTop: 10 }}>{error}</p>}
-    </div>
+      {error && <StateText tone="error" style={{ fontSize: 12, marginTop: 10 }}>{error}</StateText>}
+    </Panel>
   )
 }
 
@@ -204,8 +207,10 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={panelStyle}>
-        <div style={labelStyle}>Run</div>
+      <Panel>
+        <div style={{ marginBottom: 8 }}>
+          <Label style={{ fontWeight: 400 }}>Run</Label>
+        </div>
         <select value={selectedRunId ?? ''} onChange={e => onSelectRun(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
           <option value="" disabled>Select a run…</option>
           {runs.map(r => (
@@ -214,21 +219,23 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             </option>
           ))}
         </select>
-      </div>
+      </Panel>
 
       {resultsError && (
-        <div style={{ ...panelStyle, color: '#6c7086', fontSize: 12 }}>{resultsError}</div>
+        <Panel style={{ color: colors.overlay0, fontSize: 12 }}>{resultsError}</Panel>
       )}
 
       {results && (
-        <div style={panelStyle}>
-          <div style={labelStyle}>Pass/Fail Summary</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#cdd6f4' }}>
+        <Panel>
+          <div style={{ marginBottom: 8 }}>
+            <Label style={{ fontWeight: 400 }}>Pass/Fail Summary</Label>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>
             {passCount} / {results.results.length} passed
           </div>
           <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ color: '#6c7086', textAlign: 'left' }}>
+              <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
                 <th style={{ padding: '4px 8px' }}>Case</th>
                 <th style={{ padding: '4px 8px' }}>Scorer</th>
                 <th style={{ padding: '4px 8px' }}>Score</th>
@@ -237,33 +244,35 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             </thead>
             <tbody>
               {results.results.map(r => (
-                <tr key={r.evalCaseId} style={{ borderTop: '1px solid #313244' }}>
-                  <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{r.evalCaseId.slice(0, 8)}…</td>
-                  <td style={{ padding: '4px 8px', color: '#6c7086' }}>{r.scorerType}</td>
-                  <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{r.score}</td>
-                  <td style={{ padding: '4px 8px', color: r.passed ? '#a6e3a1' : '#f38ba8' }}>
+                <tr key={r.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                  <td style={{ padding: '4px 8px', color: colors.text }}>{r.evalCaseId.slice(0, 8)}…</td>
+                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{r.scorerType}</td>
+                  <td style={{ padding: '4px 8px', color: colors.text }}>{r.score}</td>
+                  <td style={{ padding: '4px 8px', color: r.passed ? colors.signalGreen : colors.alertRed }}>
                     {r.passed ? 'Pass' : 'Fail'}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
 
       {regression && (
-        <div style={panelStyle}>
-          <div style={labelStyle}>Regression vs. Baseline</div>
-          <div style={{ fontSize: 13, color: '#cdd6f4', marginBottom: 10 }}>
+        <Panel>
+          <div style={{ marginBottom: 8 }}>
+            <Label style={{ fontWeight: 400 }}>Regression vs. Baseline</Label>
+          </div>
+          <div style={{ fontSize: 13, color: colors.text, marginBottom: 10 }}>
             Pass rate {(regression.currentPassRate * 100).toFixed(0)}% vs baseline{' '}
             {(regression.baselinePassRate * 100).toFixed(0)}%{' '}
-            <span style={{ color: regression.passRateDelta < 0 ? '#f38ba8' : '#a6e3a1' }}>
+            <span style={{ color: regression.passRateDelta < 0 ? colors.alertRed : colors.signalGreen }}>
               ({regression.passRateDelta >= 0 ? '+' : ''}{(regression.passRateDelta * 100).toFixed(0)}pp)
             </span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ color: '#6c7086', textAlign: 'left' }}>
+              <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
                 <th style={{ padding: '4px 8px' }}>Case</th>
                 <th style={{ padding: '4px 8px' }}>Current</th>
                 <th style={{ padding: '4px 8px' }}>Baseline</th>
@@ -273,22 +282,22 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             </thead>
             <tbody>
               {regression.caseDiffs.map(d => (
-                <tr key={d.evalCaseId} style={{ borderTop: '1px solid #313244' }}>
-                  <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{d.evalCaseId.slice(0, 8)}…</td>
-                  <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{d.currentScore}</td>
-                  <td style={{ padding: '4px 8px', color: '#6c7086' }}>{d.baselineScore ?? '—'}</td>
-                  <td style={{ padding: '4px 8px', color: '#6c7086' }}>{d.scoreDelta ?? '—'}</td>
-                  <td style={{ padding: '4px 8px', color: d.regressed ? '#f38ba8' : d.isNewCase ? '#f9e2af' : '#a6e3a1' }}>
+                <tr key={d.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                  <td style={{ padding: '4px 8px', color: colors.text }}>{d.evalCaseId.slice(0, 8)}…</td>
+                  <td style={{ padding: '4px 8px', color: colors.text }}>{d.currentScore}</td>
+                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{d.baselineScore ?? '—'}</td>
+                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{d.scoreDelta ?? '—'}</td>
+                  <td style={{ padding: '4px 8px', color: d.regressed ? colors.alertRed : d.isNewCase ? colors.beaconYellow : colors.signalGreen }}>
                     {d.regressed ? 'Regressed' : d.isNewCase ? 'New case' : 'OK'}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
       {regressionError && (
-        <div style={{ ...panelStyle, color: '#6c7086', fontSize: 12 }}>{regressionError}</div>
+        <Panel style={{ color: colors.overlay0, fontSize: 12 }}>{regressionError}</Panel>
       )}
     </div>
   )
@@ -349,26 +358,36 @@ function PostHocView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={panelStyle}>
-        <div style={labelStyle}>Score historical traces — judge-only, no re-execution</div>
+      <Panel>
+        <div style={{ marginBottom: 8 }}>
+          <Label style={{ fontWeight: 400 }}>Score historical traces — judge-only, no re-execution</Label>
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <div style={labelStyle}>From</div>
+            <div style={{ marginBottom: 8 }}>
+              <Label style={{ fontWeight: 400 }}>From</Label>
+            </div>
             <input type="datetime-local" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={selectStyle} />
           </div>
           <div>
-            <div style={labelStyle}>To</div>
+            <div style={{ marginBottom: 8 }}>
+              <Label style={{ fontWeight: 400 }}>To</Label>
+            </div>
             <input type="datetime-local" value={dateTo} onChange={e => setDateTo(e.target.value)} style={selectStyle} />
           </div>
           <div>
-            <div style={labelStyle}>Agent type</div>
+            <div style={{ marginBottom: 8 }}>
+              <Label style={{ fontWeight: 400 }}>Agent type</Label>
+            </div>
             <select value={agentType} onChange={e => setAgentType(e.target.value)} style={selectStyle}>
               <option value="">Any</option>
               {agentTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <div style={labelStyle}>Max traces</div>
+            <div style={{ marginBottom: 8 }}>
+              <Label style={{ fontWeight: 400 }}>Max traces</Label>
+            </div>
             <input
               type="number" value={maxTraces} onChange={e => setMaxTraces(e.target.value)}
               style={{ ...selectStyle, width: 90 }}
@@ -376,60 +395,75 @@ function PostHocView() {
           </div>
         </div>
         <div style={{ marginTop: 10 }}>
-          <div style={labelStyle}>Rubric</div>
-          <textarea
+          <div style={{ marginBottom: 8 }}>
+            <Label style={{ fontWeight: 400 }}>Rubric</Label>
+          </div>
+          <TextArea
             value={rubric}
             onChange={e => setRubric(e.target.value)}
             placeholder="e.g. Was the tool call appropriate given the user's request?"
             rows={3}
-            style={{ ...selectStyle, width: '100%', resize: 'vertical' }}
+            style={{ padding: '6px 10px', fontSize: 12, outline: 'none', width: '100%' }}
           />
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: '#cdd6f4' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: colors.text }}>
           <input type="checkbox" checked={forceRescore} onChange={e => setForceRescore(e.target.checked)} />
           Force re-score (supersedes any prior post-hoc score for the same trace instead of skipping it)
         </label>
-        <button onClick={submit} disabled={!rubric || !dateFrom || !dateTo} style={{ ...buttonStyle, marginTop: 10 }}>
+        <Button
+          variant="primary"
+          onClick={submit}
+          disabled={!rubric || !dateFrom || !dateTo}
+          style={{ padding: '6px 14px', width: 'auto', fontSize: 12, background: colors.traceBlue, color: colors.crust, marginTop: 10 }}
+        >
           Submit post-hoc scoring request
-        </button>
-        {error && <p style={{ color: '#f38ba8', fontSize: 12, marginTop: 10 }}>{error}</p>}
-      </div>
+        </Button>
+        {error && <StateText tone="error" style={{ fontSize: 12, marginTop: 10 }}>{error}</StateText>}
+      </Panel>
 
       {runId && (
-        <div style={panelStyle}>
+        <Panel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={labelStyle}>Run {runId.slice(0, 8)}…</div>
-            <button onClick={refreshSummary} style={buttonStyle}>Refresh summary</button>
+            <div style={{ marginBottom: 8 }}>
+              <Label style={{ fontWeight: 400 }}>Run {runId.slice(0, 8)}…</Label>
+            </div>
+            <Button
+              variant="primary"
+              onClick={refreshSummary}
+              style={{ padding: '6px 14px', width: 'auto', fontSize: 12, background: colors.traceBlue, color: colors.crust }}
+            >
+              Refresh summary
+            </Button>
           </div>
-          {summaryError && <p style={{ color: '#6c7086', fontSize: 12 }}>{summaryError}</p>}
+          {summaryError && <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{summaryError}</StateText>}
           {summary && (
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 13, color: '#cdd6f4' }}>
+              <div style={{ fontSize: 13, color: colors.text }}>
                 Status: {summary.status} — {summary.scoredCount} scored, {summary.skippedAlreadyScoredCount} skipped
                 (already scored)
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#cdd6f4', marginTop: 6 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: 6 }}>
                 {(summary.passRate * 100).toFixed(0)}% pass rate ({summary.passedCount}/{summary.scoredCount})
               </div>
               <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ color: '#6c7086', textAlign: 'left' }}>
+                  <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
                     <th style={{ padding: '4px 8px' }}>Score range</th>
                     <th style={{ padding: '4px 8px' }}>Count</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.scoreDistribution.map(b => (
-                    <tr key={b.range} style={{ borderTop: '1px solid #313244' }}>
-                      <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{b.range}</td>
-                      <td style={{ padding: '4px 8px', color: '#cdd6f4' }}>{b.count}</td>
+                    <tr key={b.range} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                      <td style={{ padding: '4px 8px', color: colors.text }}>{b.range}</td>
+                      <td style={{ padding: '4px 8px', color: colors.text }}>{b.count}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
+        </Panel>
       )}
     </div>
   )

@@ -15,10 +15,15 @@
 //   illustration of a *destructive* one-off (explicitly out of scope here
 //   per the no-danger-variant decision above), not the generic secondary
 //   color.
+//
+// Optional `style` merges over (wins over) the variant/disabled-computed
+// style, matching Input/TextArea's existing override pattern — lets a
+// caller override e.g. just the enabled-state text color without needing
+// to know the disabled-state values.
 
 import { colors, radii, typography, buttonGhostBorderAlphaSuffix } from '../theme/tokens'
 
-export function Button({ variant = 'primary', disabled, onClick, type = 'button', children }) {
+export function Button({ variant = 'primary', disabled, onClick, type = 'button', children, style }) {
   const variantStyle =
     variant === 'ghost'
       ? {
@@ -45,6 +50,7 @@ export function Button({ variant = 'primary', disabled, onClick, type = 'button'
         fontSize: typography.body.fontSize,
         cursor: disabled ? 'not-allowed' : 'pointer',
         ...variantStyle,
+        ...style,
       }}
     >
       {children}

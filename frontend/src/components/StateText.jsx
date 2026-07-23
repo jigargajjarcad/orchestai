@@ -9,15 +9,19 @@
 // text color (App.jsx's MemoriesPage uses color: '#585b70' for both).
 // tone='error': alert-red, DESIGN.md's "soft error tone" for inline error
 // banners/validation text (distinct from the harder Status Failed tone).
+//
+// Optional `style` merges over (wins over) the tone-driven base style,
+// matching Input/TextArea's existing override pattern.
 
 import { colors, typography } from '../theme/tokens'
 
-export function StateText({ children, tone = 'muted' }) {
+export function StateText({ children, tone = 'muted', style }) {
   return (
     <div
       style={{
         color: tone === 'error' ? colors.alertRed : colors.surface2,
         fontSize: typography.body.fontSize,
+        ...style,
       }}
     >
       {children}

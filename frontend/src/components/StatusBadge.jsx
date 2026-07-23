@@ -8,6 +8,12 @@
 // Covers all six execution-status values in use across the app (App.jsx's
 // STATUS_COLORS + ObservabilityPage.jsx's STATUS_COLORS): Pending, Running,
 // WaitingForApproval, Completed, Failed, Skipped.
+//
+// Optional `style` merges over (wins over) the base style object, matching
+// Input/TextArea's existing override pattern — needed for Task 3 call sites
+// that require pixel parity with today's one-off inline styles. Uppercasing
+// is CSS (`textTransform`), not a JS `.toUpperCase()` call, specifically so
+// `style={{ textTransform: 'none' }}` can opt a call site out of it.
 
 import { typography, radii, statusBadgeColors } from '../theme/tokens'
 
@@ -20,10 +26,10 @@ const STATUS_TO_PALETTE_KEY = {
   Skipped: 'skipped',
 }
 
-export function StatusBadge({ status, label }) {
+export function StatusBadge({ status, label, style }) {
   const paletteKey = STATUS_TO_PALETTE_KEY[status] ?? 'pending'
   const palette = statusBadgeColors[paletteKey]
-  const text = (label ?? status ?? '').toString().toUpperCase()
+  const text = (label ?? status ?? '').toString()
 
   return (
     <span
@@ -41,6 +47,11 @@ export function StatusBadge({ status, label }) {
         // the badge specifically at "0.05-0.06em" (.ds-status-badge uses
         // 0.06em exactly), distinct from the general Label style.
         letterSpacing: '0.06em',
+        // CSS-driven (not .toUpperCase() in JS) so a `style` override can
+        // opt a call site out of uppercasing via `textTransform: 'none'`
+        // without needing to also change the text it passes in.
+        textTransform: 'uppercase',
+        ...style,
       }}
     >
       {text}

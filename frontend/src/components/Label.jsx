@@ -7,10 +7,13 @@
 // full-brightness text." overlay0 is used here to match the codebase's
 // existing label usages (e.g. .impeccable/design.json's ds-panel-label,
 // App.jsx's "Agent Memories" eyebrow).
+//
+// Optional `style` merges over (wins over) the base style, matching
+// Input/TextArea's existing override pattern.
 
 import { colors, typography } from '../theme/tokens'
 
-export function Label({ children }) {
+export function Label({ children, style }) {
   return (
     <span
       style={{
@@ -21,6 +24,7 @@ export function Label({ children }) {
         letterSpacing: typography.label.letterSpacing,
         color: colors.overlay0,
         textTransform: 'uppercase',
+        ...style,
       }}
     >
       {children}

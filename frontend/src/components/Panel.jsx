@@ -12,6 +12,11 @@
 // 40` border, not DESIGN.md's stated-but-uncorrected 40% intent; see
 // tokens.js for the full resolution. Status base colors mirror
 // App.jsx/ObservabilityPage.jsx's STATUS_COLORS maps.
+//
+// Optional `style` merges over (wins over) every computed property above,
+// including padding — matching Input/TextArea's existing override pattern.
+// Needed for Task 3 call sites that require pixel parity with today's
+// one-off inline styles that this component is replacing.
 
 import { colors, radii, panelAccentBorderAlphaSuffix } from '../theme/tokens'
 
@@ -24,7 +29,7 @@ const ACCENT_COLOR = {
   Skipped: colors.overlay0,
 }
 
-export function Panel({ children, accentStatus }) {
+export function Panel({ children, accentStatus, style }) {
   const accent = accentStatus ? ACCENT_COLOR[accentStatus] : null
 
   return (
@@ -32,9 +37,10 @@ export function Panel({ children, accentStatus }) {
       style={{
         background: colors.base,
         border: `1px solid ${accent ? `${accent}${panelAccentBorderAlphaSuffix}` : colors.surface0}`,
-        ...(accent ? { borderLeft: `3px solid ${accent}` } : null),
         borderRadius: radii.xl,
         padding: '16px 18px',
+        ...(accent ? { borderLeft: `3px solid ${accent}` } : null),
+        ...style,
       }}
     >
       {children}

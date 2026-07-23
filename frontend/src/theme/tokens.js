@@ -179,4 +179,45 @@ export const statusBadgeColors = {
     border: `${colors.statusWarning}${statusBadgeAlphaSuffix.border}`,
     text: colors.statusWarning,
   },
+  // 'Skipped' isn't part of DESIGN.md's Status palette (it's a Two-Palette-Rule
+  // exception the running app already makes: ObservabilityPage.jsx's
+  // STATUS_COLORS maps Skipped to overlay0 (#6c7086), a neutral text tier,
+  // not a hard Status tone) — added here so StatusBadge (Task 2) can cover
+  // all six execution-status values without inventing a color of its own.
+  skipped: {
+    background: `${colors.overlay0}${statusBadgeAlphaSuffix.background}`,
+    border: `${colors.overlay0}${statusBadgeAlphaSuffix.border}`,
+    text: colors.overlay0,
+  },
 }
+
+// ---------------------------------------------------------------------------
+// Panel status-accent border alpha (Task 2 addition)
+//
+// DESIGN.md §5 Cards/Panels (line 217) states the outer border on a
+// status-accented panel ("an agent execution card border-tinted by its own
+// status color") is the status color at "40% alpha". .impeccable/design.json's
+// worked Status-Accented Card CSS example instead shows
+// `rgba(22, 163, 74, 0.25)` (25%) — which traces back to the running app's
+// `${statusColor}40` string-concatenation in AgentCard/ManagerReviewCard
+// (App.jsx): the literal two-char suffix "40" is hex, not a percentage, so
+// it renders as 64/255 = 25.1% alpha, not the intended 40%. This is the same
+// class of hex-suffix-as-decimal-string drift already resolved above for the
+// status badge (18% worked example vs. the twice-stated, round 20% figure).
+// Applying the identical resolution methodology: favor the explicit,
+// unhedged documented percentage (40%) over the buggy rendered artifact.
+//   40% of 255 = 0.40 * 255 = 102.0 -> 102 = 0x66
+// ---------------------------------------------------------------------------
+export const panelAccentBorderAlphaSuffix = '66' // 40% alpha
+
+// ---------------------------------------------------------------------------
+// Button ghost-variant border alpha (Task 2 addition)
+//
+// DESIGN.md §5 Buttons: "Secondary / Ghost: transparent background, 1px
+// colored border at 50% alpha ... text matches the border's base color."
+// No badge-style drift here — 50% of 255 rounds to a clean value, and it
+// matches the hex suffix already used correctly elsewhere in the app for a
+// 50%-alpha border (e.g. App.jsx's Cancel-adjacent Reject button pattern).
+//   50% of 255 = 0.50 * 255 = 127.5 -> round -> 128 = 0x80
+// ---------------------------------------------------------------------------
+export const buttonGhostBorderAlphaSuffix = '80' // 50% alpha

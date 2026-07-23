@@ -12,6 +12,22 @@
 //
 // Optional `style` merges over (wins over) the base style, matching
 // Input/TextArea's existing override pattern.
+//
+// NOTE re: `display: 'block'` — tried and reverted (Task 3 follow-up).
+// Input/TextArea/MemoriesPage all wrap this component in their own
+// `<div style={{marginBottom:4}}>`. Forcing the inner span block-level did
+// close the ~2px glyph-position gap versus the original bare
+// `<label style={{display:'block',...}}>` it replaced, but at a much larger
+// cost: it removed an inline-formatting-context "strut" effect that was
+// keeping the wrapping div's total height close to the original single
+// block element's — with it gone, each Label instance's contributed row
+// height collapsed by ~13px, cascading into a ~26px upward shift of
+// everything below two stacked Label usages (measured directly: the
+// Playground's submit button moved from y=356 to y=330). That's a bigger,
+// more visible regression than the 2px it fixed, so it was reverted. Fixing
+// this properly likely needs a change to the wrapping div (Input.jsx/
+// MemoriesPage), not just this component in isolation — left as a known,
+// precisely-measured, open gap rather than accepting a worse regression.
 
 import { colors, typography } from '../theme/tokens'
 

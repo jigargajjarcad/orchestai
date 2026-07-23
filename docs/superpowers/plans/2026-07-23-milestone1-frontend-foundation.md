@@ -58,17 +58,25 @@ string or px number in each JSX file.
 original plan claimed this based on a class-name/variable grep, which cannot detect bare
 element-selector leakage. Task 1's implementer verified real rendering via `getComputedStyle`
 on the built app and found it splits into two groups:
-- **Genuinely dead, safe to remove:** `#root`'s fixed-width/`text-align:center` block,
-  `#social .button-icon` (no `#social` element exists anywhere), the `@media (max-width: 1024px)`
-  responsive `font-size` override nested under `:root`, and `p { margin: 0 }` (a true no-op —
-  `App.css`'s `* { margin: 0 }` already wins on specificity).
-- **Live, currently affecting real rendering — NOT removed in Milestone 1 (see the two new
-  deferred decisions in §8):** the `:root` color/font custom properties, the `h1, h2` element
-  selectors, the `code` element selector, and the `@media (prefers-color-scheme: dark)` block
-  that redefines those same custom properties. `App.jsx`'s `<h1>` and `ApiKeyPrompt.jsx`'s
-  `<h2>` only set some inline properties (not `font-family`/`letter-spacing`), and
-  `EvalsPage.jsx`'s `<code>` snippet (line 71) has no inline style at all — so these "leftover"
-  rules fill in the properties inline styles don't cover, and currently render live.
+- **Genuinely dead, safe to remove (removed in Task 1):** `#social .button-icon` (no `#social`
+  element exists anywhere), the `@media (max-width: 1024px)` responsive `font-size` override
+  nested under `:root`, and `p { margin: 0 }` (a true no-op — `App.css`'s `* { margin: 0 }`
+  already wins on specificity).
+- **Live, currently affecting real rendering — NOT removed in Milestone 1:** the `:root`
+  color/font custom properties, the `h1, h2` element selectors, the `code` element selector, and
+  the `@media (prefers-color-scheme: dark)` block that redefines those same custom properties
+  (two deferred decisions in §8) — plus a third rule the original plan also mis-assumed was
+  dead: **`#root`'s `width: 1126px` / centering / `border-inline` block**. `App.jsx`'s `<h1>`
+  and `ApiKeyPrompt.jsx`'s `<h2>` only set some inline properties (not `font-family`/
+  `letter-spacing`), and `EvalsPage.jsx`'s `<code>` snippet (line 71) has no inline style at all,
+  so the `h1`/`h2`/`code` rules fill in what inline styles don't cover. `#root`'s rule is
+  different in kind, not a DESIGN.md conflict: removing it was verified (via a before/after
+  screenshot diff) to shift the entire app ~157px and drop the centered column and its border —
+  this is simply confirmed load-bearing, current, correct layout, already reflected in every
+  approved baseline screenshot. It does not conflict with any documented rule and no visual
+  change is being contemplated for it, so unlike the two items in §8 it needed no human decision
+  — it is left in place because it is already what "correct" looks like today, not because a
+  fix is being deferred.
 
 **[Fact]** `frontend/src/App.css` (11 lines) is a minimal, still-relevant global reset (box-
 sizing, body background/color/font-family) — this one *is* live and load-bearing.
@@ -279,16 +287,22 @@ style sourcing.
   named clearly (e.g. `statusBadgeAlpha = { background: '33', border: '99' }` as suffix
   constants, or fully precomputed per-color strings — implementer's choice, whichever is
   cleanest to consume from `StatusBadge` in Task 2).
-- **`index.css` cleanup — corrected scope (post-discovery):** `index.css` is **not** entirely
-  dead. Verify each rule's live/dead status by real `getComputedStyle` output on the built app
-  (a class-name/variable grep is not sufficient — it cannot detect bare element-selector
-  leakage), not by assumption. Delete only: `#root`'s fixed-width/`text-align:center` block,
-  `#social .button-icon`, the `@media (max-width: 1024px)` responsive `font-size` override
-  nested under `:root`, and `p { margin: 0 }` (a true no-op given `App.css`'s
+- **`index.css` cleanup — corrected scope (post-discovery, twice-corrected — see below):**
+  `index.css` is **not** entirely dead. Verify each rule's live/dead status by real
+  `getComputedStyle` output on the built app (a class-name/variable grep is not sufficient — it
+  cannot detect bare element-selector leakage), not by assumption — re-verify even the rules this
+  brief calls "safe," since this exact plan already got one of them wrong once (`#root`, below).
+  Delete only: `#social .button-icon`, the `@media (max-width: 1024px)` responsive `font-size`
+  override nested under `:root`, and `p { margin: 0 }` (a true no-op given `App.css`'s
   `* { margin: 0 }`). **Do NOT delete or modify** the `:root` color/font custom properties, the
-  `h1, h2` selectors, the `code` selector, or the `@media (prefers-color-scheme: dark)` block —
-  these are live today (they fill in `font-family`/`letter-spacing`/colors that
-  `App.jsx`'s `<h1>`, `ApiKeyPrompt.jsx`'s `<h2>`, and `EvalsPage.jsx`'s `<code>` don't set
+  `h1, h2` selectors, the `code` selector, the `@media (prefers-color-scheme: dark)` block, or
+  `#root`'s own `width: 1126px`/centering/`border-inline` rule — the last of these is
+  **not** a DESIGN.md conflict like the others; it is simply confirmed, currently load-bearing
+  layout (verified via before/after screenshot diff: removing it shifts the app ~157px and drops
+  the centered column/border) that is already what every approved baseline screenshot shows, so
+  it needs no decision, just no touching. The `h1`/`h2`/`code`/`:root`-vars group is different —
+  those fill in `font-family`/`letter-spacing`/colors that `App.jsx`'s `<h1>`,
+  `ApiKeyPrompt.jsx`'s `<h2>`, and `EvalsPage.jsx`'s `<code>` don't set
   inline) and fixing them is an approved-later, not approved-now, visual change — see the two
   deferred decisions in §8. Leaving them in place, unmodified, is correct for this task, not an
   incomplete cleanup.

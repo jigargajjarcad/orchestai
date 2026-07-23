@@ -48,14 +48,14 @@ MCP Tools → Aggregate → SSE Stream → React UI
 - Never .Result or .Wait() — always await
 
 ## Current Phase
-Phase 3 — Sports/Athlete Performance domain (MVP complete, full sample app next)
+Phase 3 — Sports/Athlete Performance domain: complete, including the full sample application
 - Weeks 1–12 (Foundation through Delivery/Operational Safety) complete — see `DECISIONS.md`
 - Phase 1 (architecture/product validation) and Phase 2 (NuGet packaging validation) complete
 - Phase 3 domain investigation complete: Sports selected as working candidate over Incident
   Investigation/Cybersecurity Investigation (both eliminated — see `docs/phase3-domain-notes.md`)
-- Sports MVP (feasibility validation, not the final sample app) complete and live-verified
+- Sports MVP (feasibility validation) and the full sample application are both complete and live-verified
 - Track B (external human validation) deliberately deferred, not completed — accepted risk
-- Next milestone: the full Sports/Athlete Performance sample application
+- No formally defined next phase at this time
 
 ## Key Differentiator
 First production-grade multi-agent CQRS framework for .NET.

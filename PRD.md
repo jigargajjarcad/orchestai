@@ -1287,7 +1287,7 @@ compounding portfolio credibility with each post rather than a one-time launch.
 > `DECISIONS.md` (ADR-017 onward), `docs/phase3-domain-notes.md`, and `docs/superpowers/plans/`.
 > The real delivered phases are: **Phase 1** = architecture/product validation (live end-to-end
 > verification of Weeks 7–12), **Phase 2** = NuGet packaging validation, **Phase 3** =
-> Sports/Athlete Performance domain investigation and sample application (current, in progress).
+> Sports/Athlete Performance domain investigation and sample application (complete).
 > The Week 7–12 content below shipped as described; this section's own historical "Phase
 > 1"/"Phase 2" headers are left as originally written, not renamed.
 

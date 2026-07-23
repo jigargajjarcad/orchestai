@@ -655,6 +655,52 @@ this milestone is the approved `StatusBadge` standardization to 20% background a
   its own intentionally-distinct treatment — the same way a future milestone must decide the
   heading and code-chip questions above.
 
+### Accepted, measured limitation (distinct in kind from the four deferred decisions above): `Label` 2px vertical position offset
+
+This is **not** another instance of the pattern above. The four items above are all *unapproved
+changes nobody decided to make* — deferred pending an explicit future decision. This one is
+different: it was actually investigated, a fix was attempted and measured, the fix was found to
+cause a strictly worse regression, and it was correctly reverted rather than accepted. What
+remains is accepted as a disproportionate-to-chase residual, not left pending a decision.
+
+- **Exact magnitude:** a consistent **2px vertical position offset**, and only that — color,
+  font-weight, and text content are all confirmed byte-identical — on exactly three `Label`
+  usages: the Task Title field label, the Prompt field label (both inside `Input`/`TextArea`),
+  and `MemoriesPage`'s "Agent Memories" eyebrow. Confirmed via a (dy,dx) shift-search: shifting
+  the "after" screenshot crop up by exactly 2px against the pre-Task-1 baseline drives the pixel
+  diff to exactly 0 in all three cases independently. **Detectable only via 3x-zoom crop
+  comparison — not perceptible at normal viewing distance** in the full-page screenshots used
+  throughout this milestone's verification.
+- **Root cause:** `Label` renders as an inline `<span>`; the original elements it replaces were
+  block-level (`<label style={{display:'block', ...}}>` for the field labels, a plain `<div>` for
+  the eyebrow). An inline element's line box computes differently inside its formatting context
+  than a block element's, which can shift where the glyph sits within an 11px-high line by a
+  couple of pixels even with identical `line-height`/font metrics otherwise.
+- **The obvious fix does not work — document this so it isn't rediscovered blind.** Adding
+  `display: 'block'` directly to `Label`'s base style was tried and measured. It does **not**
+  close the 2px gap, and it introduces a strictly worse regression: removing the inline element
+  changes the "strut" (the invisible inline-formatting-context spacing) that was incidentally
+  keeping `Input`/`TextArea`/`MemoriesPage`'s label-wrapping `<div>` at close to its original
+  height — with `display:block` applied, the submit button (and everything below the affected
+  labels) shifted a full **26px**, reproduced independently on both the Playground and Memories
+  views. This was correctly reverted rather than accepted; do not re-attempt this exact one-line
+  fix in a future milestone expecting a different result.
+- **The actual correct fix path, named for a future milestone, not forgotten:** restructuring how
+  `Label`'s vertical spacing is owned — most likely moving `marginBottom` onto `Label` itself
+  (as part of its own base style) rather than an external wrapping `<div style={{marginBottom:
+  ...}}>` at each call site (`Input.jsx`, `TextArea` in the same file, and `MemoriesPage`'s
+  eyebrow in `App.jsx`) — so the block-level behavior and the spacing are both owned by the same
+  component instead of split across it and its callers. This is real, if small, follow-up work,
+  deferred to Milestone 2/3 alongside the other four deferred/accepted findings, not resolved
+  here.
+- **Why accepted rather than pursued further:** the milestone's own regression-risk table (§10)
+  names over-engineering/disproportionate effort as a named risk alongside unintended visual
+  drift. A structural fix here means reopening already-twice-reviewed components
+  (`Label.jsx`/`Input.jsx`) with a *demonstrated* risk of a new, more visible regression (the 26px
+  shift just measured), to close a 2px, instrumented-only gap. That cost/risk balance is
+  unfavorable in a way the original seven-delta situation was not (those were real, visibly
+  different, unattempted drift with a known-good, already-proven fix mechanism available).
+
 ---
 
 ## 9. Testing and Verification Strategy

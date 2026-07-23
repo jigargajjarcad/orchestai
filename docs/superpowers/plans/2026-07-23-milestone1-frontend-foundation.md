@@ -607,6 +607,30 @@ human, decided 2026-07-23: Option 1 — defer, do not fix in Milestone 1.**
   style on this specific `<code>` element sourced from `tokens.js`, or a small shared inline-code
   treatment if more call sites like it turn up during Milestone 3's page-content work.
 
+### Deferred design decision recorded for Milestone 2/3: status-accented card border alpha
+
+Discovered during Task 2 (building `Panel`'s `accentStatus` prop, which replaces `AgentCard`/
+`ApprovalCard`/`ManagerReviewCard`'s existing status-tinted outer border in Task 3). **Resolved
+by directly applying the human's own standing rule for this milestone, not a new question:**
+"the only intentional visual change authorized in this milestone is the approved `StatusBadge`
+standardization to 20% background alpha."
+
+- The current app's `AgentCard`/`ApprovalCard`/`ManagerReviewCard` all write
+  `` border: `1px solid ${statusColor}40` `` — the literal string `"40"` is a **hex** alpha
+  suffix (64/255 ≈ 25.1% decimal), not the percentage it appears to spell out.
+- `DESIGN.md`'s prose (Cards/Panels, §5) states this border should be "40% alpha," plainly and
+  without a range or hedge — the same class of hex-vs-percentage transcription slip already
+  documented for the status-badge alpha (18% rendered vs. 20% documented) and independently
+  re-confirmed here: `.impeccable/design.json`'s own `.ds-status-card` worked CSS example uses
+  `rgba(22, 163, 74, 0.25)` — 25%, matching the buggy rendered value, not the documented 40%.
+- Unlike the badge alpha, this correction was **not** pre-approved anywhere in §8, so per the
+  milestone's standing rule it is **not** applied. `tokens.js`'s `panelAccentBorderAlphaSuffix`
+  is set to `'40'` (the literal hex suffix already in production today, ~25.1% decimal) —
+  preserving current rendering exactly, not "fixing" it to the documented-but-never-approved 40%.
+- A future milestone (2 or 3) must explicitly decide whether to correct this border alpha to
+  match `DESIGN.md`'s documented 40%, the same way a future milestone must decide the heading and
+  code-chip questions above.
+
 ---
 
 ## 9. Testing and Verification Strategy

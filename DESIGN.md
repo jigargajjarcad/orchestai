@@ -217,7 +217,7 @@ text sized to fit as much real data on screen as possible without feeling crampe
 ### Cards / Panels
 - **Corner Style:** 8px radius (`rounded.xl`) for top-level panels, 4–6px for nested rows.
 - **Background:** `base`, dropping to `mantle` one level deeper.
-- **Border:** 1px `surface0`, or a status-tinted 1px border at 40% alpha when the panel
+- **Border:** 1px `surface0`, or a status-tinted 1px border at ≈25% alpha when the panel
   itself represents a status (an agent execution card border-tinted by its own status color).
 - **Left accent:** 3px colored `border-left` on any card that carries a single dominant status
   (agent cards, approval card, manager-review card, tool-call rows) — see Elevation's named exception.

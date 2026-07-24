@@ -268,7 +268,7 @@ function MemoriesPage({ onDelete }) {
       )}
 
       {memories == null ? (
-        <StateText tone="muted">Loading…</StateText>
+        <StateText tone="muted">Loading memories…</StateText>
       ) : memories.length === 0 ? (
         <StateText tone="muted">No memories saved yet — run a task and agents will start remembering things.</StateText>
       ) : (
@@ -740,8 +740,13 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <StateText tone="muted" style={{ color: colors.surface0 }}>
-                {isActive ? 'Waiting for agents to complete…' : 'Submit a task to see results here.'}
+              <StateText tone="muted" style={{ color: colors.surface0, ...(isActive ? {} : { maxWidth: 480, textAlign: 'left' }) }}>
+                {isActive ? 'Waiting for agents to complete…' : (
+                  <>
+                    <div>Fill in a task on the left and click Run Agents. Per-agent cards will stream in as they work, and the final result renders here when they finish.</div>
+                    <div style={{ marginTop: spacing.md }}>Once you've run a task or two: Observability has the cost and timeline breakdown for every run, and Evals runs scored test suites against known-good outputs.</div>
+                  </>
+                )}
               </StateText>
             </div>
           )}

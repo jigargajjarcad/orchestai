@@ -826,11 +826,16 @@ render as an actual grid, verified on a manually-authored multi-element sample (
 verification note — no real `finalResult` is reachable in this environment), not just "the
 package installed."
 
-**A22/A23/A24 — Loading/Empty/Error states:** copy revised where it was raw developer-facing
-text (e.g. `EvalsPage`'s suite-creation hint); consistent treatment applied via `StateText`,
-lightweight only — improved copy and token-consistent styling, no skeleton/spinner/animation
-system (§8 decision 9); the Playground's default placeholder is part of this, per the backlog's
-own A23 cross-reference.
+**A22/A23/A24 — Loading/Empty/Error states:** every `StateText` call site across `App.jsx`
+(including `MemoriesPage`, defined inline there), `ObservabilityPage.jsx`, and `EvalsPage.jsx`
+reviewed; copy revised only where it was genuinely unclear raw developer-facing text (concretely:
+`MemoriesPage`'s bare "Loading…" → "Loading memories…", and the Playground's default placeholder
+per the backlog's own A23 cross-reference) — sites that were already clear were deliberately left
+unchanged, consistent, token-based styling via `StateText`, lightweight only, no skeleton/spinner/
+animation system (§8 decision 9). **`EvalsPage.jsx`'s empty-suite copy is explicitly excluded
+from this item** — §8 decision 7 keeps `EvalsPage.jsx` untouched in its entirety in Milestone 2
+(not just the `<code>` chip's styling), so that file's copy stays deferred to the same later
+milestone as the rest of decision 7's finding, not revised here.
 
 **A25 — Accessibility baseline:** `aria-current`/equivalent on the active nav item, `aria-label`s
 on icon-bearing interactive elements, and a visible `:focus-visible` treatment — verified via

@@ -618,16 +618,13 @@ export default function App() {
               )}
             </>
           )}
-          <span
-            role="button"
-            tabIndex={0}
+          <button
             onClick={() => { clearApiKey(); setKeySet(false) }}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); clearApiKey(); setKeySet(false) } }}
             className="focus-ring"
-            style={{ fontSize: 11, color: colors.overlay0, cursor: 'pointer' }}
+            style={{ fontSize: 11, color: colors.overlay0, cursor: 'pointer', background: 'transparent', border: 'none', padding: 0, font: 'inherit' }}
           >
             Change key
-          </span>
+          </button>
         </div>
       </div>
 

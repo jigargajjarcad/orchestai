@@ -12,6 +12,7 @@ import { Input, TextArea } from './components/Input'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
 import { Label } from './components/Label'
+import { useRouting } from './hooks/useRouting'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
@@ -321,7 +322,7 @@ export default function App() {
   const [approvalRequest, setApprovalRequest] = useState(null)
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
-  const [view, setView] = useState('playground')
+  const { view, navigate } = useRouting()
   const [memoryCounts, setMemoryCounts] = useState({})
   const [memoryBaseline, setMemoryBaseline] = useState({})
   const [savedMemories, setSavedMemories] = useState({})
@@ -580,16 +581,16 @@ export default function App() {
         </div>
 
         <Nav>
-          <NavItem active={view === 'playground'} onClick={() => setView('playground')}>
+          <NavItem active={view === 'playground'} onClick={() => navigate('playground')}>
             Playground
           </NavItem>
-          <NavItem active={view === 'memories'} onClick={() => setView('memories')}>
+          <NavItem active={view === 'memories'} onClick={() => navigate('memories')}>
             🧠 Memories
           </NavItem>
-          <NavItem active={view === 'observability'} onClick={() => setView('observability')}>
+          <NavItem active={view === 'observability'} onClick={() => navigate('observability')}>
             📊 Observability
           </NavItem>
-          <NavItem active={view === 'evals'} onClick={() => setView('evals')}>
+          <NavItem active={view === 'evals'} onClick={() => navigate('evals')}>
             🎯 Evals
           </NavItem>
         </Nav>

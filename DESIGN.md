@@ -150,7 +150,7 @@ text — the two systems read as different signals and mixing them erodes that d
 
 **The One Accent Rule.** Trace Blue is the only color used for interactive affordances
 (buttons, links, focus), with one named exception: a destructive or reject action (e.g. a
-Reject or Delete button) may use Alert Red instead, matching the Button section's own
+Reject or Delete button) may use Status Failed instead, matching the Button section's own
 destructive-ghost pattern below — this is the only other color permitted on an interactive
 affordance. Trace Blue appears on a small fraction of any screen; its rarity is what makes
 it register as "click here" rather than decoration.

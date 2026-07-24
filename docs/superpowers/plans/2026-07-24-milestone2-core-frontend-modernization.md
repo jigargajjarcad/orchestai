@@ -848,6 +848,184 @@ classification standard, not glossed over as equivalent to a live check.
 
 ---
 
-*Investigation and planning only. No source/application files were modified. No worktree was
-created. `main`/`origin/main` remain unchanged at `4af817c`. Nothing was committed or pushed.
-Awaiting review and explicit approval before any Milestone 2 implementation begins.*
+## 14. Implementation Task Breakdown
+
+Approved 2026-07-24: all ten §8 decisions final, §8a content proposal approved. This section
+operationalizes §5/§7/§7.1/§8/§8a into discrete units for `subagent-driven-development`. Task
+order matches §7 exactly. Every task inherits these global constraints (repeated in each task's
+dispatch, not just here):
+
+- No new npm dependencies except `remark-gfm` (Task 4 only, §8 decision 5).
+- Do not modify `AgentCard`, `ToolCallRow`, `ApprovalCard`, `ManagerReviewCard`, `MemoriesPage`
+  table body, or final-result markdown rendering logic — those are A9-A21-adjacent and out of
+  scope (§2, §10).
+- Do not touch `EvalsPage.jsx`'s `<code>` chip styling (§8 decision 7, stays deferred).
+- Do not add webfont loading (§8 decision 10, stays deferred).
+- Do not add sub-tab URL routing for `ObservabilityPage`/`EvalsPage` internal `SubNav` state
+  (§5.1a, §8 decision 2) — that state stays local `useState`, untouched in shape or behavior.
+- Styling: inline `style` objects only, consistent with the existing codebase convention — no
+  CSS Modules/CSS-in-JS/Tailwind (§5.2, §6).
+- Preserve all existing data flow, API calls, SSE handling, and business logic byte-for-byte
+  unless a task explicitly says otherwise.
+
+### Task 1: App shell foundation (A3/A6) — header/nav reflow, title fix, h1/h2 typography fix
+
+**Scope (§5.3, §8 decision 6, §3.2):**
+1. `frontend/index.html:7` — fix `<title>frontend</title>` to `<title>OrchestAI</title>`.
+2. `frontend/src/index.css:61-80` — the `h1, h2 { font-family: var(--heading); ... }` rule
+   currently leaks a non-mono font-family/letter-spacing onto `App.jsx`'s `<h1>` (line 578) and
+   `ApiKeyPrompt.jsx`'s `<h2>` (line 17). Fix scope is **exactly**: align this rule's
+   `font-family` with the app's mono token stack (reuse whatever token/constant
+   `frontend/src/theme/tokens.js` already exposes for typography — do not hardcode a new font
+   string if a token exists) and correct the `letter-spacing` values so they make sense for a
+   monospace face (the current `-1.68px`/`-0.24px` values were tuned for a proportional font).
+   **Do not** touch `font-size`, `margin`, `line-height`, or any other property in that CSS
+   block. **Do not** touch `ApiKeyPrompt.jsx`'s outer `<div>`'s `fontFamily: 'sans-serif'`
+   (line 16) — that stays exactly as-is, a separate, still-deferred issue (do not "fix it while
+   you're in there").
+3. Header/nav reflow onto shared components: confirm `App.jsx:576-608`'s header (logo/title,
+   `Nav`/`NavItem`, task-status area) is already fully on Milestone 1's component system — it
+   should be, per §3.1's correction, so this is a verification step, not new restyling work. If
+   you find anything in the header still using a hardcoded color/spacing value that has a token
+   equivalent, flag it in your report rather than silently changing it (Milestone 2 is not a
+   general restyle pass).
+
+**Do NOT do in this task:** webfont loading (decision 10), any change to `NavItem`/`Nav`'s
+component API (routing wiring is Task 2), any A7/A8 content (Task 7), any EvalsPage change.
+
+**Verification:** live screenshot/computed-style check of the header, the `<h1>` in the main
+shell, and `ApiKeyPrompt`'s `<h2>`, confirming mono font-family now renders and no other visual
+property shifted. `npm run build && npm run lint` clean (5 pre-existing warnings baseline).
+
+### Task 2: Client-side routing (A4/A6) — custom history hook, top-level views only
+
+**Scope (§5.1, §5.1a, §7.1, §8 decisions 1-2):**
+Build a small custom hook (no routing library) using native `history.pushState`/`popstate`,
+mapping exactly four paths to `App.jsx`'s existing `view` state: `/` → `playground`,
+`/memories` → `memories`, `/observability` → `observability`, `/evals` → `evals`. Replace the
+plain `useState('playground')` at `App.jsx:324` with this hook's state, keeping the existing
+conditional render (`App.jsx:610-729`) working unchanged against the same four string values.
+`NavItem` `onClick` handlers (`App.jsx:583-594`) should call the hook's navigate function instead
+of `setView` directly.
+
+**Explicitly stop at the top level.** `ObservabilityPage.jsx:594` and `EvalsPage.jsx:477`'s
+internal `SubNav` `useState` (`'timeline'`/`'suites'` defaults) are NOT part of this task — do
+not add URL segments, do not change how those components receive or manage that state, do not
+add props threading sub-tab state from `App.jsx`. This is a hard boundary (§5.1a, §8 decision 2).
+
+**Expose:** the navigate function (or the hook itself) needs to be usable from `App.jsx` for
+Task 7's A7 orientation content later — return it in a form `App.jsx` can pass down or call
+directly (e.g. `const { view, navigate } = useRouting()` at the top of the `App` component).
+Document the exact hook name/shape/return signature in your report so Task 7's brief can cite it
+precisely.
+
+**Verification:** live-verify all four top-level URLs load correctly on direct entry (deep link),
+browser back/forward moves between the four views correctly, and a hard refresh on
+`/observability` (both Vite dev server and, if feasible, a `vite preview` build) does not 404.
+
+### Task 3: Responsive layout (A5)
+
+**Scope (§5.2, §8 decisions 3-4):** a small `useViewportWidth()`-style hook (`window.innerWidth`
++ resize listener), no CSS framework. Breakpoints: ~1024px (collapse `ObservabilityPage`'s
+4-column stat grids to 2 columns) and ~768px (collapse the Playground's `380px 1fr` grid
+(`App.jsx:617`) to a single stacked column — form on top, results below — and wrap/stack the
+header row instead of overflowing). These are starting values; adjust during implementation if
+the real layouts demonstrate a need to, per §8 decision 3 — note any adjustment and why in your
+report.
+
+**Do NOT** touch phone-width layouts (A5a, out of scope) or restyle anything not directly
+involved in the grid-collapse/header-wrap behavior described above.
+
+**Verification:** live screenshots at ~1440px (baseline, no change expected), ~1024px, and
+~768px for the Playground and Observability views, confirming the described collapses occur and
+nothing else regresses.
+
+### Task 4: `remark-gfm` (A15)
+
+**Scope (§8 decision 5):** `npm install remark-gfm` in `frontend/`, wire it into the existing
+`ReactMarkdown` usage (`App.jsx:701-716`) via the `remarkPlugins` prop. This is the only task
+permitted to add a dependency.
+
+**Verification:** since no real `finalResult` can be produced live in this environment (no valid
+Anthropic key — §11.0), verify via a manually-authored markdown sample (e.g. a temporary local
+test render or a one-off script) containing a GFM table and a strikethrough, confirming both
+render correctly through the same `ReactMarkdown`/`components` config already in place. Document
+this as code-compared/structurally-verified, not live-verified, in your report — do not claim
+more than was actually exercised.
+
+### Task 5: Loading/Empty/Error copy (A22-A24)
+
+**Scope (§5.4, §8 decision 9, §8a.2):** lightweight copy/styling improvements only, using the
+existing `StateText` component — no new skeleton/spinner/animation system. Specifically:
+1. The Playground's default empty-result placeholder (`App.jsx:723`) — replace
+   `'Submit a task to see results here.'` with the exact §8a.2 copy:
+   > "Fill in a task on the left and click Run Agents. Per-agent cards will stream in as they
+   > work, and the final result renders here when they finish.
+   >
+   > Once you've run a task or two: Observability has the cost and timeline breakdown for every
+   > run, and Evals runs scored test suites against known-good outputs."
+
+   The `isActive` branch (`'Waiting for agents to complete…'`) is unchanged.
+2. Review other loading/empty/error call sites already using `StateText` across `App.jsx`,
+   `MemoriesPage.jsx`, `ObservabilityPage.jsx`, `EvalsPage.jsx` for copy clarity — improve
+   wording only where genuinely unclear (e.g. bare "Loading..." with no context on what's
+   loading), reusing `StateText`'s existing `tone` prop as-is. Do not add a new `tone` value
+   unless you find a real gap `StateText`'s current two tones (`muted`/`error`) can't express —
+   if so, flag it in your report rather than deciding unilaterally.
+
+**Do NOT** touch `EvalsPage.jsx`'s `<code>` chip (decision 7, deferred) or any A9-A21-adjacent
+component's loading/empty state (e.g. `AgentCard`'s internal states are out of scope).
+
+**Verification:** live-verify every reachable empty/loading/error state (Playground empty,
+Memories empty, Observability empty, Evals empty — whatever loads without a real agent run);
+for anything gated behind a real task completion, code-compare only, documented as such.
+
+### Task 6: Accessibility baseline (A25)
+
+**Scope (§5.4, §8 excludes A25a full audit):** `aria-current="page"` (or equivalent) on the
+active `NavItem`; `aria-label`s on icon-bearing `NavItem`s (🧠 Memories, 📊 Observability,
+🎯 Evals — the emoji alone isn't an accessible name); a visible `:focus-visible` style on
+interactive elements (`NavItem`, `Button`, `Input`/`TextArea`) that currently have none. All
+additive changes to the existing shared components — no new components, no formal WCAG AA
+audit/certification (that's A25a, deferred).
+
+**Verification:** live-verify focus-visible rendering and tab order via keyboard navigation
+through the header nav and the Playground form; inspect rendered ARIA attributes via computed
+DOM/accessibility tree, not just source-reading.
+
+### Task 7: First-run/product-entry (A7) + API-key management (A8)
+
+**Depends on Task 2 (A4) being complete and merged first — do not start before then (§7.1).**
+
+**Scope: implement §8a exactly as approved**, sections 8a.1-8a.4. Read §8a in the plan file in
+full before starting — it is the complete, approved copy and behavior spec. Key points to hold
+to precisely:
+- `ApiKeyPrompt.jsx` copy changes per 8a.1, including the note that the subtitle/body paragraphs
+  intentionally remain in the wrapper's existing sans-serif (do not "fix" this — out of scope,
+  see Task 1's exact h1/h2-only boundary).
+- Playground empty-state copy is Task 5's job (8a.2's text), not this task's — if Task 5 already
+  landed, verify it matches 8a.2's exact wording; if not yet landed, coordinate rather than
+  duplicating the change.
+- The "Change key" affordance (8a.3): a small text affordance in the header's right-hand region,
+  always visible, calling `clearApiKey()` (from `apiKey.js`) then resetting `keySet` to `false`.
+  **No new authentication logic** — this only re-triggers the existing `if (!keySet)` gate
+  (`App.jsx:568-570`). Style it like the existing muted small text at `App.jsx:599-604`, not a
+  new visual pattern.
+- No new clickable orientation links (8a.2's explicit "prose only" decision governs over §7.1's
+  earlier illustrative example of clickable `NavItem`-styled orientation elements — §8a is the
+  later, approved, more specific decision; the actual dependency on Task 2/A4 being complete
+  still holds, because the orientation prose's truthfulness depends on the other three areas
+  being genuinely reachable by then, even though this task adds no new links itself).
+
+**Verification:** live-verify the full first-run flow (no key → prompt renders with new copy →
+enter a key → lands on Playground with new orientation copy visible) and the "Change key" flow
+(click it → `clearApiKey()` fires → prompt reappears → re-entering a key works). Confirm via
+`localStorage`/memory inspection that `clearApiKey()` actually clears state, not just that the
+UI transitions.
+
+---
+
+*Milestone 2 implementation approved 2026-07-24 (all ten §8 decisions final, §8a approved).
+Executed via `subagent-driven-development` in worktree
+`worktree-milestone2-core-frontend-modernization`. Do not merge, commit to `main`, or push
+without explicit approval.*

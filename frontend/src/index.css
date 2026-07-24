@@ -97,3 +97,14 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Shared keyboard-focus indicator for interactive Trace Console components
+   (NavItem, Button, Input, TextArea) — Task 6 / A25 accessibility baseline.
+   Outline color matches theme/tokens.js's colors.traceBlue (#89b4fa), the
+   design system's single accent color for interactive affordances. Scoped
+   to :focus-visible (not :focus) so mouse/touch activation doesn't show a
+   ring — only keyboard/programmatic focus does. */
+.focus-ring:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 2px;
+}

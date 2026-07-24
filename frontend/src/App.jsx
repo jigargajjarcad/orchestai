@@ -592,13 +592,13 @@ export default function App() {
           <NavItem active={view === 'playground'} onClick={() => navigate('playground')}>
             Playground
           </NavItem>
-          <NavItem active={view === 'memories'} onClick={() => navigate('memories')}>
+          <NavItem active={view === 'memories'} onClick={() => navigate('memories')} aria-label="Memories">
             🧠 Memories
           </NavItem>
-          <NavItem active={view === 'observability'} onClick={() => navigate('observability')}>
+          <NavItem active={view === 'observability'} onClick={() => navigate('observability')} aria-label="Observability">
             📊 Observability
           </NavItem>
-          <NavItem active={view === 'evals'} onClick={() => navigate('evals')}>
+          <NavItem active={view === 'evals'} onClick={() => navigate('evals')} aria-label="Evals">
             🎯 Evals
           </NavItem>
         </Nav>

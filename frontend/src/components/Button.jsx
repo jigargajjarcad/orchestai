@@ -42,6 +42,7 @@ export function Button({ variant = 'primary', disabled, onClick, type = 'button'
       type={type}
       onClick={onClick}
       disabled={disabled}
+      className="focus-ring"
       style={{
         width: '100%',
         padding: '9px 0',

@@ -46,6 +46,7 @@ export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
       <input
         value={value}
         onChange={onChange}
+        className="focus-ring"
         style={{ ...fieldStyle, ...style }}
         {...rest}
       />
@@ -64,6 +65,7 @@ export function TextArea({ label, labelStyle, value, onChange, style, ...rest })
       <textarea
         value={value}
         onChange={onChange}
+        className="focus-ring"
         style={{ ...fieldStyle, resize: 'vertical', ...style }}
         {...rest}
       />

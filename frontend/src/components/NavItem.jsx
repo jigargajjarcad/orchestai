@@ -10,10 +10,12 @@
 
 import { colors, radii, spacing } from '../theme/tokens'
 
-export function NavItem({ active, onClick, children, style }) {
+export function NavItem({ active, onClick, children, style, ...rest }) {
   return (
     <button
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className="focus-ring"
       style={{
         background: active ? colors.surface0 : 'transparent',
         color: active ? colors.text : colors.overlay0,
@@ -24,6 +26,7 @@ export function NavItem({ active, onClick, children, style }) {
         cursor: 'pointer',
         ...style,
       }}
+      {...rest}
     >
       {children}
     </button>

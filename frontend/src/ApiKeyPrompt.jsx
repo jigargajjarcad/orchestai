@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { setApiKey } from './apiKey'
+import { Input } from './components/Input'
+import { Button } from './components/Button'
 
 export default function ApiKeyPrompt({ onSubmitted }) {
   const [value, setValue] = useState('')
@@ -19,27 +21,18 @@ export default function ApiKeyPrompt({ onSubmitted }) {
         Refreshing the page will require re-entering it. This is a temporary development flow,
         not a production authentication design.
       </p>
-      <input
+      <Input
         type="password"
         value={value}
         onChange={e => setValue(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && submit()}
         placeholder="orch_live_..."
         autoComplete="off"
-        style={{
-          width: '100%', padding: '10px 12px', fontSize: 14, borderRadius: 6,
-          border: '1px solid #313244', background: '#181825', color: '#cdd6f4',
-        }}
+        style={{ padding: '10px 12px', fontSize: 14 }}
       />
-      <button
-        onClick={submit}
-        style={{
-          marginTop: 12, padding: '8px 16px', borderRadius: 6, border: 'none',
-          background: '#89b4fa', color: '#11111b', fontWeight: 700, cursor: 'pointer',
-        }}
-      >
+      <Button variant="primary" onClick={submit} style={{ width: 'auto', marginTop: 12, padding: '8px 16px' }}>
         Continue
-      </button>
+      </Button>
     </div>
   )
 }

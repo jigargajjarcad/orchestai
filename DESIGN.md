@@ -149,8 +149,11 @@ harder Status set. Never use Alert Red for a "Failed" badge or Status Failed for
 text — the two systems read as different signals and mixing them erodes that distinction.
 
 **The One Accent Rule.** Trace Blue is the only color used for interactive affordances
-(buttons, links, focus). It appears on a small fraction of any screen; its rarity is what
-makes it register as "click here" rather than decoration.
+(buttons, links, focus), with one named exception: a destructive or reject action (e.g. a
+Reject or Delete button) may use Alert Red instead, matching the Button section's own
+destructive-ghost pattern below — this is the only other color permitted on an interactive
+affordance. Trace Blue appears on a small fraction of any screen; its rarity is what makes
+it register as "click here" rather than decoration.
 
 ## 3. Typography
 
@@ -188,7 +191,7 @@ drops to `mantle`, one step darker again, so the eye reads containment from lumi
 ### Named Rules
 **The Flat-By-Default Rule.** Surfaces never cast shadows. The only "elevation" cue besides
 background layering is a colored left-border (3px, `border-left`) on status-carrying cards
-(agent execution cards, approval prompts, error banners) — a deliberate, singular exception
+(agent execution cards, approval prompts, error banners, tool-call rows) — a deliberate, singular exception
 to the general "no side-stripe borders" rule, used only to attach a status color to a card's
 identity at a glance, never as decoration.
 
@@ -217,7 +220,7 @@ text sized to fit as much real data on screen as possible without feeling crampe
 - **Border:** 1px `surface0`, or a status-tinted 1px border at 40% alpha when the panel
   itself represents a status (an agent execution card border-tinted by its own status color).
 - **Left accent:** 3px colored `border-left` on any card that carries a single dominant status
-  (agent cards, approval card, manager-review card) — see Elevation's named exception.
+  (agent cards, approval card, manager-review card, tool-call rows) — see Elevation's named exception.
 - **Internal Padding:** `12px 14px` to `16px 18px` depending on density need.
 
 ### Inputs / Fields

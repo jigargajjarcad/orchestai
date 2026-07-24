@@ -54,7 +54,7 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
       </div>
       {suites.length === 0 && (
         <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 13 }}>
-          No suites yet — create one via <code>POST /api/v1/eval-suites</code>.
+          No eval suites yet. Suites are defined via the API, not this UI — send <code>POST /api/v1/eval-suites</code> to create one.
         </StateText>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

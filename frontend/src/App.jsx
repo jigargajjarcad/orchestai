@@ -271,7 +271,7 @@ function MemoriesPage({ onDelete }) {
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ textAlign: 'left', color: '#6c7086', borderBottom: '1px solid #313244' }}>
+            <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
               <th style={{ padding: '8px 10px' }}>Agent</th>
               <th style={{ padding: '8px 10px' }}>Key</th>
               <th style={{ padding: '8px 10px' }}>Value</th>
@@ -282,12 +282,12 @@ function MemoriesPage({ onDelete }) {
           </thead>
           <tbody>
             {memories.map(m => (
-              <tr key={m.id} style={{ borderBottom: '1px solid #1e1e2e' }}>
-                <td style={{ padding: '8px 10px', color: '#89b4fa' }}>{m.agentType}</td>
-                <td style={{ padding: '8px 10px', color: '#cdd6f4' }}>{m.key}</td>
-                <td style={{ padding: '8px 10px', color: '#a6adc8', maxWidth: 400 }}>{m.value}</td>
-                <td style={{ padding: '8px 10px', color: '#6c7086' }}>{m.importance}</td>
-                <td style={{ padding: '8px 10px', color: '#6c7086' }}>{new Date(m.updatedAt).toLocaleString()}</td>
+              <tr key={m.id} style={{ borderBottom: `1px solid ${colors.base}` }}>
+                <td style={{ padding: '8px 10px', color: colors.traceBlue }}>{m.agentType}</td>
+                <td style={{ padding: '8px 10px', color: colors.text }}>{m.key}</td>
+                <td style={{ padding: '8px 10px', color: colors.subtext0, maxWidth: 400 }}>{m.value}</td>
+                <td style={{ padding: '8px 10px', color: colors.overlay0 }}>{m.importance}</td>
+                <td style={{ padding: '8px 10px', color: colors.overlay0 }}>{new Date(m.updatedAt).toLocaleString()}</td>
                 <td style={{ padding: '8px 10px' }}>
                   <button
                     onClick={() => handleDelete(m.id)}
@@ -677,7 +677,7 @@ export default function App() {
 
           {(agentOrder.length > 0 || managerReview) && (
             <div>
-              <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Agent Executions</div>
+              <div style={{ marginBottom: 10 }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Executions</Label></div>
               {agentOrder.map(id => agents[id] && (
                 <AgentCard
                   key={id}
@@ -695,7 +695,7 @@ export default function App() {
         <div style={{ padding: 24, overflowY: 'auto' }}>
           {finalResult ? (
             <div>
-              <div style={{ fontSize: 11, color: '#585b70', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>Final Result</div>
+              <div style={{ marginBottom: 16 }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Final Result</Label></div>
               <Panel style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
                   <ReactMarkdown

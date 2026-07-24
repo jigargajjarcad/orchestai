@@ -750,9 +750,9 @@ diff or a build alone (the same practice that caught real bugs in Phase 1 and Ph
 - No component computes a raw token-eligible hex/px value inline anymore — only genuinely
   one-off layout numbers (grid columns, chart-specific pixel math, `maxHeight` scroll boxes)
   remain as local literals.
-- `index.css`'s genuinely-dead rules are removed (`#root`, `#social .button-icon`, the `:root`
-  responsive font-size override, `p { margin: 0 }`); its live `h1`/`h2`/`code`/`:root`-vars rules
-  are left exactly as-is, per the two deferred decisions in §8 — this is intended, not
+- `index.css`'s genuinely-dead rules are removed (`#social .button-icon`, the nested `:root`
+  responsive font-size override, `p { margin: 0 }`); its live `#root`/`h1`/`h2`/`code`/`:root`-vars
+  rules are left exactly as-is, per the two deferred decisions in §8 — this is intended, not
   incomplete.
 - Visual output is unchanged from today except for the specific points §8 explicitly resolves.
 

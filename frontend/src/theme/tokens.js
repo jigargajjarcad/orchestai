@@ -63,7 +63,7 @@ export const colors = {
 // letter-spacing isn't documented anywhere (unlike label's explicit 0.07em),
 // so it defaults to 'normal', matching the heading/body pattern.
 // ---------------------------------------------------------------------------
-const fontStack = "'JetBrains Mono', 'Fira Code', monospace"
+export const fontStack = "'JetBrains Mono', 'Fira Code', monospace"
 
 export const typography = {
   heading: {

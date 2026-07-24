@@ -5,7 +5,7 @@ import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
 import { hasApiKey, clearApiKey, authenticatedFetch } from './apiKey'
 import ApiKeyPrompt from './ApiKeyPrompt'
-import { colors, radii, spacing, buttonGhostBorderAlphaSuffix } from './theme/tokens'
+import { colors, radii, spacing, buttonGhostBorderAlphaSuffix, fontStack } from './theme/tokens'
 import { StatusBadge } from './components/StatusBadge'
 import { Panel } from './components/Panel'
 import { Button } from './components/Button'
@@ -568,17 +568,17 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#11111b', color: '#cdd6f4', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 14 }}>
+    <div style={{ minHeight: '100vh', background: colors.crust, color: colors.text, fontFamily: fontStack, fontSize: 14 }}>
 
       {/* Header */}
       <div style={{
-        borderBottom: '1px solid #1e1e2e', padding: '14px 24px', display: 'flex',
+        borderBottom: `1px solid ${colors.base}`, padding: '14px 24px', display: 'flex',
         alignItems: isNarrow ? 'flex-start' : 'center', gap: 16,
         flexWrap: isNarrow ? 'wrap' : 'nowrap',
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#89b4fa', margin: 0 }}>OrchestAI</h1>
-          <p style={{ color: '#585b70', margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: colors.traceBlue, margin: 0 }}>OrchestAI</h1>
+          <p style={{ color: colors.surface2, margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
         </div>
 
         <Nav>
@@ -636,8 +636,8 @@ export default function App() {
 
         {/* Left: Input + Agent Feed */}
         <div style={{
-          borderRight: isNarrow ? 'none' : '1px solid #1e1e2e',
-          borderBottom: isNarrow ? '1px solid #1e1e2e' : 'none',
+          borderRight: isNarrow ? 'none' : `1px solid ${colors.base}`,
+          borderBottom: isNarrow ? `1px solid ${colors.base}` : 'none',
           padding: 20, overflowY: 'auto',
         }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>

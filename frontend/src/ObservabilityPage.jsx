@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useViewportWidth } from './hooks/useViewportWidth'
 import { authenticatedFetch } from './apiKey'
 import { colors, radii } from './theme/tokens'
 import { Panel } from './components/Panel'
@@ -255,6 +256,8 @@ function SummaryView({ tasks }) {
   const [taskId, setTaskId] = useState(null)
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
+  const width = useViewportWidth()
+  const statGridCols = width <= 1024 ? 2 : 4
 
   useEffect(() => {
     if (!taskId) return
@@ -282,14 +285,14 @@ function SummaryView({ tasks }) {
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statGridCols}, 1fr)`, gap: 20, marginBottom: 20 }}>
             <SummaryStat label="Duration" value={data.durationSeconds != null ? `${data.durationSeconds.toFixed(1)}s` : '—'} />
             <SummaryStat label="Total Cost" value={fmtCost(data.totalCostUsd)} color={colors.signalGreen} />
             <SummaryStat label="Tokens" value={`${data.totalInputTokens.toLocaleString()} / ${data.totalOutputTokens.toLocaleString()}`} />
             <SummaryStat label="Tool Calls" value={data.toolCallCount} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statGridCols}, 1fr)`, gap: 20, marginBottom: 20 }}>
             <SummaryStat label="Retry Count" value={data.retryCount} color={data.retryCount > 0 ? colors.statusWarning : undefined} />
             <SummaryStat label="Error Count" value={data.errorCount} color={data.errorCount > 0 ? colors.alertRed : undefined} />
             <SummaryStat label="Memory Used" value={data.memoryUsed ? 'Yes' : 'No'} color={data.memoryUsed ? colors.signalGreen : undefined} />

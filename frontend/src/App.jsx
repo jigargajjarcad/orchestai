@@ -13,6 +13,7 @@ import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
 import { Label } from './components/Label'
 import { useRouting } from './hooks/useRouting'
+import { useViewportWidth } from './hooks/useViewportWidth'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
@@ -323,6 +324,8 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
   const { view, navigate } = useRouting()
+  const width = useViewportWidth()
+  const isNarrow = width <= 768
   const [memoryCounts, setMemoryCounts] = useState({})
   const [memoryBaseline, setMemoryBaseline] = useState({})
   const [savedMemories, setSavedMemories] = useState({})
@@ -574,7 +577,11 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: '#11111b', color: '#cdd6f4', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 14 }}>
 
       {/* Header */}
-      <div style={{ borderBottom: '1px solid #1e1e2e', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{
+        borderBottom: '1px solid #1e1e2e', padding: '14px 24px', display: 'flex',
+        alignItems: isNarrow ? 'flex-start' : 'center', gap: 16,
+        flexWrap: isNarrow ? 'wrap' : 'nowrap',
+      }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: '#89b4fa', margin: 0 }}>OrchestAI</h1>
           <p style={{ color: '#585b70', margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
@@ -596,7 +603,10 @@ export default function App() {
         </Nav>
 
         {taskId && view === 'playground' && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            marginLeft: isNarrow ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 10,
+            flexWrap: 'wrap',
+          }}>
             <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
             <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
             {totalCost != null && (
@@ -615,10 +625,18 @@ export default function App() {
       ) : view === 'evals' ? (
         <EvalsPage />
       ) : (
-      <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 'calc(100vh - 57px)' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isNarrow ? '1fr' : '380px 1fr',
+        minHeight: isNarrow ? undefined : 'calc(100vh - 57px)',
+      }}>
 
         {/* Left: Input + Agent Feed */}
-        <div style={{ borderRight: '1px solid #1e1e2e', padding: 20, overflowY: 'auto' }}>
+        <div style={{
+          borderRight: isNarrow ? 'none' : '1px solid #1e1e2e',
+          borderBottom: isNarrow ? '1px solid #1e1e2e' : 'none',
+          padding: 20, overflowY: 'auto',
+        }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
             <div style={{ marginBottom: 10 }}>
               <Input

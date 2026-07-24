@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
-import { hasApiKey, authenticatedFetch } from './apiKey'
+import { hasApiKey, clearApiKey, authenticatedFetch } from './apiKey'
 import ApiKeyPrompt from './ApiKeyPrompt'
 import { colors, radii, spacing } from './theme/tokens'
 import { StatusBadge } from './components/StatusBadge'
@@ -603,20 +603,32 @@ export default function App() {
           </NavItem>
         </Nav>
 
-        {taskId && view === 'playground' && (
-          <div style={{
-            marginLeft: isNarrow ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 10,
-            flexWrap: 'wrap',
-          }}>
-            <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
-            <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
-            {totalCost != null && (
-              <span style={{ fontSize: 11, color: colors.overlay0 }}>
-                ${Number(totalCost).toFixed(6)} total
-              </span>
-            )}
-          </div>
-        )}
+        <div style={{
+          marginLeft: isNarrow ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 10,
+          flexWrap: 'wrap',
+        }}>
+          {taskId && view === 'playground' && (
+            <>
+              <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
+              <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
+              {totalCost != null && (
+                <span style={{ fontSize: 11, color: colors.overlay0 }}>
+                  ${Number(totalCost).toFixed(6)} total
+                </span>
+              )}
+            </>
+          )}
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => { clearApiKey(); setKeySet(false) }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); clearApiKey(); setKeySet(false) } }}
+            className="focus-ring"
+            style={{ fontSize: 11, color: colors.overlay0, cursor: 'pointer' }}
+          >
+            Change key
+          </span>
+        </div>
       </div>
 
       {view === 'memories' ? (

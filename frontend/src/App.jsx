@@ -287,7 +287,7 @@ function MemoriesPage({ onDelete }) {
                 <td style={{ padding: '8px 10px' }}>
                   <button
                     onClick={() => handleDelete(m.id)}
-                    style={{ background: 'transparent', border: '1px solid #dc262680', color: '#f38ba8', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
+                    style={{ background: 'transparent', border: `1px solid ${colors.statusFailed}${buttonGhostBorderAlphaSuffix}`, color: colors.statusFailed, borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
                   >
                     Delete
                   </button>

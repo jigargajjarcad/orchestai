@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
 import { hasApiKey, authenticatedFetch } from './apiKey'
@@ -718,6 +719,7 @@ export default function App() {
               <Panel style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
                   <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
                     components={{
                       h1: ({ children }) => <h1 style={{ color: colors.traceBlue, fontSize: 20, marginTop: 0 }}>{children}</h1>,
                       h2: ({ children }) => <h2 style={{ color: colors.traceBlue, fontSize: 17 }}>{children}</h2>,

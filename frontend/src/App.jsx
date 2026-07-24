@@ -5,7 +5,7 @@ import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
 import { hasApiKey, clearApiKey, authenticatedFetch } from './apiKey'
 import ApiKeyPrompt from './ApiKeyPrompt'
-import { colors, radii, spacing } from './theme/tokens'
+import { colors, radii, spacing, buttonGhostBorderAlphaSuffix } from './theme/tokens'
 import { StatusBadge } from './components/StatusBadge'
 import { Panel } from './components/Panel'
 import { Button } from './components/Button'
@@ -118,14 +118,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
   const [note, setNote] = useState('')
 
   return (
-    <div style={{
-      border: '1px solid #f59e0b60',
-      borderLeft: '3px solid #f59e0b',
-      borderRadius: radii.xl,
-      padding: '14px 16px',
-      marginBottom: 14,
-      background: colors.base,
-    }}>
+    <Panel accentStatus="WaitingForApproval" style={{ padding: '14px 16px', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span>⏸</span>
         <strong style={{ color: colors.statusWarning, fontSize: 13 }}>Waiting for Your Approval</strong>
@@ -153,8 +146,8 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
             onClick={() => setShowRejectInput(true)}
             disabled={busy}
             style={{
-              flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #dc262680',
-              background: 'transparent', color: colors.alertRed, fontWeight: 700, fontSize: 12,
+              flex: 1, padding: '7px 0', borderRadius: 6, border: `1px solid ${colors.statusFailed}${buttonGhostBorderAlphaSuffix}`,
+              background: 'transparent', color: colors.statusFailed, fontWeight: 700, fontSize: 12,
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -186,7 +179,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
               onClick={() => setShowRejectInput(false)}
               disabled={busy}
               style={{
-                flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #313244',
+                flex: 1, padding: '7px 0', borderRadius: 6, border: `1px solid ${colors.surface0}`,
                 background: 'transparent', color: colors.subtext0, fontWeight: 700, fontSize: 12,
                 cursor: busy ? 'not-allowed' : 'pointer',
               }}
@@ -196,7 +189,7 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
           </div>
         </div>
       )}
-    </div>
+    </Panel>
   )
 }
 

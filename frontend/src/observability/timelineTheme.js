@@ -65,6 +65,10 @@ export const surface = {
   card: '#232336',
   cardHover: '#2a2a40',
   panelBorder: 'rgba(205, 214, 244, 0.08)',
+  // Detail-panel backdrop scrim (Task 4) — same restrained-depth intent as
+  // `elevation`'s rgba blacks below, not an identity/status color, so it's
+  // centralized here rather than left as a literal in DetailPanel.jsx.
+  backdrop: 'rgba(0, 0, 0, 0.35)',
 }
 
 // Real elevation — the investigation's §7 finding, tested here first. Kept

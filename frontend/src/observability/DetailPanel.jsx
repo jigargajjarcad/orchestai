@@ -20,6 +20,9 @@
 //      its own because React Flow's nodes are natively focusable and are
 //      normally the focused element at the moment of click/keyboard
 //      activation.
+//   3. optionally pass `narrow` (boolean, Task 6) — whether the viewport is
+//      at/below the ~768px breakpoint — to switch the panel from a
+//      right-side drawer to a full-width bottom sheet. Defaults to `false`.
 //
 // `span` shape consumed (a superset of AgentNode/ToolCallNode's own `data`,
 // plus the fields this panel itself needs):
@@ -36,12 +39,51 @@
 //     panel and return focus to `returnFocusRef.current` if supplied,
 //     otherwise the element that was focused immediately before the panel
 //     opened.
+//
+// Focus trap decision (Task 6, carry-forward #3 — Task 4 deliberately
+// deferred this): this panel renders `role="dialog" aria-modal="true"`, but
+// background content (the graph canvas, its nodes, the SubNav/TaskPicker
+// above it) is NOT actually made inert — nothing here applies `inert` or
+// `aria-hidden` to it. Without a real trap, Shift+Tab from the panel's only
+// focusable element would walk focus back into that live background
+// content, which directly contradicts the "modal" claim `aria-modal="true"`
+// makes to assistive tech. Decision: implement a real trap (below), rather
+// than documenting focus-into + Escape + focus-return as "sufficient" —
+// for a component that already asserts `aria-modal`, that assertion needs
+// to be true, not just a hint.
+//
+// Responsive (Task 6, §6/§3a-style-guide requirement): at narrow widths
+// (Milestone 2's own ~768px precedent, `App.jsx`), this switches from a
+// right-side drawer (beside the graph) to a full-width bottom sheet
+// (dropping below it) — a right-anchored 360px column reading as "beside"
+// stops making sense once the viewport itself is that narrow. Taken as a
+// `narrow` prop (boolean, default `false`) rather than calling
+// `useViewportWidth` directly in here: that keeps this component
+// SSR/`ssrLoadModule`-safe (the hook reads `window.innerWidth` unguarded,
+// which crashes under Node-based isolated rendering) and preserves its
+// existing "driven entirely by props, testable standalone" contract — the
+// caller (`TimelineView`) already computes the same width/breakpoint for
+// its own responsive canvas sizing, so this is the single source of truth,
+// not a second one.
 
 import { useEffect, useRef } from 'react'
 import { colors as sharedColors } from '../theme/tokens'
 import { agentColors, toolCallColor, statusColors, surface, elevation, typography } from './timelineTheme'
 import { StatusPill } from './NodeParts'
 import { formatDuration, formatCost } from './format'
+
+function getFocusableElements(container) {
+  if (!container) return []
+  const selector = [
+    'a[href]',
+    'button:not([disabled])',
+    'textarea:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(', ')
+  return Array.from(container.querySelectorAll(selector)).filter((el) => el.offsetParent !== null)
+}
 
 function StatItem({ label, value }) {
   return (
@@ -84,6 +126,12 @@ function CodeBlock({ label, value }) {
         {label}
       </div>
       <pre
+        // Scrollable region with its own keyboard access (WCAG 2.1.1) — a
+        // mouse-only scroll target would otherwise strand keyboard users on
+        // long tool input/output. Also participates in DetailPanel's focus
+        // trap below (it matches the trap's `[tabindex]` selector).
+        tabIndex={0}
+        aria-label={label}
         style={{
           margin: 0,
           padding: '8px 10px',
@@ -105,9 +153,10 @@ function CodeBlock({ label, value }) {
   )
 }
 
-export function DetailPanel({ span, onClose, returnFocusRef }) {
+export function DetailPanel({ span, onClose, returnFocusRef, narrow = false }) {
   const closeButtonRef = useRef(null)
   const previouslyFocusedRef = useRef(null)
+  const panelRef = useRef(null)
 
   useEffect(() => {
     if (!span) return undefined
@@ -119,6 +168,31 @@ export function DetailPanel({ span, onClose, returnFocusRef }) {
       if (event.key === 'Escape') {
         event.preventDefault()
         requestClose()
+        return
+      }
+
+      // Focus trap (carry-forward #3, see header comment): Tab/Shift+Tab
+      // cycle only among the panel's own focusable elements. Today that's
+      // typically just the close button (plus any tool-input/output <pre>
+      // blocks, per CodeBlock's tabIndex above) — with a single focusable
+      // element, this simply keeps focus pinned there, which is correct.
+      if (event.key === 'Tab') {
+        const focusable = getFocusableElements(panelRef.current)
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        const active = document.activeElement
+        const isInsidePanel = panelRef.current?.contains(active)
+
+        if (event.shiftKey) {
+          if (!isInsidePanel || active === first) {
+            event.preventDefault()
+            last.focus()
+          }
+        } else if (!isInsidePanel || active === last) {
+          event.preventDefault()
+          first.focus()
+        }
       }
     }
 
@@ -180,20 +254,27 @@ export function DetailPanel({ span, onClose, returnFocusRef }) {
         inset: 0,
         background: surface.backdrop,
         display: 'flex',
-        justifyContent: 'flex-end',
+        // Wide: right-side drawer, beside the graph. Narrow (§6/§3a-style-
+        // guide requirement, ~768px precedent): bottom sheet, below it.
+        justifyContent: narrow ? 'center' : 'flex-end',
+        alignItems: narrow ? 'flex-end' : 'stretch',
         zIndex: 40,
       }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
         style={{
-          width: 360,
-          maxWidth: '90vw',
-          height: '100%',
+          width: narrow ? '100%' : 360,
+          maxWidth: narrow ? '100%' : '90vw',
+          height: narrow ? '85vh' : '100%',
+          maxHeight: '100%',
           background: surface.card,
-          borderLeft: `1px solid ${surface.panelBorder}`,
+          borderLeft: narrow ? 'none' : `1px solid ${surface.panelBorder}`,
+          borderTop: narrow ? `1px solid ${surface.panelBorder}` : 'none',
+          borderRadius: narrow ? '12px 12px 0 0' : 0,
           boxShadow: elevation.panel,
           boxSizing: 'border-box',
           padding: '20px 20px 24px',
@@ -266,7 +347,7 @@ export function DetailPanel({ span, onClose, returnFocusRef }) {
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1fr 1fr', gap: 14 }}>
           <StatItem label="Status" value={status} />
           <StatItem label="Duration" value={formatDuration(durationMs)} />
           <StatItem label="Cost" value={cost ?? '—'} />

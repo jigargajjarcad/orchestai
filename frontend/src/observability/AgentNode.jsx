@@ -15,8 +15,10 @@
 // the selection ring's color (`elevation.nodeSelected`'s `currentColor`,
 // driven here by setting the node's own CSS `color` to the status color).
 // Every other color on the card (rail, dot, mini-bar fill) stays pure
-// identity. Hover/focus get a neutral lift (surface.cardHover + a small
-// upward translate) that carries no status or identity meaning of its own.
+// identity. Hover gets a neutral lift (surface.cardHover + a small upward
+// translate) that carries no status or identity meaning of its own; keyboard
+// focus gets its own, separate visible-focus treatment — see the Task 6
+// comment below.
 
 import { memo, useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
@@ -25,9 +27,20 @@ import { agentColors, statusColors, surface, elevation, typography, node as node
 import { StatusPill, SpanExtentBar } from './NodeParts'
 import { formatDuration, formatCost } from './format'
 
+// Task 6, carry-forward #1 from Task 2's review: this component previously
+// tracked its own `focused` state via onFocus/onBlur on the div below, to
+// drive the same hover "lift" treatment on keyboard focus. That was dead
+// code — React Flow gives `tabIndex=0` to the NODE WRAPPER it renders one
+// level above this component (see @xyflow/react's NodeWrapper), so a real
+// Tab keypress never focuses this inner div; onFocus/onBlur here could never
+// fire. Resolution taken: removed (rather than re-wired) — the actual fix
+// for visible keyboard-focus feedback is the scoped
+// `.react-flow__node:focus-visible` CSS override in timelineFocus.css,
+// which targets the element that really receives focus. Mouse hover is
+// unaffected (mouseenter/mouseleave DO fire correctly on this div, since the
+// pointer is genuinely over it).
 function AgentNodeImpl({ data, selected }) {
   const [hovered, setHovered] = useState(false)
-  const [focused, setFocused] = useState(false)
 
   const {
     label,
@@ -40,7 +53,7 @@ function AgentNodeImpl({ data, selected }) {
 
   const identityColor = agentColors[agentName] ?? statusColors.Pending
   const statusColor = statusColors[status] ?? statusColors.Pending
-  const lifted = hovered || focused
+  const lifted = hovered
   const cost = formatCost(costUsd)
 
   const ariaLabel = `${label ?? agentName}, ${status}${
@@ -53,8 +66,6 @@ function AgentNodeImpl({ data, selected }) {
       aria-label={ariaLabel}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
       style={{
         position: 'relative',
         width: nodeGeometry.agentWidth,

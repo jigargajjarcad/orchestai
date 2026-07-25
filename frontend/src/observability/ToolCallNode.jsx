@@ -18,14 +18,19 @@ import { toolCallColor, statusColors, surface, elevation, typography, node as no
 import { StatusPill, SpanExtentBar } from './NodeParts'
 import { formatDuration } from './format'
 
+// Task 6, carry-forward #1 (see AgentNode.jsx's identical comment for the
+// full explanation): the onFocus/onBlur handlers this component used to
+// have on the div below were dead code (focus lands on React Flow's node
+// wrapper one level up, never on this inner div) — removed, not re-wired.
+// The scoped `.react-flow__node:focus-visible` CSS override in
+// timelineFocus.css is the actual fix for visible keyboard-focus feedback.
 function ToolCallNodeImpl({ data, selected }) {
   const [hovered, setHovered] = useState(false)
-  const [focused, setFocused] = useState(false)
 
   const { label, status = 'Pending', durationMs = null, extentPct = { offset: 0, width: 0 } } = data ?? {}
 
   const statusColor = statusColors[status] ?? statusColors.Pending
-  const lifted = hovered || focused
+  const lifted = hovered
 
   const ariaLabel = `Tool call ${label}, ${status}${durationMs != null ? `, ${formatDuration(durationMs)}` : ''}`
 
@@ -35,8 +40,6 @@ function ToolCallNodeImpl({ data, selected }) {
       aria-label={ariaLabel}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
       style={{
         position: 'relative',
         width: nodeGeometry.toolCallWidth,

@@ -1,0 +1,33 @@
+/* frontend/src/observability/timelineFocus.css
+ *
+ * Scoped focus-visibility override for this view's React Flow canvas only
+ * (Task 6, carry-forward #1 from Task 2's review, plan §6/§7 Task 6).
+ *
+ * The problem: React Flow's own shipped stylesheet
+ * (@xyflow/react/dist/style.css) sets
+ *   .react-flow__node.selectable:focus, .react-flow__node.selectable:focus-visible { outline: none; }
+ * and AgentNode/ToolCallNode's own onFocus/onBlur "lift" handlers were on an
+ * inner child <div> that DOM focus never reaches (React Flow gives
+ * `tabIndex=0` to the node WRAPPER, one level up) — so a real Tab keypress
+ * landed on a node with zero visible feedback. Task 6 removes those dead
+ * handlers (see AgentNode.jsx/ToolCallNode.jsx) and fixes the actual
+ * regression here, at the element that really receives focus.
+ *
+ * This file is imported in ObservabilityPage.jsx immediately after
+ * '@xyflow/react/dist/style.css', so the same-specificity selector below
+ * wins by cascade order; `!important` is added anyway as a deliberate guard
+ * against import-order fragility across bundler/dependency versions (this
+ * is a third-party override, not first-party layout).
+ *
+ * The ring color comes from `--observability-focus-ring`, a CSS custom
+ * property set inline on the canvas container in ObservabilityPage.jsx from
+ * timelineTheme.js's `focusRing` export (one source of truth; plain CSS
+ * can't import a JS value). The 10px radius mirrors timelineTheme.js's
+ * `node.radius` — update both together if that value ever changes.
+ */
+
+.react-flow__node:focus-visible {
+  outline: 2px solid var(--observability-focus-ring, #89b4fa) !important;
+  outline-offset: 2px !important;
+  border-radius: 10px;
+}

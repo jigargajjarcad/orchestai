@@ -81,6 +81,25 @@ export const elevation = {
   panel: '0 8px 30px rgba(0, 0, 0, 0.5)',
 }
 
+// Keyboard-focus ring (Task 6, carry-forward #1 from Task 2's review: a
+// Tab-focused node must show a visible indicator; React Flow's own shipped
+// CSS zeroes `outline` on `.react-flow__node:focus-visible`, and this view
+// supplies its own scoped override — see timelineFocus.css).
+//
+// Deliberately a third, distinct color channel from both `agentColors`
+// (identity) and `statusColors` (state) — focus is a pure interaction
+// affordance, not an identity or status signal, so per the Two-Palette Rule
+// it must not borrow either palette. Reuses the shared UI accent this
+// product already uses elsewhere for "active/focused" affordances
+// (`colors.traceBlue` — e.g. the Graph/List toggle's active state) rather
+// than inventing a fourth color meaning.
+//
+// Consumed via the `--observability-focus-ring` CSS custom property (set
+// inline where the canvas mounts, in ObservabilityPage.jsx) because plain
+// CSS can't import a JS value directly — this export is the one source of
+// truth; timelineFocus.css only reads the variable.
+export const focusRing = sharedColors.traceBlue
+
 // ---------------------------------------------------------------------------
 // Typography — new. Proportional face for UI chrome/prose, monospace
 // reserved for IDs/timestamps/cost — testing the investigation's own §7

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, BackgroundVariant } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './observability/timelineFocus.css'
 import { useViewportWidth } from './hooks/useViewportWidth'
 import { authenticatedFetch } from './apiKey'
 import { colors, radii } from './theme/tokens'
@@ -14,7 +15,12 @@ import { AgentNode } from './observability/AgentNode'
 import { ToolCallNode } from './observability/ToolCallNode'
 import { TraceEdge } from './observability/TraceEdge'
 import { DetailPanel } from './observability/DetailPanel'
-import { surface as timelineSurface } from './observability/timelineTheme'
+import { surface as timelineSurface, focusRing } from './observability/timelineTheme'
+import { formatDuration as formatNodeDuration } from './observability/format'
+
+// Milestone 2's own ~768px narrow-viewport precedent (App.jsx) — reused
+// here for the Graph view canvas/detail-panel responsive pass (Task 6/§6).
+const NARROW_VIEWPORT_BREAKPOINT = 768
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
@@ -212,6 +218,10 @@ function TimelineView({ tasks }) {
   const [viewMode, setViewMode] = useState('graph')
   const [selectedSpan, setSelectedSpan] = useState(null)
   const returnFocusRef = useRef(null)
+  // Task 6/§6 responsive pass — same hook/breakpoint precedent as
+  // SummaryView below and Milestone 2's App.jsx.
+  const viewportWidth = useViewportWidth()
+  const narrow = viewportWidth <= NARROW_VIEWPORT_BREAKPOINT
 
   useEffect(() => {
     if (!taskId) return
@@ -253,11 +263,71 @@ function TimelineView({ tasks }) {
     return [0, 0.25, 0.5, 0.75, 1].map(fraction => `${((totalMs * fraction) / 1000).toFixed(1)}s`)
   }, [graphLayout])
 
-  function handleNodeClick(event, node) {
-    const span = spansById.get(node.id)
+  // §6 item 1: ARIA relationship description. Tabbing between nodes doesn't
+  // inherently convey *why* one follows another — each node gets a rich
+  // `ariaLabel` (React Flow's own supported top-level node prop — it sets
+  // the aria-label directly on the actual focusable `.react-flow__node`
+  // wrapper, per @xyflow/react's NodeWrapper source: `"aria-label":
+  // node.ariaLabel`) describing its parent and any siblings dispatched by
+  // the same parent, derived from `graphLayout.edges` (already built by
+  // Task 3's layout engine — no changes to layout.js needed).
+  const nodesWithAria = useMemo(() => {
+    if (!graphLayout) return []
+    const parentIdOf = new Map()
+    const childIdsOf = new Map()
+    for (const edge of graphLayout.edges) {
+      parentIdOf.set(edge.target, edge.source)
+      if (!childIdsOf.has(edge.source)) childIdsOf.set(edge.source, [])
+      childIdsOf.get(edge.source).push(edge.target)
+    }
+    const labelById = new Map(graphLayout.nodes.map(n => [n.id, n.data?.label ?? n.id]))
+
+    return graphLayout.nodes.map(node => {
+      const { label, status, durationMs } = node.data ?? {}
+      const kind = node.type === 'toolCallNode' ? 'Tool call' : 'Agent'
+      const parentId = parentIdOf.get(node.id)
+      const parentLabel = parentId ? labelById.get(parentId) : null
+      const siblingLabels = parentId
+        ? (childIdsOf.get(parentId) ?? []).filter(id => id !== node.id).map(id => labelById.get(id))
+        : []
+      const relationship = parentLabel
+        ? `. Child of ${parentLabel}${siblingLabels.length > 0 ? `, running alongside ${siblingLabels.join(', ')}` : ''}.`
+        : '. Root span.'
+      const durationText = durationMs != null ? `, ${formatNodeDuration(durationMs)}` : ''
+
+      return { ...node, ariaLabel: `${kind} ${label}, ${status}${durationText}${relationship}` }
+    })
+  }, [graphLayout])
+
+  function openDetailForSpan(span, focusEl) {
     if (!span) return
-    returnFocusRef.current = event.currentTarget
+    returnFocusRef.current = focusEl
     setSelectedSpan({ ...span, agentName: span.label })
+  }
+
+  function handleNodeClick(event, node) {
+    openDetailForSpan(spansById.get(node.id), event.currentTarget)
+  }
+
+  // §6 item 2 / carry-forward #2 (Task 5's review): React Flow's own
+  // keydown handling on a focused node (confirmed in @xyflow/system's
+  // `elementSelectionKeys = ['Enter', ' ', 'Escape']`) only toggles the
+  // node's internal `selected` state — it never calls the user-supplied
+  // `onNodeClick` prop, so Enter/Space on a keyboard-focused node silently
+  // did nothing. Fix: a keydown listener on the canvas container (an
+  // ancestor of every node wrapper, so it sees the bubbled event) that maps
+  // a focused node + Enter/Space onto the same `openDetailForSpan` path
+  // `handleNodeClick` already uses — including populating `returnFocusRef`
+  // so DetailPanel's existing close-focus-return logic works identically
+  // for keyboard activation. `preventDefault` also stops Space's default
+  // page-scroll action (React Flow's own internal handler doesn't prevent
+  // it for Enter/Space, only for arrow-key node-drag).
+  function handleGraphKeyDown(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const nodeEl = event.target.closest?.('.react-flow__node')
+    if (!nodeEl) return
+    event.preventDefault()
+    openDetailForSpan(spansById.get(nodeEl.dataset.id), nodeEl)
   }
 
   function toggleButtonStyle(active) {
@@ -321,14 +391,26 @@ function TimelineView({ tasks }) {
                 {timeAxisTicks.map((tick, i) => <span key={i}>{tick}</span>)}
               </div>
               <div
+                // Task 6/§6 responsive pass: a fixed 520px canvas eats most
+                // of a narrow viewport's vertical space before the user even
+                // scrolls to it — reduced at the same ~768px breakpoint used
+                // elsewhere in this product. `onKeyDown` is carry-forward #2
+                // (handleGraphKeyDown, above): this div is an ancestor of
+                // every node wrapper, so it sees the bubbled Enter/Space keydown.
+                // The `--observability-focus-ring` custom property feeds
+                // timelineFocus.css's `.react-flow__node:focus-visible`
+                // override (carry-forward #1) from timelineTheme.js's
+                // `focusRing` — one source of truth for that color.
+                onKeyDown={handleGraphKeyDown}
                 style={{
-                  width: '100%', height: 520, borderRadius: radii.lg, overflow: 'hidden',
+                  width: '100%', height: narrow ? 380 : 520, borderRadius: radii.lg, overflow: 'hidden',
                   background: timelineSurface.canvas, border: `1px solid ${timelineSurface.panelBorder}`,
+                  '--observability-focus-ring': focusRing,
                 }}
               >
                 <ReactFlowProvider>
                   <ReactFlow
-                    nodes={graphLayout.nodes}
+                    nodes={nodesWithAria}
                     edges={graphLayout.edges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
@@ -349,7 +431,7 @@ function TimelineView({ tasks }) {
       )}
 
       {selectedSpan && (
-        <DetailPanel span={selectedSpan} onClose={() => setSelectedSpan(null)} returnFocusRef={returnFocusRef} />
+        <DetailPanel span={selectedSpan} onClose={() => setSelectedSpan(null)} returnFocusRef={returnFocusRef} narrow={narrow} />
       )}
     </div>
   )

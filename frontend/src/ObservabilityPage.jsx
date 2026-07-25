@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { ReactFlow, ReactFlowProvider, Background, Controls, BackgroundVariant } from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 import { useViewportWidth } from './hooks/useViewportWidth'
 import { authenticatedFetch } from './apiKey'
 import { colors, radii } from './theme/tokens'
@@ -7,6 +9,12 @@ import { Label } from './components/Label'
 import { StatusBadge } from './components/StatusBadge'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
+import { computeGraphLayout } from './observability/layout'
+import { AgentNode } from './observability/AgentNode'
+import { ToolCallNode } from './observability/ToolCallNode'
+import { TraceEdge } from './observability/TraceEdge'
+import { DetailPanel } from './observability/DetailPanel'
+import { surface as timelineSurface } from './observability/timelineTheme'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
@@ -199,11 +207,17 @@ function TimelineView({ tasks }) {
   const [taskId, setTaskId] = useState(null)
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
+  // Graph view is the new default (plan §3/§5); List stays available,
+  // unmodified, as the accessibility fallback (§6 item 5).
+  const [viewMode, setViewMode] = useState('graph')
+  const [selectedSpan, setSelectedSpan] = useState(null)
+  const returnFocusRef = useRef(null)
 
   useEffect(() => {
     if (!taskId) return
     setData(null)
     setError(null)
+    setSelectedSpan(null)
     authenticatedFetch(`${API_BASE}/tasks/${taskId}/timeline`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
       .then(setData)
@@ -220,6 +234,45 @@ function TimelineView({ tasks }) {
     return { traceStart: start, traceDurationMs: Math.max(end - start, 1) }
   }, [data])
 
+  // Graph view (§3a): same already-fetched `data`, translated into React
+  // Flow's {nodes, edges} shape by the Task 3 layout engine — no second fetch.
+  const graphLayout = useMemo(() => (data ? computeGraphLayout(data.spans) : null), [data])
+  // Full span lookup by id, for the detail panel (Task 4) — the layout's own
+  // node `data` only carries the fields the node card renders; the panel
+  // needs the raw span (spanType, inputTokens/outputTokens, errorCategory, ...).
+  const spansById = useMemo(() => new Map((data?.spans ?? []).map(s => [s.spanId, s])), [data])
+  // Stable identity across renders (React Flow warns/re-renders needlessly
+  // otherwise) — the components themselves are static imports.
+  const nodeTypes = useMemo(() => ({ agentNode: AgentNode, toolCallNode: ToolCallNode }), [])
+  const edgeTypes = useMemo(() => ({ traceEdge: TraceEdge }), [])
+  // §3a.3 item 3: a lightweight time axis/ruler giving absolute scale across
+  // the canvas — five evenly-spaced marks over the trace's real duration.
+  const timeAxisTicks = useMemo(() => {
+    if (!graphLayout) return []
+    const totalMs = graphLayout.traceDurationMs
+    return [0, 0.25, 0.5, 0.75, 1].map(fraction => `${((totalMs * fraction) / 1000).toFixed(1)}s`)
+  }, [graphLayout])
+
+  function handleNodeClick(event, node) {
+    const span = spansById.get(node.id)
+    if (!span) return
+    returnFocusRef.current = event.currentTarget
+    setSelectedSpan({ ...span, agentName: span.label })
+  }
+
+  function toggleButtonStyle(active) {
+    return {
+      padding: '4px 12px',
+      fontSize: 11,
+      fontWeight: active ? 700 : 400,
+      borderRadius: radii.lg,
+      border: `1px solid ${active ? colors.traceBlue : colors.surface0}`,
+      background: active ? `${colors.traceBlue}20` : 'transparent',
+      color: active ? colors.traceBlue : colors.subtext0,
+      cursor: 'pointer',
+    }
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 16, maxWidth: 480 }}>
@@ -229,13 +282,74 @@ function TimelineView({ tasks }) {
       {!taskId && <StateText tone="muted">Select a task to view its execution timeline.</StateText>}
       {data && (
         <Panel>
-          <div style={{ fontSize: 11, color: colors.surface2, marginBottom: 12 }}>
-            Trace <span style={{ color: colors.traceBlue, fontFamily: 'monospace' }}>{data.traceId}</span> · {data.spans.length} spans
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: colors.surface2 }}>
+              Trace <span style={{ color: colors.traceBlue, fontFamily: 'monospace' }}>{data.traceId}</span> · {data.spans.length} spans
+            </div>
+            <div role="group" aria-label="Timeline view mode" style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                aria-pressed={viewMode === 'graph'}
+                onClick={() => setViewMode('graph')}
+                style={toggleButtonStyle(viewMode === 'graph')}
+              >
+                Graph
+              </button>
+              <button
+                type="button"
+                aria-pressed={viewMode === 'list'}
+                onClick={() => setViewMode('list')}
+                style={toggleButtonStyle(viewMode === 'list')}
+              >
+                List
+              </button>
+            </div>
           </div>
-          {tree.map(root => (
+
+          {viewMode === 'list' && tree.map(root => (
             <SpanRow key={root.spanId} span={root} depth={0} traceStart={traceStart} traceDurationMs={traceDurationMs} />
           ))}
+
+          {viewMode === 'graph' && graphLayout && (
+            <div>
+              <div
+                style={{
+                  display: 'flex', justifyContent: 'space-between', padding: '0 14px 6px',
+                  fontFamily: 'monospace', fontSize: 10, color: colors.overlay0,
+                }}
+              >
+                {timeAxisTicks.map((tick, i) => <span key={i}>{tick}</span>)}
+              </div>
+              <div
+                style={{
+                  width: '100%', height: 520, borderRadius: radii.lg, overflow: 'hidden',
+                  background: timelineSurface.canvas, border: `1px solid ${timelineSurface.panelBorder}`,
+                }}
+              >
+                <ReactFlowProvider>
+                  <ReactFlow
+                    nodes={graphLayout.nodes}
+                    edges={graphLayout.edges}
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    onNodeClick={handleNodeClick}
+                    fitView
+                    nodesFocusable
+                    edgesFocusable
+                    minZoom={0.2}
+                  >
+                    <Background variant={BackgroundVariant.Dots} gap={16} size={1} color={timelineSurface.panelBorder} />
+                    <Controls />
+                  </ReactFlow>
+                </ReactFlowProvider>
+              </div>
+            </div>
+          )}
         </Panel>
+      )}
+
+      {selectedSpan && (
+        <DetailPanel span={selectedSpan} onClose={() => setSelectedSpan(null)} returnFocusRef={returnFocusRef} />
       )}
     </div>
   )

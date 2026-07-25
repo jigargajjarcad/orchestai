@@ -474,6 +474,19 @@ panel correctly, and reaches the List/Graph toggle; `Controls`' zoom/pan buttons
 keyboard-operable (not assumed); the view is usable (not just "doesn't overflow") at a narrow
 viewport, matching Milestone 2's own 768px verification precedent.
 
+**Carry-forward requirement from Task 2's review (specific, must not be lost):** a keyboard-
+focused node must show a **visible** focus indicator. Task 2 established that nodes are
+structurally focusable (React Flow's node wrapper sets `tabIndex=0` on itself), BUT: (a) React
+Flow's own shipped CSS sets `outline: none` on `.react-flow__node:focus`/`:focus-visible`, and
+(b) the `AgentNode`/`ToolCallNode` components' own `onFocus`/`onBlur` "lift" handlers are on an
+inner child `<div>`, which the wrapper-level focus can never reach (focus events bubble to
+ancestors, not descendants) — so as of Task 2, a real Tab keypress lands on the node but produces
+**no visible feedback**. Task 6 must fix this concretely: add a scoped `.react-flow__node:focus-
+visible` focus-ring treatment (in this view's own scoped styling, not the shared system), AND
+reconcile the now-dead inner-`div` `onFocus`/`onBlur` handlers (either remove them or re-wire
+focus visibility to the element that actually receives focus). This is the single named
+functional gap carried out of Task 2.
+
 **Verification:** live, via the established CDP-driven headless-Chrome technique, including an
 actual keyboard-only Tab-through (matching Milestone 3 Task 6's precedent of using real
 simulated Tab key presses rather than synthetic `.focus()` calls, which gives false negatives

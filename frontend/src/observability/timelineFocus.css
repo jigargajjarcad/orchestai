@@ -14,10 +14,15 @@
  * regression here, at the element that really receives focus.
  *
  * This file is imported in ObservabilityPage.jsx immediately after
- * '@xyflow/react/dist/style.css', so the same-specificity selector below
- * wins by cascade order; `!important` is added anyway as a deliberate guard
- * against import-order fragility across bundler/dependency versions (this
- * is a third-party override, not first-party layout).
+ * '@xyflow/react/dist/style.css'. Note that React Flow's `outline: none`
+ * rule is scoped `.react-flow__node.selectable:focus-visible` (specificity
+ * 0,2,0), which is HIGHER than the override selector below
+ * (`.react-flow__node:focus-visible`, 0,1,0) — so cascade order alone would
+ * NOT win, and `!important` is what actually makes this override take
+ * effect. `!important` is therefore load-bearing here, not a cosmetic
+ * guard: do not remove it (matching a plain-specificity selector to React
+ * Flow's `.selectable` class would be the alternative, but `!important` on
+ * a small third-party override is the simpler, more robust choice).
  *
  * The ring color comes from `--observability-focus-ring`, a CSS custom
  * property set inline on the canvas container in ObservabilityPage.jsx from

@@ -166,6 +166,141 @@ implementation-time cost this specific plan will incur.
 
 ---
 
+## 3a. Layout Positioning Decision — What "Timeline" Actually Means (durable, required for Task 2/3)
+
+**Added at the Task 1 review checkpoint, in response to a direct question: does horizontal
+position represent real time, or is it just incidental hierarchy-driven placement?** This
+section is the authoritative answer, recorded here so the decision is durable and not left in
+chat history. Task 2 and Task 3 must implement exactly what this section states.
+
+### 3a.1 — The exact data available (verified against the real DTO)
+
+Confirmed by direct reading of the actual backend contract,
+`src/OrchestAI.Application/Queries/GetExecutionTimeline/GetExecutionTimelineResponse.cs`, its
+`TimelineSpanDto` record — the exact fields the `/tasks/{id}/timeline` endpoint returns:
+- `StartedAt` (`DateTimeOffset?`), `CompletedAt` (`DateTimeOffset?`), `DurationMs` (`int?`) —
+  **real per-span timing data exists.**
+- `SpanId` (`string`), `ParentSpanId` (`string?`) — the parent/child relationship.
+- `Status`, `SpanType` (`"AgentExecution" | "ToolCall"`), `Label`, `ErrorCategory`,
+  `InputTokens`, `OutputTokens`, `CostUsd`.
+
+The DTO's own code comment states the binding architectural rule (ADR-011): *"The frontend
+reconstructs the nested/Gantt tree from SpanId/ParentSpanId — never from timestamp ordering."*
+
+### 3a.2 — The decision: a time-anchored hybrid layout (not purely topological)
+
+**Horizontal (X) position IS derived from real timing data**, not from incidental
+hierarchy-driven placement. Specifically, each node's X is computed from its `StartedAt` against
+the trace's overall `traceStart`/`traceDurationMs` — the **exact same offset math the current
+`SpanRow` already uses** (`ObservabilityPage.jsx`, `SpanRow`: `offsetPct = (new Date(startedAt) −
+traceStart) / traceDurationMs`). So a span that started later sits further right; two spans that
+started at the same moment sit at the same X. **This makes execution order and parallelism
+genuinely visually derived from the timing data**, exactly as the review required: if
+Orchestrator launches Research and Code in parallel, they share a start time and therefore share
+an X-anchor, appearing as co-started branches *because the timestamps say so*, not because a
+layout algorithm happened to place them side by side.
+
+**Vertical (Y) position comes from the parent/child tree** (`ParentSpanId` → depth and
+branch index), per ADR-011 — hierarchy is reconstructed from IDs, never inferred from
+timestamps. Edges are drawn parent→child from the same ID relationships. There is no conflict
+with using timestamps for X: ADR-011 forbids inferring *hierarchy* from time, which this does
+not do — hierarchy is IDs, horizontal position is time. The two axes carry two different, real
+signals.
+
+**This is therefore not a pure topological graph, and it is not a pure Gantt either — it is a
+time-anchored execution graph.** Being precise about what that does and does not claim:
+
+- **What X genuinely represents:** each span's real start time (order, start-offset,
+  co-start/parallelism — all time-derived).
+- **What X does NOT, on its own, represent:** *duration*. React Flow nodes are fixed-size
+  cards, not variable-width bars, so — unlike `SpanRow`'s Gantt bar, whose *width* encodes
+  `DurationMs` — a node's card width does not encode how long the span ran. Without
+  compensation, duration and the *degree* of time-overlap between two parallel branches would be
+  lost. This is exactly the gap the review flagged, and it is addressed explicitly next.
+
+### 3a.3 — Compensating mechanism for duration and overlap (required, not optional)
+
+Because fixed-size cards can't encode duration via width, each node **must** carry a real
+duration/time-extent indicator so nothing the current Gantt view shows is lost:
+
+1. **An explicit per-node duration figure** in the node's meta-row (already in the Task 1
+   visual direction — the `4.2s` / cost row on every agent node). Always present, always the
+   real `DurationMs`.
+2. **A per-node span-extent mini-bar**: a small horizontal bar rendered inside/under each node
+   showing that span's actual start→end position and length against the trace's total duration —
+   i.e. the direct per-node equivalent of `SpanRow`'s existing Gantt bar (`offsetPct`/`widthPct`
+   math, reused). This is what keeps *duration* and *degree of overlap between parallel branches*
+   visible: two parallel siblings at the same X-anchor whose extent bars are different lengths,
+   or overlap only partially, show that relationship directly and truthfully.
+3. **A lightweight time axis/ruler** across the top of the canvas giving absolute scale (e.g.
+   `0s … 6.1s`), so the X-anchoring is legible as time, not just relative ordering.
+
+Items 1–2 are **required acceptance criteria for Task 2/3** (added to those tasks below); item 3
+is required for Task 5's integration. Without them, the "Timeline" name would overclaim — with
+them, it is accurate.
+
+### 3a.4 — Naming decision
+
+**The surface keeps its existing name, "Timeline"** (the current sub-tab label,
+`ObservabilityPage.jsx`'s `SubNav`). This is honest *specifically because* §3a.2 commits to
+genuine time-anchored X positioning plus §3a.3's duration/extent indicators — the view really is
+a timeline, not a topology diagram wearing a timeline's name.
+
+**Required conditional rename, flagged now rather than decided silently later:** if, during
+Task 3's implementation, genuine time-anchored X positioning proves impractical (e.g. real
+traces cluster too many near-simultaneous spans to lay out legibly on a time axis) and the
+implementation falls back to a purely topological/hierarchy-driven X, **then renaming the
+surface to "Execution Graph" becomes a required change** — the name must not imply a
+time-position claim the implementation doesn't back up. This is a named branch point for the
+Task 3 implementer, not a decision to defer.
+
+---
+
+## 3b. Edge Visual Language — Review-Refined (durable)
+
+Recorded at the Task 1 review checkpoint. The Task 1 first draft's edges were judged too thin
+and too quiet for how important the relationship they carry is (this view's whole purpose is
+making "who called whom / execution flow / parallel branches / failures" immediately legible).
+The refined, approved rule:
+
+- **Heavier stroke:** ~2.5px for completed/idle edges, ~3px for a running edge (up from the
+  first draft's 1.5/2px).
+- **Explicit directional cue:** a small, restrained arrowhead at the child (target) end,
+  conveying call direction (parent → child). Deliberately styled — not React Flow's generic
+  default marker — sized to read clearly without becoming busy.
+- **Identity/status color rules unchanged from Task 1** (this was an explicit review
+  constraint): a completed edge takes its **source node's identity color** at reduced opacity;
+  a running edge uses the running-blue with the animated dashed flow; a **failed path is always
+  status-failed red and dashed, regardless of identity** — state overrides identity, matching the
+  badge system's own Two-Palette behavior. The arrowhead inherits the edge's own color.
+
+The updated style-guide artifact reflects this (§05 edge samples and §06 composed example).
+Task 2's acceptance criteria carry it forward into the real components.
+
+## 3c. Interaction Affordances — Confirmed for Task 2 (durable)
+
+The static style guide is intentionally a flat diagram and does not need to show pan/zoom/drag.
+**The real implementation will read as an interactive graph, not a static picture** — confirmed
+as a Task 2/5 requirement here:
+
+- **Pan/zoom:** the canvas mounts React Flow's `Background` (the dotted grid, already previewed
+  in the artifact's composed example) and `Controls` (zoom-in/out/fit-view buttons), so the
+  surface visibly affords panning and zooming the moment it renders — a standard, immediately-
+  recognizable "this is a canvas you can move" signal. `Controls`' buttons must be keyboard-
+  operable (§6 item 3 / Task 6 acceptance criterion — verified, not assumed).
+- **Node interactivity:** nodes carry a visible hover state (the elevation/lift previewed in the
+  artifact) and a visible selected state (the accent ring), and the cursor changes over them —
+  so they read as clickable, not as static labels. Clicking/keyboard-activating opens the detail
+  panel (Task 4).
+- **Drag:** nodes are positioned by the §3a layout, but React Flow's node-drag remains available
+  for a user to nudge the view; this is a low-priority affordance (the layout is the source of
+  truth) and is explicitly *not* allowed to persist or feed back into positioning — dragging is
+  view-local only, never mutating the timing-derived layout.
+
+These are confirmed as real Task 2/5 deliverables, not just style-guide claims.
+
+---
+
 ## 4. Scoped Visual System — What's New, What's Reused
 
 | Element | Decision |
@@ -253,9 +388,18 @@ no React Flow dependency, no `ObservabilityPage.jsx` changes yet.
 
 **Scope:** build the agent-span and tool-call-span custom node components against Task 1's
 visual system, using representative hand-constructed data (not yet wired to real span data).
+Includes the per-node duration/time-extent indicators required by §3a.3 (the explicit duration
+figure in the meta-row, and the per-node span-extent mini-bar) — these are node-component
+concerns, built here, even though the trace-relative values that drive the mini-bar are supplied
+by Task 3's layout math.
 
 **Acceptance criteria:** both node types render correctly at all five `STATUS_COLORS` states;
-agent-identity coloring matches `AGENT_COLORS` exactly; both types are keyboard-focusable.
+agent-identity coloring matches `AGENT_COLORS` exactly (identity color never changes with status,
+per the Task-1-approved rule); both node types show the §3a.3 duration figure and a span-extent
+mini-bar; both types are keyboard-focusable. Edges follow the review-refined visual language
+(§3b): heavier stroke than the Task 1 first draft, an explicit directional arrowhead, and the
+existing identity/status color rules unchanged (source-identity color for completed at reduced
+opacity; status-failed red + dashed for failed paths, overriding identity).
 
 **Verification:** isolated component render (the established `react-dom/server`/Vite
 `ssrLoadModule` technique from Milestones 2–3) for static appearance; a live check (this state
@@ -264,15 +408,23 @@ for interactive/focus behavior.
 
 ### Task 3: Layout engine — span tree → graph positions
 
-**Scope:** the core translation logic: given `buildSpanTree`'s output and the existing
-`traceStart`/`traceDurationMs` values, compute `{x, y}` node positions (x from timing, matching
-`SpanRow`'s existing offset math; y from tree depth/branch index) and edge connections
-(parent→child). No auto-layout library (§3).
+**Scope:** the core translation logic, implementing §3a's time-anchored hybrid layout exactly:
+given `buildSpanTree`'s output and the existing `traceStart`/`traceDurationMs` values, compute
+`{x, y}` node positions where **x is derived from each span's real `StartedAt`** (the same
+offset math `SpanRow` already uses, §3a.2), **y from tree depth/branch index** (from
+`ParentSpanId`, per ADR-011), plus edge connections (parent→child). Also compute the
+trace-relative start-offset and extent values each node's §3a.3 span-extent mini-bar needs. No
+auto-layout library (§3). **If genuine time-anchored X proves impractical on real traces, invoke
+§3a.4's required conditional rename to "Execution Graph" rather than silently shipping a
+topological layout under the "Timeline" name.**
 
 **Acceptance criteria:** given a hand-constructed span tree with at least one sequential chain
-and one parallel fan-out (two children of the same parent), the computed layout places parallel
-siblings at distinct y-positions with no overlap, and sequential spans progress left-to-right
-matching their actual start times.
+and one parallel fan-out (two children of the same parent with overlapping start times), the
+computed layout: (a) places the parallel siblings at the **same or near-same X** because their
+`StartedAt` values match — demonstrating parallelism is time-derived, not hierarchy-incidental
+(§3a.2); (b) separates them on Y with no overlap; (c) progresses sequential spans left-to-right
+by real start time; (d) produces per-node extent values that correctly reflect each span's
+`DurationMs` relative to the trace, so duration and degree-of-overlap are recoverable (§3a.3).
 
 **Verification:** direct code comparison / unit-level check of the position-computation
 function against hand-constructed input/output pairs — this is pure data transformation, testable
@@ -295,14 +447,17 @@ data through Task 2/3's already-built pieces).
 ### Task 5: Integrate into `TimelineView`, with the List/Graph toggle
 
 **Scope:** wire Tasks 2–4 into `ObservabilityPage.jsx`'s `TimelineView`, replacing its default
-render path with the graph view, and add an explicit toggle back to the existing `SpanRow`-based
-list rendering (§3/§6 item 5) — both views read from the same `buildSpanTree`/timing data,
-already fetched once.
+render path with the graph view, mounting React Flow's `Background`/`Controls` for the pan/zoom
+affordances (§3c), and adding the §3a.3 time-axis/ruler across the top of the canvas. Add an
+explicit toggle back to the existing `SpanRow`-based list rendering (§3/§6 item 5) — both views
+read from the same `buildSpanTree`/timing data, already fetched once.
 
 **Acceptance criteria:** `git diff --stat` confined to `ObservabilityPage.jsx` plus the new
 files from Tasks 1–4; the other four sub-views (`SummaryView` etc.) have zero diff; `App.jsx`
 has zero diff (§1); both List and Graph views render correctly from the same fetched data;
-switching between them preserves the selected task.
+switching between them preserves the selected task; the Graph view shows the §3a.3 time axis and
+visibly affords pan/zoom (§3c); the surface's label follows §3a.4 (kept "Timeline" unless the
+conditional rename was triggered in Task 3).
 
 **Verification:** code comparison for scope/diff confinement; live for the actual toggle
 behavior, to whatever extent real or hand-constructed data can reach it in this environment

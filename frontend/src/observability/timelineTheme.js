@@ -112,12 +112,19 @@ export const node = {
 }
 
 export const edge = {
-  strokeWidth: 1.5,
-  strokeWidthActive: 2,
+  // Heavier than the Task 1 first draft (was 1.5 / 2) — the review found the
+  // relationship edges too thin/quiet for how important the structure they
+  // convey is. See plan §3b.
+  strokeWidth: 2.5,
+  strokeWidthActive: 3,
+  // Explicit directional arrowhead at the child (target) end, conveying call
+  // direction parent -> child. Restrained size, deliberately styled (not React
+  // Flow's generic default marker). Inherits the edge's own color.
+  arrowSize: 6,
   // Reduced-opacity suffix (hex alpha) applied to the source node's identity
   // color for a completed edge; failed edges use the status-failed color at
   // full opacity plus a dashed stroke, independent of agent identity —
   // matching the Two-Palette Rule (state overrides identity when a path
   // failed, exactly as DESIGN.md already establishes for badges).
-  completedAlphaSuffix: 'b3', // ~70%
+  completedAlphaSuffix: 'd9', // ~85% (was ~70% b3 — lifted with the heavier stroke, §3b)
 }

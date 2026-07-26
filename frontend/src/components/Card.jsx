@@ -71,7 +71,7 @@ const LEVEL_TO_ELEVATION = {
 }
 
 export function Card({ children, level = 'surface', padding, style }) {
-  const resolvedLevel = LEVEL_TO_SURFACE[level] ? level : 'surface'
+  const resolvedLevel = Object.prototype.hasOwnProperty.call(LEVEL_TO_SURFACE, level) ? level : 'surface'
 
   return (
     <div

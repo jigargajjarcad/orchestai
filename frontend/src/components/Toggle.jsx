@@ -128,13 +128,12 @@ export function Toggle({ options, value, onChange, style, ...rest }) {
             onClick={() => onChange(option.value)}
             onKeyDown={event => handleKeyDown(event, index)}
             style={{
-              padding: '4px 12px',
+              padding: `${spacing.xs} ${spacing.md}`,
               borderRadius: radii.lg,
               border: `1px solid ${selected ? colors.traceBlue : colors.surface0}`,
               background: selected ? `${colors.traceBlue}${interactiveState.selectedAlphaSuffix}` : 'transparent',
               color: selected ? colors.traceBlue : colors.subtext0,
-              fontFamily: typography.label.fontFamily,
-              fontSize: 11,
+              ...typography.label,
               fontWeight: selected ? 700 : 400,
               cursor: 'pointer',
             }}

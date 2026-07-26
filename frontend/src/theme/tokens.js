@@ -51,6 +51,12 @@ export const colors = {
 
   // Matching dark-red banner background for inline error messages.
   errorBg: '#2d1b1b',
+
+  // Surface ramp upper rungs (raised/overlay) — back the `surface.raised`/
+  // `surface.overlay` tokens below and mirror DESIGN.md/design.json's
+  // `surface-raised`/`surface-overlay` colorMeta entries.
+  surfaceRaised: '#232336',
+  surfaceOverlay: '#2a2a40',
 }
 
 // ---------------------------------------------------------------------------
@@ -103,8 +109,8 @@ export const semantic = {
 export const surface = {
   canvas: colors.crust,
   surface: colors.base,
-  raised: '#232336',
-  overlay: '#2a2a40',
+  raised: colors.surfaceRaised,
+  overlay: colors.surfaceOverlay,
   // Hairline border for raised/overlay surfaces — generalized verbatim from
   // timelineTheme's validated `panelBorder` (not an identity/status color,
   // so it lives here rather than in `colors`).

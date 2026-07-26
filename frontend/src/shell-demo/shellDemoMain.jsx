@@ -15,7 +15,33 @@ import { createRoot } from 'react-dom/client'
 import '../index.css'
 import ShellDemo from './ShellDemo'
 
-createRoot(document.getElementById('root')).render(
+const rootEl = document.getElementById('root')
+
+// Neutralize the legacy `#root` cap for the shell prototype ONLY.
+//
+// `index.css` sets `#root { width: 1126px; margin: 0 auto; text-align: center;
+// border-inline: 1px solid var(--border) }` — a hardcoded 1126px CENTERED
+// column. That rule is what constrains the *current product* to a centered
+// ~1126px column (the "constrained centered layout" P2-M1B is chartered to
+// replace); a child can't un-cap a fixed-width ancestor, so `AppShell` cannot
+// fill the viewport while mounted inside it. The application shell is
+// deliberately full-bleed (it owns its own per-surface width strategy via
+// `PageContainer`), so the prototype must demonstrate that true behavior.
+//
+// These are INLINE styles on the demo's own mount element only (inline wins
+// over the stylesheet rule without `!important`). They do NOT touch the shared
+// `index.css` rule and do NOT affect the product entry (`src/main.jsx` /
+// `index.html`) — the product's `#root` is unchanged. Removing the legacy cap
+// for the product itself is explicit P2-M1B migration work, not P2-M1A.
+if (rootEl) {
+  rootEl.style.width = '100%'
+  rootEl.style.maxWidth = 'none'
+  rootEl.style.margin = '0'
+  rootEl.style.textAlign = 'left'
+  rootEl.style.borderInline = 'none'
+}
+
+createRoot(rootEl).render(
   <StrictMode>
     <ShellDemo />
   </StrictMode>,

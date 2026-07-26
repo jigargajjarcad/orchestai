@@ -17,6 +17,7 @@ import {
 } from './theme/tokens'
 import { StatusBadge } from './components/StatusBadge'
 import { Panel } from './components/Panel'
+import { Card } from './components/Card'
 import { Button } from './components/Button'
 import { Input, TextArea } from './components/Input'
 import { StateText } from './components/StateText'
@@ -377,39 +378,46 @@ function MemoriesPage({ onDelete }) {
       {memories == null ? (
         <StateText tone="muted">Loading memories…</StateText>
       ) : memories.length === 0 ? (
-        <StateText tone="muted">No memories saved yet — run a task and agents will start remembering things.</StateText>
+        <EmptyState
+          title="No memories yet"
+          description="Run a task and agents will start remembering things."
+        />
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-              <th style={{ padding: '8px 10px' }}>Agent</th>
-              <th style={{ padding: '8px 10px' }}>Key</th>
-              <th style={{ padding: '8px 10px' }}>Value</th>
-              <th style={{ padding: '8px 10px' }}>Importance</th>
-              <th style={{ padding: '8px 10px' }}>Updated</th>
-              <th style={{ padding: '8px 10px' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {memories.map(m => (
-              <tr key={m.id} style={{ borderBottom: `1px solid ${colors.base}` }}>
-                <td style={{ padding: '8px 10px', color: colors.traceBlue }}>{m.agentType}</td>
-                <td style={{ padding: '8px 10px', color: colors.text }}>{m.key}</td>
-                <td style={{ padding: '8px 10px', color: colors.subtext0, maxWidth: 400 }}>{m.value}</td>
-                <td style={{ padding: '8px 10px', color: colors.overlay0 }}>{m.importance}</td>
-                <td style={{ padding: '8px 10px', color: colors.overlay0 }}>{new Date(m.updatedAt).toLocaleString()}</td>
-                <td style={{ padding: '8px 10px' }}>
-                  <button
-                    onClick={() => handleDelete(m.id)}
-                    style={{ background: 'transparent', border: '1px solid #dc262680', color: '#f38ba8', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Card level="surface">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Agent</th>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Key</th>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Value</th>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Importance</th>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Updated</th>
+                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {memories.map(m => (
+                  <tr key={m.id} style={{ borderBottom: `1px solid ${colors.base}` }}>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.traceBlue, fontFamily: uiFontFamily }}>{m.agentType}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.text, fontFamily: dataFontFamily }}>{m.key}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.subtext0, fontFamily: uiFontFamily, maxWidth: 400, wordBreak: 'break-word' }}>{m.value}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{m.importance}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{new Date(m.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}` }}>
+                      <button
+                        onClick={() => handleDelete(m.id)}
+                        style={{ background: 'transparent', border: `1px solid ${colors.statusFailed}80`, color: colors.alertRed, borderRadius: radii.md, padding: '3px 8px', fontSize: 11, fontFamily: uiFontFamily, cursor: 'pointer' }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )

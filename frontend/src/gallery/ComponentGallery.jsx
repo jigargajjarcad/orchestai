@@ -672,11 +672,20 @@ function UiFaceSpecimen() {
       >
         Trace Overview
       </h2>
+      {/* NavItem/Button/StateText don't carry the UI face yet (they still
+          inherit #root's mono default until Task A2 migrates them) — the
+          inline fontFamily overrides below are verification-only, so this
+          panel demonstrates the intended A2 end-state, not the pre-A2
+          rendering. They do not touch the real components. */}
       <Nav>
-        <NavItem active>Observability</NavItem>
+        <NavItem active style={{ fontFamily: uiFontFamily }}>
+          Observability
+        </NavItem>
       </Nav>
       <div style={{ width: 160 }}>
-        <Button variant="primary">Run task</Button>
+        <Button variant="primary" style={{ fontFamily: uiFontFamily }}>
+          Run task
+        </Button>
       </div>
       <p
         style={{
@@ -690,7 +699,9 @@ function UiFaceSpecimen() {
       >
         Select an agent from the sidebar to inspect its execution trace and step-by-step reasoning.
       </p>
-      <StateText tone="muted">All systems operational.</StateText>
+      <StateText tone="muted" style={{ fontFamily: uiFontFamily }}>
+        All systems operational.
+      </StateText>
     </TwoFaceColumn>
   )
 }

@@ -624,6 +624,198 @@ function PrimitivesSection() {
 }
 
 // ---------------------------------------------------------------------------
+// 5. Two-Face content (P2-M2 Task A1) — verification specimen
+//
+// Side-by-side proof of the canonical element -> face mapping (DESIGN.md §3
+// "Canonical element -> face mapping"): UI-face content (heading, nav label,
+// Button, instruction prose, status message) rendered via typeScale's UI
+// steps, next to data-face content (ID, timestamp, duration, cost, code/
+// JSON, a span-ID table row) rendered via typeScale's data* steps. Every
+// font-family below is read from typeScale/tokens — nothing hardcoded.
+// ---------------------------------------------------------------------------
+
+function TwoFaceColumn({ title, children }) {
+  return (
+    <Card level="surface">
+      <div
+        style={{
+          fontFamily: typeScale.label.fontFamily,
+          fontSize: typeScale.label.fontSize,
+          fontWeight: typeScale.label.fontWeight,
+          letterSpacing: typeScale.label.letterSpacing,
+          textTransform: 'uppercase',
+          color: colors.overlay0,
+          marginBottom: spacing.md,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md, alignItems: 'flex-start' }}>
+        {children}
+      </div>
+    </Card>
+  )
+}
+
+function UiFaceSpecimen() {
+  return (
+    <TwoFaceColumn title="UI face — IBM Plex Sans">
+      <h2
+        style={{
+          margin: 0,
+          color: colors.text,
+          fontFamily: typeScale.heading.fontFamily,
+          fontSize: typeScale.heading.fontSize,
+          fontWeight: typeScale.heading.fontWeight,
+          lineHeight: typeScale.heading.lineHeight,
+        }}
+      >
+        Trace Overview
+      </h2>
+      <Nav>
+        <NavItem active>Observability</NavItem>
+      </Nav>
+      <div style={{ width: 160 }}>
+        <Button variant="primary">Run task</Button>
+      </div>
+      <p
+        style={{
+          margin: 0,
+          color: colors.subtext0,
+          fontFamily: typeScale.body.fontFamily,
+          fontSize: typeScale.body.fontSize,
+          lineHeight: typeScale.body.lineHeight,
+          maxWidth: 320,
+        }}
+      >
+        Select an agent from the sidebar to inspect its execution trace and step-by-step reasoning.
+      </p>
+      <StateText tone="muted">All systems operational.</StateText>
+    </TwoFaceColumn>
+  )
+}
+
+const TWO_FACE_SPANS = [
+  { id: 'span_88f3a1', duration: '812 ms', cost: '$0.0091' },
+  { id: 'span_c02e77', duration: '204 ms', cost: '$0.0018' },
+]
+
+function DataFaceSpecimen() {
+  return (
+    <TwoFaceColumn title="Data face — JetBrains Mono">
+      <div
+        style={{
+          fontFamily: typeScale.dataLabel.fontFamily,
+          fontSize: typeScale.dataLabel.fontSize,
+          fontWeight: typeScale.dataLabel.fontWeight,
+          color: colors.subtext0,
+        }}
+      >
+        task_9f2a1c7e
+      </div>
+      <div
+        style={{
+          fontFamily: typeScale.dataBody.fontFamily,
+          fontSize: typeScale.dataBody.fontSize,
+          fontWeight: typeScale.dataBody.fontWeight,
+          color: colors.text,
+        }}
+      >
+        2026-07-26T14:32:07Z
+      </div>
+      <div style={{ display: 'flex', gap: spacing.lg }}>
+        <div
+          style={{
+            fontFamily: typeScale.dataValue.fontFamily,
+            fontSize: typeScale.dataValue.fontSize,
+            fontWeight: typeScale.dataValue.fontWeight,
+            color: colors.text,
+          }}
+        >
+          812 ms
+        </div>
+        <div
+          style={{
+            fontFamily: typeScale.dataValue.fontFamily,
+            fontSize: typeScale.dataValue.fontSize,
+            fontWeight: typeScale.dataValue.fontWeight,
+            color: colors.signalGreen,
+          }}
+        >
+          $0.0091
+        </div>
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: spacing.sm,
+          background: surface.raised,
+          borderRadius: radii.md,
+          fontFamily: typeScale.dataBody.fontFamily,
+          fontSize: typeScale.dataCaption.fontSize,
+          color: colors.text,
+          overflowX: 'auto',
+          maxWidth: 320,
+        }}
+      >
+        {'{ "status": "completed", "spanId": "span_88f3a1" }'}
+      </pre>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontFamily: typeScale.dataBody.fontFamily,
+          fontSize: typeScale.dataCaption.fontSize,
+          color: colors.text,
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: spacing.xs, borderBottom: `1px solid ${surface.border}` }}>
+              Span ID
+            </th>
+            <th style={{ textAlign: 'left', padding: spacing.xs, borderBottom: `1px solid ${surface.border}` }}>
+              Duration
+            </th>
+            <th style={{ textAlign: 'left', padding: spacing.xs, borderBottom: `1px solid ${surface.border}` }}>
+              Cost
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {TWO_FACE_SPANS.map((s) => (
+            <tr key={s.id}>
+              <td style={{ padding: spacing.xs }}>{s.id}</td>
+              <td style={{ padding: spacing.xs }}>{s.duration}</td>
+              <td style={{ padding: spacing.xs }}>{s.cost}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TwoFaceColumn>
+  )
+}
+
+function TwoFaceSection() {
+  return (
+    <Section
+      index={5}
+      title="Two-Face content"
+      note="P2-M2 Task A1 verification specimen: UI-face content (heading, nav, button, prose, status) in IBM Plex Sans side by side with data-face content (ID, timestamp, duration, cost, code/JSON, span-ID table row) in JetBrains Mono — proving the canonical element -> face mapping renders as documented."
+    >
+      <div style={{ display: 'flex', gap: spacing.xl, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 320px', minWidth: 320 }}>
+          <UiFaceSpecimen />
+        </div>
+        <div style={{ flex: '1 1 320px', minWidth: 320 }}>
+          <DataFaceSpecimen />
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
 
@@ -669,6 +861,7 @@ export default function ComponentGallery() {
       <PaletteSection />
       <SurfaceElevationSection />
       <PrimitivesSection />
+      <TwoFaceSection />
     </div>
   )
 }

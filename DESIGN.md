@@ -286,16 +286,45 @@ third typeface. Never render IDs, timestamps, durations, cost figures, or code/J
 face — that content must always be monospace, regardless of which role's token happens to
 carry it at a given point in the rollout.
 
-> **Rollout note (R1 partial-baseline).** The §5 component CSS samples and
-> `.impeccable/design.json`'s component catalog depict each control's **intended end-state face**
-> per the Two-Face Rule (e.g. a button label in IBM Plex Sans). At the R1 partial-baseline the
-> only shared controls that actually render the UI face are those consuming the `label` role
-> token (`Label`, `StatusBadge`) plus the new role-authored primitives; the mono-inheriting
-> controls (`Button`, `NavItem`, `Input`/`TextArea`, `StateText`, and `Panel`/`Card` chrome) still
-> inherit the JetBrains Mono app-shell face and only adopt the UI face in the **Phase-2 per-element
-> split** (anchored at `App.jsx`'s shell literal + `index.css`'s `--mono`). So a sample showing the
-> UI face on a button label describes the target, not R1's current rendering — this is the intended,
-> documented "residual mono UI text," not an implementation defect.
+**Canonical element → face mapping (P2-M2's governing rule; do not re-litigate).** Every
+element in the product resolves to exactly one of these two lists:
+- **UI face (IBM Plex Sans):** navigation, headings, section titles, labels, buttons,
+  instruction/prose copy, status messages, chrome of every kind.
+- **Data face (JetBrains Mono):** IDs, timestamps, durations, cost figures, any numeric value,
+  code/JSON, technical IDs, trace/span IDs, data table cells.
+
+**Four standing decisions (approved, encoded by P2-M2 Task A1):**
+1. The app-shell default (`#root` in `index.css`) stays JetBrains Mono — it is the data-safe
+   fallback for any element not yet explicitly assigned a role, and Task A1 does not touch it.
+2. `typography.body` (`theme/tokens.js`) stays on the data face (`dataFontFamily`), unchanged —
+   see the Hierarchy note above; it remains the correct default for prompts/outputs/table cells
+   until Phase 2's per-element split reassigns individual call sites.
+3. UI prose (instructions, empty-state copy, status text) renders via a UI-face role/token
+   (`typeScale.body` or an equivalent UI role) — never the legacy mono `typography.body` — once
+   a component is migrated to consume it.
+4. Within an `Input`/`TextArea`, the **field content** (what the user typed/what's displayed —
+   often IDs, numbers, code) stays mono; the **label** above it is UI face. The two never share
+   a font-family even though they sit in the same control.
+
+> **Rollout note (R1 partial-baseline → P2-M2 completing the split).** The §5 component CSS
+> samples and `.impeccable/design.json`'s component catalog depict each control's **intended
+> end-state face** per the Two-Face Rule (e.g. a button label in IBM Plex Sans). At the R1
+> partial-baseline the only shared controls that actually rendered the UI face were those
+> consuming the `label` role token (`Label`, `StatusBadge`) plus the new role-authored
+> primitives; every other control — including bare headings — inherited the JetBrains Mono
+> app-shell face (`#root` in `index.css`, plus `index.css`'s bare `h1, h2` rule).
+>
+> **P2-M2 is now closing that residual-mono baseline, one task at a time.** Task A1 (this task)
+> flips bare `h1`/`h2` headings to the UI face (`index.css`'s new `--ui` var) — a heading is,
+> by this document's own Hierarchy definition, never a rendered data value, so it's safe to move
+> off mono first and in isolation. `#root`'s JetBrains Mono default is deliberately left
+> unchanged: it remains the data-safe fallback for every element not yet migrated. The remaining
+> mono-inheriting shared controls (`Button`, `NavItem`, `Input`/`TextArea`, `StateText`, and
+> `Panel`/`Card` chrome) still inherit `#root`'s mono face today — migrating each to its correct
+> role/face is **Task A2** (shared components), with **Task B** completing the sweep
+> per-surface (page-by-page). So a sample showing the UI face on a button label still describes
+> the target, not yet the rendering, until A2 lands — this is documented "residual mono UI
+> text" narrowing in scope task-by-task, not an implementation defect.
 
 ## 4. Elevation
 

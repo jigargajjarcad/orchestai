@@ -801,7 +801,7 @@ export default function ObservabilityPage() {
   }, [])
 
   return (
-    <div style={{ padding: 24 }}>
+    <div>
       <SubNav subView={subView} setSubView={setSubView} />
       {subView === 'timeline' && <TimelineView tasks={tasks} />}
       {subView === 'summary' && <SummaryView tasks={tasks} />}

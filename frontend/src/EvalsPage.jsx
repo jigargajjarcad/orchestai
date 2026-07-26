@@ -487,7 +487,7 @@ export default function EvalsPage() {
   }, [])
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 1100 }}>
+    <div>
       <SubNav subView={subView} setSubView={setSubView} />
       {subView === 'suites' && (
         <SuitesView suites={suites} selectedSuiteId={selectedSuiteId} onSelect={setSelectedSuiteId} />

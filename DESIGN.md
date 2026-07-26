@@ -286,6 +286,17 @@ third typeface. Never render IDs, timestamps, durations, cost figures, or code/J
 face — that content must always be monospace, regardless of which role's token happens to
 carry it at a given point in the rollout.
 
+> **Rollout note (R1 partial-baseline).** The §5 component CSS samples and
+> `.impeccable/design.json`'s component catalog depict each control's **intended end-state face**
+> per the Two-Face Rule (e.g. a button label in IBM Plex Sans). At the R1 partial-baseline the
+> only shared controls that actually render the UI face are those consuming the `label` role
+> token (`Label`, `StatusBadge`) plus the new role-authored primitives; the mono-inheriting
+> controls (`Button`, `NavItem`, `Input`/`TextArea`, `StateText`, and `Panel`/`Card` chrome) still
+> inherit the JetBrains Mono app-shell face and only adopt the UI face in the **Phase-2 per-element
+> split** (anchored at `App.jsx`'s shell literal + `index.css`'s `--mono`). So a sample showing the
+> UI face on a button label describes the target, not R1's current rendering — this is the intended,
+> documented "residual mono UI text," not an implementation defect.
+
 ## 4. Elevation
 
 A small, disciplined 3-step scale (R1 redesign — supersedes the old zero-shadow model),

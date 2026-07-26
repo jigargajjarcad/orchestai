@@ -135,16 +135,26 @@ body {
   margin: 0;
 }
 
+/* P2-M1B Task 2 (Product Shell Migration) — uncapped to full width for the
+ * AppShell/Sidebar/TopBar/PageContainer product shell (the old 1126px-capped,
+ * centered, bordered-inline layout was App.css/App.jsx-era chrome that has no
+ * place once AppShell owns the outer grid). The text defaults below
+ * (color/font-family/font-size) were previously set inline on App.jsx's root
+ * `<div>` (removed as part of this migration) — relocated here so removing
+ * that div does not change the product's rendering. This PRESERVES the
+ * existing JetBrains Mono default; the per-element UI/mono type-face split is
+ * P2-M2, explicitly NOT done here. */
 #root {
-  width: 1126px;
+  width: 100%;
   max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  text-align: left;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  color: #cdd6f4;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 14px;
 }
 
 h1,

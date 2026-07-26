@@ -10,15 +10,98 @@ import { StatusBadge } from './components/StatusBadge'
 import { Panel } from './components/Panel'
 import { Button } from './components/Button'
 import { Input, TextArea } from './components/Input'
-import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
 import { Label } from './components/Label'
+import { AppShell } from './components/shell/AppShell'
+import { Sidebar } from './components/shell/Sidebar'
+import { TopBar } from './components/shell/TopBar'
+import { PageContainer } from './components/shell/PageContainer'
 import { useRouting } from './hooks/useRouting'
-import { useViewportWidth } from './hooks/useViewportWidth'
+import { useBreakpoint } from './hooks/useBreakpoint'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+
+// ---------------------------------------------------------------------------
+// P2-M1B Task 2 — Sidebar nav content: inline monochrome stroke icons
+// (`currentColor`, ~18px), matching the approved shell-demo icon style
+// (shell-demo/ShellDemo.jsx's DashboardIcon/TableIcon/etc.) — NOT the old
+// emoji. Brand/NAV_ITEMS/VIEW_TITLES feed AppShell's Sidebar/TopBar slots.
+// ---------------------------------------------------------------------------
+
+function PlaygroundIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path d="M6 4.5v11l9-5.5-9-5.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function MemoriesIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M7 3.5a2.5 2.5 0 0 0-2.4 3.2A2.5 2.5 0 0 0 4 9a2.5 2.5 0 0 0 2 2.45V13a3 3 0 0 0 3 3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13 3.5a2.5 2.5 0 0 1 2.4 3.2A2.5 2.5 0 0 1 16 9a2.5 2.5 0 0 1-2 2.45V13a3 3 0 0 1-3 3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function ObservabilityIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <path d="M4 16V9M10 16V4M16 16v-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M2.5 16.5h15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function EvalsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="10" cy="10" r="0.75" fill="currentColor" />
+    </svg>
+  )
+}
+
+// Sidebar `brand` node — the current header's h1/subtitle, unchanged text
+// and colors (colors.traceBlue / colors.surface2), just relocated.
+function Brand() {
+  return (
+    <div>
+      <h1 style={{ fontSize: 20, fontWeight: 700, color: colors.traceBlue, margin: 0 }}>OrchestAI</h1>
+      <p style={{ color: colors.surface2, margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
+    </div>
+  )
+}
+
+const NAV_ITEMS = [
+  { key: 'playground', label: 'Playground', icon: <PlaygroundIcon /> },
+  { key: 'memories', label: 'Memories', icon: <MemoriesIcon /> },
+  { key: 'observability', label: 'Observability', icon: <ObservabilityIcon /> },
+  { key: 'evals', label: 'Evals', icon: <EvalsIcon /> },
+]
+
+const VIEW_TITLES = {
+  playground: 'Playground',
+  memories: 'Memories',
+  observability: 'Observability',
+  evals: 'Evals',
+}
 
 function ToolCallRow({ toolCall }) {
   const isRunning = toolCall.durationMs == null
@@ -256,7 +339,7 @@ function MemoriesPage({ onDelete }) {
   }
 
   return (
-    <div style={{ padding: 24 }}>
+    <div>
       <div style={{ marginBottom: 16 }}>
         <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
       </div>
@@ -325,8 +408,11 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
   const { view, navigate } = useRouting()
-  const width = useViewportWidth()
-  const isNarrow = width <= 768
+  // P2-M1B Task 2 — the old `useViewportWidth() <= 768` narrow check is
+  // replaced by the shared breakpoint hook; the Playground 2-column grid
+  // stacks to 1 column below desktop (`!isDesktop`), a deliberate documented
+  // change from the old <=768 stack point (see the grid below).
+  const { isDesktop } = useBreakpoint()
   const [memoryCounts, setMemoryCounts] = useState({})
   const [memoryBaseline, setMemoryBaseline] = useState({})
   const [savedMemories, setSavedMemories] = useState({})
@@ -574,77 +660,56 @@ export default function App() {
     return <ApiKeyPrompt onSubmitted={() => setKeySet(true)} />
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#11111b', color: '#cdd6f4', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 14 }}>
-
-      {/* Header */}
-      <div style={{
-        borderBottom: '1px solid #1e1e2e', padding: '14px 24px', display: 'flex',
-        alignItems: isNarrow ? 'flex-start' : 'center', gap: 16,
-        flexWrap: isNarrow ? 'wrap' : 'nowrap',
-      }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#89b4fa', margin: 0 }}>OrchestAI</h1>
-          <p style={{ color: '#585b70', margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
-        </div>
-
-        <Nav>
-          <NavItem active={view === 'playground'} onClick={() => navigate('playground')}>
-            Playground
-          </NavItem>
-          <NavItem active={view === 'memories'} onClick={() => navigate('memories')} aria-label="Memories">
-            🧠 Memories
-          </NavItem>
-          <NavItem active={view === 'observability'} onClick={() => navigate('observability')} aria-label="Observability">
-            📊 Observability
-          </NavItem>
-          <NavItem active={view === 'evals'} onClick={() => navigate('evals')} aria-label="Evals">
-            🎯 Evals
-          </NavItem>
-        </Nav>
-
-        <div style={{
-          marginLeft: isNarrow ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 10,
-          flexWrap: 'wrap',
-        }}>
-          {taskId && view === 'playground' && (
-            <>
-              <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
-              <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
-              {totalCost != null && (
-                <span style={{ fontSize: 11, color: colors.overlay0 }}>
-                  ${Number(totalCost).toFixed(6)} total
-                </span>
-              )}
-            </>
+  // TopBar's right-hand context slot — the current header's right cluster
+  // (task id / status / cost, playground-only) plus the always-present
+  // "Change key" control (now a real Button, Task 1's `fullWidth`/`size` API,
+  // in place of the old raw <button>). Exact same behavior, relocated.
+  const topBarContext = (
+    <>
+      {taskId && view === 'playground' && (
+        <>
+          <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
+          <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
+          {totalCost != null && (
+            <span style={{ fontSize: 11, color: colors.overlay0 }}>
+              ${Number(totalCost).toFixed(6)} total
+            </span>
           )}
-          <button
-            onClick={() => { clearApiKey(); setKeySet(false) }}
-            className="focus-ring"
-            style={{ fontSize: 11, color: colors.overlay0, cursor: 'pointer', background: 'transparent', border: 'none', padding: 0, font: 'inherit' }}
-          >
-            Change key
-          </button>
-        </div>
-      </div>
+        </>
+      )}
+      <Button variant="ghost" size="sm" fullWidth={false} onClick={() => { clearApiKey(); setKeySet(false) }}>
+        Change key
+      </Button>
+    </>
+  )
 
-      {view === 'memories' ? (
+  // Per-view content, each wrapped in PageContainer at its approved density
+  // width (see task-2-report.md for the rationale per view).
+  const routedContent =
+    view === 'memories' ? (
+      <PageContainer width="wide">
         <MemoriesPage onDelete={() => fetchMemoryCounts().then(setMemoryCounts)} />
-      ) : view === 'observability' ? (
+      </PageContainer>
+    ) : view === 'observability' ? (
+      <PageContainer width="full">
         <ObservabilityPage />
-      ) : view === 'evals' ? (
+      </PageContainer>
+    ) : view === 'evals' ? (
+      <PageContainer width="wide">
         <EvalsPage />
-      ) : (
+      </PageContainer>
+    ) : (
+      <PageContainer width="full" style={{ padding: 0 }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isNarrow ? '1fr' : '380px 1fr',
-        minHeight: isNarrow ? undefined : 'calc(100vh - 57px)',
+        gridTemplateColumns: !isDesktop ? '1fr' : '380px 1fr',
+        minHeight: '100%',
       }}>
 
         {/* Left: Input + Agent Feed */}
         <div style={{
-          borderRight: isNarrow ? 'none' : '1px solid #1e1e2e',
-          borderBottom: isNarrow ? '1px solid #1e1e2e' : 'none',
+          borderRight: !isDesktop ? 'none' : '1px solid #1e1e2e',
+          borderBottom: !isDesktop ? '1px solid #1e1e2e' : 'none',
           padding: 20, overflowY: 'auto',
         }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
@@ -761,7 +826,15 @@ export default function App() {
           )}
         </div>
       </div>
-      )}
-    </div>
+      </PageContainer>
+    )
+
+  return (
+    <AppShell
+      sidebar={<Sidebar items={NAV_ITEMS} active={view} onNavigate={navigate} brand={<Brand />} />}
+      topBar={<TopBar title={VIEW_TITLES[view]}>{topBarContext}</TopBar>}
+    >
+      {routedContent}
+    </AppShell>
   )
 }

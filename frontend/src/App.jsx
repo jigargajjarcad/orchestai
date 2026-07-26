@@ -410,9 +410,13 @@ export default function App() {
   const { view, navigate } = useRouting()
   // P2-M1B Task 2 — the old `useViewportWidth() <= 768` narrow check is
   // replaced by the shared breakpoint hook; the Playground 2-column grid
-  // stacks to 1 column below desktop (`!isDesktop`), a deliberate documented
-  // change from the old <=768 stack point (see the grid below).
-  const { isDesktop } = useBreakpoint()
+  // stacks to 1 column below desktop, a deliberate documented change from the
+  // old <=768 stack point (see the grid below). `atLeast('desktop')` is
+  // true at BOTH the `desktop` (1024–1439) and `wide` (>=1440) buckets — the
+  // 2-pane workspace must persist on large/ultra-wide monitors, so this is
+  // NOT the exact-bucket `isDesktop` flag (which would wrongly stack >=1440).
+  const { atLeast } = useBreakpoint()
+  const playgroundStacked = !atLeast('desktop')
   const [memoryCounts, setMemoryCounts] = useState({})
   const [memoryBaseline, setMemoryBaseline] = useState({})
   const [savedMemories, setSavedMemories] = useState({})
@@ -702,14 +706,14 @@ export default function App() {
       <PageContainer width="full" style={{ padding: 0 }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: !isDesktop ? '1fr' : '380px 1fr',
+        gridTemplateColumns: playgroundStacked ? '1fr' : '380px 1fr',
         minHeight: '100%',
       }}>
 
         {/* Left: Input + Agent Feed */}
         <div style={{
-          borderRight: !isDesktop ? 'none' : '1px solid #1e1e2e',
-          borderBottom: !isDesktop ? '1px solid #1e1e2e' : 'none',
+          borderRight: playgroundStacked ? 'none' : '1px solid #1e1e2e',
+          borderBottom: playgroundStacked ? '1px solid #1e1e2e' : 'none',
           padding: 20, overflowY: 'auto',
         }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>

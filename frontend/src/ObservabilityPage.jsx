@@ -440,11 +440,14 @@ function TimelineView({ tasks }) {
 
 // ── Execution Summary Card ──
 
-function SummaryStat({ label, value, color }) {
+function SummaryStat({ label, value, color, categorical }) {
+  // `value` defaults to the data face (numeric metrics — the common case);
+  // `categorical` renders it on the UI face for status/Yes-No values, which
+  // are categorical/status info per the Two-Face Rule, not data.
   return (
     <div>
       <div style={{ fontSize: 10, color: colors.overlay0, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4, fontFamily: uiFontFamily }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: color ?? colors.text, fontFamily: dataFontFamily }}>{value}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: color ?? colors.text, fontFamily: categorical ? uiFontFamily : dataFontFamily }}>{value}</div>
     </div>
   )
 }
@@ -492,8 +495,8 @@ function SummaryView({ tasks }) {
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statGridCols}, 1fr)`, gap: 20, marginBottom: 20 }}>
             <SummaryStat label="Retry Count" value={data.retryCount} color={data.retryCount > 0 ? colors.statusWarning : undefined} />
             <SummaryStat label="Error Count" value={data.errorCount} color={data.errorCount > 0 ? colors.alertRed : undefined} />
-            <SummaryStat label="Memory Used" value={data.memoryUsed ? 'Yes' : 'No'} color={data.memoryUsed ? colors.signalGreen : undefined} />
-            <SummaryStat label="Checkpoint Restored" value={data.checkpointRestored ? 'Yes' : 'No'} />
+            <SummaryStat label="Memory Used" value={data.memoryUsed ? 'Yes' : 'No'} color={data.memoryUsed ? colors.signalGreen : undefined} categorical />
+            <SummaryStat label="Checkpoint Restored" value={data.checkpointRestored ? 'Yes' : 'No'} categorical />
           </div>
 
           <div style={{ borderTop: `1px solid ${colors.surface0}`, paddingTop: 14 }}>

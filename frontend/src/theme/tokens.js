@@ -422,3 +422,54 @@ export const panelAccentBorderAlphaSuffix = '40' // ~25.1% alpha (preserves toda
 //   50% of 255 = 0.50 * 255 = 127.5 -> round -> 128 = 0x80
 // ---------------------------------------------------------------------------
 export const buttonGhostBorderAlphaSuffix = '80' // 50% alpha
+
+// ---------------------------------------------------------------------------
+// Content width (P2-M1A Task 1 addition)
+//
+// Per-density content max-widths consumed by the future PageContainer shell
+// primitive (a later P2-M1A task) — this task only adds the token, no
+// component reads it yet. Grounded in the ui-ux-pro-max Container-Width
+// guideline:
+//   readable — 65-75ch is the standard prose measure for comfortable
+//     line-length reading; `68ch` sits in the middle of that range and is
+//     used for long-form single-column text content.
+//   standard/wide — SOFT caps: the content region grows to fill the
+//     viewport up to the cap, then centers, rather than a hard viewport-
+//     relative width. `standard` (1440px) is the default page cap; `wide`
+//     (1600px) is for data-dense views (tables, dashboards) that benefit
+//     from more horizontal room.
+//   full — no cap; the content fills whatever width its parent region
+//     provides (e.g. a canvas/graph view that must use all available space).
+// ---------------------------------------------------------------------------
+export const contentWidth = {
+  readable: '68ch',
+  standard: '1440px',
+  wide: '1600px',
+  full: '100%',
+}
+
+// ---------------------------------------------------------------------------
+// Breakpoints (P2-M1A Task 1 addition)
+//
+// Px MIN-WIDTH thresholds, mobile-first: a class is "active" at width >= its
+// value (standard `min-width` media-query semantics, mirrored here as plain
+// JS numbers rather than CSS since this codebase's layout components branch
+// on `useViewportWidth`'s numeric width directly — see that hook and the new
+// `useBreakpoint` hook in ../hooks/useBreakpoint.js, which is built on top of
+// it).
+//
+// Resulting classes (four buckets, three thresholds):
+//   mobile:  width <  640            (< tablet)
+//   tablet:  640  <= width < 1024    (>= tablet, < desktop)
+//   desktop: 1024 <= width < 1440    (>= desktop, < wide)
+//   wide:    width >= 1440           (>= wide)
+// Ultra-wide viewports (1920, 2560, ...) fall into `wide` — there is no
+// separate bucket above it. Content honors the `contentWidth` soft caps
+// above at those sizes rather than stretching further, so `wide` covering
+// everything from 1440px up is intentional, not a gap.
+// ---------------------------------------------------------------------------
+export const breakpoints = {
+  tablet: 640,
+  desktop: 1024,
+  wide: 1440,
+}

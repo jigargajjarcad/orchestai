@@ -1,3 +1,93 @@
+/* ---------------------------------------------------------------------------
+ * Self-hosted webfonts — R1 (Design-System Foundation) Task 2.
+ *
+ * Master plan §3.1 (docs/superpowers/plans/2026-07-26-full-platform-redesign-
+ * master-plan.md), DECISION — APPROVED (2026-07-26), Option B: self-hosted
+ * IBM Plex Sans (UI face) + JetBrains Mono (data face). Both self-hosted —
+ * JetBrains Mono was, until this task, only a font-family *name* relying on
+ * the visitor having it installed locally (falling back to system mono
+ * otherwise); it now actually loads like IBM Plex Sans does.
+ *
+ * Source: WOFF2 files extracted from the official @fontsource/ibm-plex-sans
+ * @5.3.0 and @fontsource/jetbrains-mono@5.3.0 npm packages (pre-subsetted,
+ * Latin-only, OFL-1.1 licensed — see the OFL-1.1.txt file copied alongside
+ * each family under public/fonts/). Copied once into public/fonts/ and
+ * hand-written below (approach (b) from the
+ * task brief) rather than kept as an npm dependency + imported per-weight
+ * CSS: the fontsource per-weight CSS also ships a legacy .woff fallback
+ * alongside every .woff2, which every browser this product supports has
+ * been able to ignore in favor of .woff2 for years — hand-writing @font-face
+ * against only the .woff2 files gives exact control over what ships (no
+ * unused fallback bytes, no other-subset files) and keeps package.json free
+ * of an otherwise-unused dependency.
+ *
+ * Weights loaded — only what a per-role type scale (theme/typography.js)
+ * actually uses, audited against real fontWeight usage already in this repo
+ * (tokens.js, timelineTheme.js, ObservabilityPage.jsx, EvalsPage.jsx,
+ * App.jsx all use some combination of 400/500/600/700 today):
+ *   - IBM Plex Sans 400 (body/prose), 500 (labels/medium emphasis),
+ *     600 (headings/titles), 700 (display/strong emphasis).
+ *   - JetBrains Mono 400 (default data text), 500 (medium-emphasis data,
+ *     matching timelineTheme.js's existing nodeData/nodeMeta weight),
+ *     700 (bold data figures — matches existing bold-monospace figures,
+ *     e.g. ObservabilityPage.jsx's stat values and fail amounts).
+ * No italic styles, no other language subsets (cyrillic/greek/vietnamese/
+ * latin-ext) — this product is Latin-only UI copy and JSON/ID data.
+ *
+ * font-display: swap — fallback-face text renders immediately (no invisible
+ * text / FOIT); the real face swaps in once its WOFF2 arrives. Sizes/weights
+ * are measured and reported in .superpowers/sdd/task-2-report.md.
+ * ------------------------------------------------------------------------ */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans/ibm-plex-sans-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans/ibm-plex-sans-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans/ibm-plex-sans-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans/ibm-plex-sans-latin-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono/jetbrains-mono-latin-700.woff2') format('woff2');
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;

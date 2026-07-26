@@ -23,17 +23,55 @@
       "status-completed": { "role": "state", "displayName": "Status: Completed", "canonical": "#16a34a", "tonalRamp": ["#0a3319", "#0f4a24", "#146633", "#16853f", "#16a34a", "#4dbd72", "#83d39d", "#bae9c8"] },
       "status-failed": { "role": "state", "displayName": "Status: Failed", "canonical": "#dc2626", "tonalRamp": ["#450a0a", "#671414", "#8f1d1d", "#b82424", "#dc2626", "#e8595a", "#f28d8e", "#fac2c2"] },
       "status-pending": { "role": "state", "displayName": "Status: Pending", "canonical": "#6b7280", "tonalRamp": ["#26292e", "#374045", "#4b535a", "#5c646c", "#6b7280", "#8a909a", "#aab0b8", "#cbd0d6"] },
-      "status-warning": { "role": "state", "displayName": "Status: Warning / Retry", "canonical": "#f59e0b", "tonalRamp": ["#4d3305", "#734d08", "#97650b", "#c4850e", "#f59e0b", "#f7b647", "#facf85", "#fce7c2"] }
+      "status-warning": { "role": "state", "displayName": "Status: Warning / Retry", "canonical": "#f59e0b", "tonalRamp": ["#4d3305", "#734d08", "#97650b", "#c4850e", "#f59e0b", "#f7b647", "#facf85", "#fce7c2"] },
+      "surface-raised": { "role": "neutral", "displayName": "Surface: Raised", "canonical": "#232336", "tonalRamp": ["#11111b", "#181825", "#1e1e2e", "#232336", "#2a2a40", "#313244", "#45475a", "#585b70"] },
+      "surface-overlay": { "role": "neutral", "displayName": "Surface: Overlay", "canonical": "#2a2a40", "tonalRamp": ["#181825", "#1e1e2e", "#232336", "#2a2a40", "#313244", "#3a3d54", "#45475a", "#585b70"] }
+    },
+    "semanticMeta": {
+      "good": { "displayName": "Semantic: Good", "aliasOf": "status-completed", "canonical": "#16a34a" },
+      "warn": { "displayName": "Semantic: Warn", "aliasOf": "status-warning", "canonical": "#f59e0b" },
+      "critical": { "displayName": "Semantic: Critical", "aliasOf": "status-failed", "canonical": "#dc2626" }
+    },
+    "surfaceMeta": {
+      "canvas": { "displayName": "Canvas", "canonical": "#11111b", "aliasOf": "crust", "purpose": "Page background." },
+      "surface": { "displayName": "Surface", "canonical": "#1e1e2e", "aliasOf": "base", "purpose": "Resting panel/card background." },
+      "raised": { "displayName": "Raised", "canonical": "#232336", "purpose": "Hover/active/selected surfaces." },
+      "overlay": { "displayName": "Overlay", "canonical": "#2a2a40", "purpose": "Drawers/modals/menus." }
     },
     "typographyMeta": {
-      "heading": { "displayName": "Heading", "purpose": "Page title only, used once per view (\"OrchestAI\")." },
-      "title": { "displayName": "Title", "purpose": "Section-level headers inside a panel." },
-      "body": { "displayName": "Body", "purpose": "Default for prompts, outputs, table cells, descriptions." },
-      "label": { "displayName": "Label", "purpose": "Uppercase section eyebrows and column headers." }
+      "heading": { "displayName": "Heading", "purpose": "Page title only, used once per view (\"OrchestAI\").", "face": "ui" },
+      "title": { "displayName": "Title", "purpose": "Section-level headers inside a panel.", "face": "ui" },
+      "body": { "displayName": "Body", "purpose": "Default for prompts, outputs, table cells, descriptions.", "face": "data" },
+      "label": { "displayName": "Label", "purpose": "Uppercase section eyebrows and column headers.", "face": "ui" }
     },
-    "shadows": [],
+    "typeScaleMeta": {
+      "display": { "displayName": "Display", "face": "ui", "fontSize": "28px", "fontWeight": 700 },
+      "heading": { "displayName": "Heading", "face": "ui", "fontSize": "20px", "fontWeight": 700 },
+      "subheading": { "displayName": "Subheading", "face": "ui", "fontSize": "15px", "fontWeight": 600 },
+      "title": { "displayName": "Title", "face": "ui", "fontSize": "14px", "fontWeight": 600 },
+      "body": { "displayName": "Body", "face": "ui", "fontSize": "13px", "fontWeight": 400 },
+      "label": { "displayName": "Label", "face": "ui", "fontSize": "11px", "fontWeight": 500 },
+      "caption": { "displayName": "Caption", "face": "ui", "fontSize": "10px", "fontWeight": 500 },
+      "dataValue": { "displayName": "Data Value", "face": "data", "fontSize": "18px", "fontWeight": 700 },
+      "dataBody": { "displayName": "Data Body", "face": "data", "fontSize": "13px", "fontWeight": 400 },
+      "dataLabel": { "displayName": "Data Label", "face": "data", "fontSize": "11px", "fontWeight": 500 },
+      "dataCaption": { "displayName": "Data Caption", "face": "data", "fontSize": "10px", "fontWeight": 700 }
+    },
+    "shadows": [
+      { "name": "flat", "value": "none", "purpose": "Resting state for the large majority of surfaces." },
+      { "name": "raised", "value": "0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35)", "purpose": "Hover/active/selected cards and the raised surface tier." },
+      { "name": "overlay", "value": "0 8px 30px rgba(0, 0, 0, 0.5)", "purpose": "Drawers, modals, menus." }
+    ],
     "motion": [],
-    "breakpoints": []
+    "breakpoints": [],
+    "interactiveStates": {
+      "hoverAlphaSuffix": "14",
+      "activeAlphaSuffix": "24",
+      "selectedAlphaSuffix": "2e",
+      "disabledBackground": "#313244",
+      "disabledText": "#6c7086",
+      "focusRing": { "color": "#89b4fa", "width": "2px", "offset": "2px" }
+    }
   },
   "components": [
     {
@@ -79,32 +117,35 @@
   ],
   "narrative": {
     "northStar": "The Trace Console",
-    "overview": "OrchestAI's frontend is not a dashboard you browse — it's a console you read. Every screen exists to answer one question fast: what happened, why, how much did it cost, how do I reproduce it. The visual language follows from that job directly: monospace throughout (this is a tool that shows raw traces, timestamps, and span IDs — a proportional font would be lying about what the data actually is), a single Catppuccin Mocha dark base with zero elevation, and a deliberately narrow, dense information architecture that packs execution data close together rather than spacing it out for comfort. This system explicitly rejects the generic SaaS dashboard: no gradient hero metrics, no cream/sand card grids, no rounded pastel \"consumer analytics\" look. An engineer debugging a failed multi-agent run at 2am should feel like they're reading htop or a Grafana Tempo trace view, not browsing a Stripe-dashboard-clone.",
+    "overview": "OrchestAI's frontend is not a dashboard you browse — it's a console you read. Every screen exists to answer one question fast: what happened, why, how much did it cost, how do I reproduce it. The visual language follows from that job directly: a two-face type system (a proportional UI face — IBM Plex Sans — for chrome/prose, monospace — JetBrains Mono — reserved for the raw data: IDs, timestamps, durations, cost figures, code/JSON, span IDs, because a proportional font really would be lying about what that content is), a Catppuccin Mocha dark base with a genuine, restrained surface hierarchy (canvas -> surface -> raised -> overlay) and a small disciplined elevation scale (flat -> raised -> overlay), and a deliberately narrow, dense information architecture that packs execution data close together rather than spacing it out for comfort. This system explicitly rejects the generic SaaS dashboard: no gradient hero metrics, no cream/sand card grids, no rounded pastel \"consumer analytics\" look. An engineer debugging a failed multi-agent run at 2am should feel like they're reading htop or a Grafana Tempo trace view, not browsing a Stripe-dashboard-clone. The R1 (\"Design-System Foundation\") redesign sharpens this identity — real type hierarchy, real surface depth, restrained shadows — it does not soften it toward generic SaaS.",
     "keyCharacteristics": [
-      "Monospace-only typography, no serif or humanist sans anywhere",
-      "Flat throughout — zero shadows, depth via background-color layering only",
-      "Dense: small type scale (11–14px for 90% of UI), tight padding, small radii (3–8px)",
-      "Two distinct color roles never blended: soft Catppuccin tones identify what (agent type, structural UI), harder saturated tones identify state (status badges only)"
+      "Two-face typography: IBM Plex Sans (self-hosted) for UI chrome — headings, titles, labels, navigation, prose — JetBrains Mono (self-hosted) reserved for data — IDs, timestamps, durations, cost figures, code/JSON, span IDs.",
+      "Layered, not flat: a 4-tier surface ramp (canvas -> surface -> raised -> overlay) and a small 3-step elevation scale (flat -> raised -> overlay) replace the old two-flat-layer/zero-shadow model, still restrained — no dramatic drop-shadows.",
+      "Dense: type scale spans 10-28px (display -> caption), tight padding, small-to-medium radii (3-12px)",
+      "Two distinct color roles never blended: soft Catppuccin tones identify what (agent type, structural UI), harder saturated tones identify state (status badges, and — via documented alias, not new hues — non-status semantic UI like toasts/banners)"
     ],
     "rules": [
-      { "name": "The Two-Palette Rule", "body": "Identity (which agent, which color role in the UI) is always a Catppuccin tone. State (is this run running / done / failed) is always drawn from the harder Status set. Never use Alert Red for a \"Failed\" badge or Status Failed for inline error text.", "section": "colors" },
-      { "name": "The One Accent Rule", "body": "Trace Blue is the only color used for interactive affordances (buttons, links, focus). It appears on a small fraction of any screen; its rarity is what makes it register as \"click here\" rather than decoration.", "section": "colors" },
-      { "name": "The No-Serif Rule", "body": "Nothing in this system is ever set in a serif or humanist sans. If a new screen needs a font decision, the answer is always the existing monospace stack.", "section": "typography" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces never cast shadows. The only \"elevation\" cue besides background layering is a colored left-border (3px) on status-carrying cards — a deliberate, singular exception to the general no-side-stripe-border rule.", "section": "elevation" }
+      { "name": "The Two-Palette Rule", "body": "Identity (which agent, which color role in the UI) is always a Catppuccin tone. State (is this run running / done / failed) is always drawn from the harder Status set. Never use Alert Red for a \"Failed\" badge or Status Failed for inline error text. The good/warn/critical semantic aliases are Status-set colors reused under a non-status name — they do not create a third palette.", "section": "colors" },
+      { "name": "The One Accent Rule", "body": "Trace Blue is the only color used for interactive affordances (buttons, links, focus). It appears on a small fraction of any screen; its rarity is what makes it register as \"click here\" rather than decoration. Explicitly re-validated (not just carried forward) at R1 via a dense synthetic palette-density stress test.", "section": "colors" },
+      { "name": "The Two-Face Rule", "body": "Supersedes the old No-Serif Rule. Exactly two typefaces exist in this system, split by role: IBM Plex Sans for UI chrome, JetBrains Mono for data. Never introduce a third typeface. Never render IDs/timestamps/durations/costs/code/JSON in the UI face.", "section": "typography" },
+      { "name": "The Disciplined-Elevation Rule", "body": "Supersedes the old Flat-By-Default Rule. Every shadow used in the product must be one of the three documented elevation-scale steps (flat/raised/overlay) — no arbitrary or decorative drop-shadows. The colored left-border (3px) on status-carrying cards remains a separate, still-valid convention.", "section": "elevation" }
     ],
     "dos": [
-      "Do keep every screen monospace — headings, labels, body, values, all one family.",
-      "Do use the Two-Palette Rule: Catppuccin tones for identity, hard Status tones for state.",
+      "Do use the UI face (IBM Plex Sans) for chrome — headings, titles, labels, nav, prose — and the data face (JetBrains Mono) for IDs/timestamps/durations/costs/code/JSON. Never the reverse.",
+      "Do use the Two-Palette Rule: Catppuccin tones for identity, hard Status tones for state; good/warn/critical are Status-set colors reused for non-status UI, not a third palette.",
       "Do use tinted-pill badges (20% alpha bg, 50–60% alpha border, full-opacity text) for any new status indicator, matching the existing badge pattern exactly.",
       "Do reserve the 3px border-left accent for cards that represent a single dominant status; it is the one deliberate exception to the side-stripe ban below.",
-      "Do keep type sizes in the 11–14px range for standard UI; reserve 18–20px for the single page heading only."
+      "Do use the Surface Hierarchy (canvas/surface/raised/overlay) for background layering and the Elevation scale (flat/raised/overlay) for shadows — together, not interchangeably.",
+      "Do give every interactive element a visible :focus-visible ring (2px solid Trace Blue, 2px offset) — accessibility is a first-class acceptance criterion.",
+      "Do keep type sizes in the 10–20px range for standard UI (the full scale runs display(28px) -> caption(10px)); reserve 20px+ for the single page heading/display role only."
     ],
     "donts": [
       "Don't introduce a gradient, hero metric, or cream/sand card grid — this is a tracing tool, not a marketing-adjacent SaaS dashboard.",
       "Don't use border-left as a colored accent on anything other than a status-carrying card.",
-      "Don't add a box-shadow anywhere. Depth is background-layering only.",
+      "Don't add a box-shadow outside the three documented elevation steps (flat/raised/overlay) — no arbitrary or dramatic depth.",
       "Don't mix Catppuccin soft tones and hard Status tones on the same semantic concept.",
-      "Don't introduce a second typeface, even for \"just one heading.\"",
+      "Don't introduce a third typeface, or render data (IDs/timestamps/durations/costs/code/JSON) in the UI face.",
+      "Don't expand the 6-color Agent Identity Palette or the 5-color Status palette — R1's dense-fixture stress test validated the current breadth as sufficient; add semantic meaning via the documented good/warn/critical aliases, never a new hue.",
       "Don't reconstruct span parent/child hierarchy from timestamps or visual proximity — it must always be driven by the actual spanId/parentSpanId data, mirroring the backend's own architectural rule (ADR-011)."
     ]
   }

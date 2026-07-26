@@ -141,6 +141,16 @@ body {
   margin: 0;
 }
 
+/* P2-M2 Task B0 — form controls now inherit the cascade instead of the UA
+ * default; default resolves to #root's mono (data-safe), with UI-face
+ * assignment handled explicitly per component (A2) or per-surface (B). */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 /* P2-M1B Task 2 (Product Shell Migration) — uncapped to full width for the
  * AppShell/Sidebar/TopBar/PageContainer product shell (the old 1126px-capped,
  * centered, bordered-inline layout was App.css/App.jsx-era chrome that has no

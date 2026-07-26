@@ -696,15 +696,18 @@ export default function App() {
   // width (see task-2-report.md for the rationale per view).
   const routedContent =
     view === 'memories' ? (
-      <PageContainer width="wide">
+      // `paddingBlock` restores the vertical rhythm the pages' own removed
+      // outer containers used to provide — PageContainer applies horizontal
+      // padding only, so without this the content butts against the TopBar.
+      <PageContainer width="wide" style={{ paddingBlock: spacing.xl }}>
         <MemoriesPage onDelete={() => fetchMemoryCounts().then(setMemoryCounts)} />
       </PageContainer>
     ) : view === 'observability' ? (
-      <PageContainer width="full">
+      <PageContainer width="full" style={{ paddingBlock: spacing.xl }}>
         <ObservabilityPage />
       </PageContainer>
     ) : view === 'evals' ? (
-      <PageContainer width="wide">
+      <PageContainer width="wide" style={{ paddingBlock: spacing.xl }}>
         <EvalsPage />
       </PageContainer>
     ) : (
@@ -712,7 +715,10 @@ export default function App() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: playgroundStacked ? '1fr' : '380px 1fr',
-        minHeight: '100%',
+        // Fill the viewport below the sticky TopBar (56px = its min-height) so
+        // the workspace panes + divider reach the bottom even when the form is
+        // short. `100%` would collapse against PageContainer's auto height.
+        minHeight: 'calc(100svh - 56px)',
       }}>
 
         {/* Left: Input + Agent Feed */}

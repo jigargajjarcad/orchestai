@@ -711,7 +711,13 @@ export default function App() {
         <EvalsPage />
       </PageContainer>
     ) : (
-      <PageContainer width="full" style={{ padding: 0 }}>
+      // Edge-to-edge workspace: override PageContainer's horizontal padding with
+      // the matching longhands (paddingLeft/Right: 0) rather than the `padding`
+      // shorthand — mixing the `padding` shorthand with PageContainer's
+      // paddingLeft/paddingRight longhands triggers React's "don't mix shorthand
+      // and non-shorthand" dev warning. PageContainer sets no vertical padding,
+      // so this yields a fully edge-to-edge (0-padding) full-bleed workspace.
+      <PageContainer width="full" style={{ paddingLeft: 0, paddingRight: 0 }}>
       <div style={{
         display: 'grid',
         gridTemplateColumns: playgroundStacked ? '1fr' : '380px 1fr',

@@ -439,3 +439,6 @@ FodyWeavers.xsd
 # marketplace in ~/.claude/plugins; the project-scoped install duplicates it here.
 .claude/settings.json
 .claude/skills/
+
+# SDD scratch (ledgers, task briefs/reports) — not product artifacts
+.superpowers/

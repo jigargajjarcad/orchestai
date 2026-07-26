@@ -1,13 +1,15 @@
 // frontend/src/EvalsPage.jsx
 import { useState, useEffect } from 'react'
 import { authenticatedFetch } from './apiKey'
-import { colors, radii } from './theme/tokens'
+import { colors, radii, uiFontFamily, dataFontFamily, spacing } from './theme/tokens'
 import { Panel } from './components/Panel'
 import { Label } from './components/Label'
 import { Input, TextArea } from './components/Input'
 import { Button } from './components/Button'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
+import { Toggle } from './components/Toggle'
+import { EmptyState } from './components/EmptyState'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 
@@ -23,6 +25,7 @@ const selectStyle = {
   background: colors.mantle,
   color: colors.text,
   fontSize: 12,
+  fontFamily: dataFontFamily,
   outline: 'none',
 }
 
@@ -53,9 +56,15 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
         <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
       </div>
       {suites.length === 0 && (
-        <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 13 }}>
-          No suites yet — create one via <code>POST /api/v1/eval-suites</code>.
-        </StateText>
+        <EmptyState
+          title="No eval suites yet"
+          description={
+            <>
+              Eval suites are provisioned out-of-band — create one via{' '}
+              <code>POST /api/v1/eval-suites</code>.
+            </>
+          }
+        />
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {suites.map(s => (
@@ -68,8 +77,8 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
               border: selectedSuiteId === s.id ? `1px solid ${colors.traceBlue}` : `1px solid ${colors.surface0}`,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 700, color: colors.text }}>{s.name}</div>
-            <div style={{ fontSize: 11, color: colors.overlay0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</div>
+            <div style={{ fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
               {s.targetAgentType} · {s.description}
             </div>
           </div>
@@ -97,7 +106,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   if (!selectedSuiteId) {
     return (
       <Panel>
-        <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 13 }}>Select a suite first.</StateText>
+        <EmptyState title="Select a suite first" style={{ padding: `${spacing.xl} ${spacing.lg}` }} />
       </Panel>
     )
   }
@@ -223,7 +232,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
 
       {resultsError && (
         <Panel>
-          <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{resultsError}</StateText>
+          <StateText tone="error" style={{ fontSize: 12 }}>{resultsError}</StateText>
         </Panel>
       )}
 
@@ -232,31 +241,33 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           <div style={{ marginBottom: 8 }}>
             <Label style={{ fontWeight: 400 }}>Pass/Fail Summary</Label>
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>
-            {passCount} / {results.results.length} passed
+          <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>
+            <span style={{ fontFamily: dataFontFamily }}>{passCount} / {results.results.length}</span> passed
           </div>
-          <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                <th style={{ padding: '4px 8px' }}>Case</th>
-                <th style={{ padding: '4px 8px' }}>Scorer</th>
-                <th style={{ padding: '4px 8px' }}>Score</th>
-                <th style={{ padding: '4px 8px' }}>Passed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.results.map(r => (
-                <tr key={r.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
-                  <td style={{ padding: '4px 8px', color: colors.text }}>{r.evalCaseId.slice(0, 8)}…</td>
-                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{r.scorerType}</td>
-                  <td style={{ padding: '4px 8px', color: colors.text }}>{r.score}</td>
-                  <td style={{ padding: '4px 8px', color: r.passed ? colors.signalGreen : colors.alertRed }}>
-                    {r.passed ? 'Pass' : 'Fail'}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <thead>
+                <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Scorer</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Passed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {results.results.map(r => (
+                  <tr key={r.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{r.evalCaseId.slice(0, 8)}…</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: uiFontFamily }}>{r.scorerType}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{r.score}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: r.passed ? colors.signalGreen : colors.alertRed, fontFamily: uiFontFamily }}>
+                      {r.passed ? 'Pass' : 'Fail'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Panel>
       )}
 
@@ -265,42 +276,44 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           <div style={{ marginBottom: 8 }}>
             <Label style={{ fontWeight: 400 }}>Regression vs. Baseline</Label>
           </div>
-          <div style={{ fontSize: 13, color: colors.text, marginBottom: 10 }}>
-            Pass rate {(regression.currentPassRate * 100).toFixed(0)}% vs baseline{' '}
-            {(regression.baselinePassRate * 100).toFixed(0)}%{' '}
-            <span style={{ color: regression.passRateDelta < 0 ? colors.alertRed : colors.signalGreen }}>
+          <div style={{ fontSize: 13, color: colors.text, marginBottom: 10, fontFamily: uiFontFamily }}>
+            Pass rate <span style={{ fontFamily: dataFontFamily }}>{(regression.currentPassRate * 100).toFixed(0)}%</span> vs baseline{' '}
+            <span style={{ fontFamily: dataFontFamily }}>{(regression.baselinePassRate * 100).toFixed(0)}%</span>{' '}
+            <span style={{ fontFamily: dataFontFamily, color: regression.passRateDelta < 0 ? colors.alertRed : colors.signalGreen }}>
               ({regression.passRateDelta >= 0 ? '+' : ''}{(regression.passRateDelta * 100).toFixed(0)}pp)
             </span>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                <th style={{ padding: '4px 8px' }}>Case</th>
-                <th style={{ padding: '4px 8px' }}>Current</th>
-                <th style={{ padding: '4px 8px' }}>Baseline</th>
-                <th style={{ padding: '4px 8px' }}>Delta</th>
-                <th style={{ padding: '4px 8px' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {regression.caseDiffs.map(d => (
-                <tr key={d.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
-                  <td style={{ padding: '4px 8px', color: colors.text }}>{d.evalCaseId.slice(0, 8)}…</td>
-                  <td style={{ padding: '4px 8px', color: colors.text }}>{d.currentScore}</td>
-                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{d.baselineScore ?? '—'}</td>
-                  <td style={{ padding: '4px 8px', color: colors.overlay0 }}>{d.scoreDelta ?? '—'}</td>
-                  <td style={{ padding: '4px 8px', color: d.regressed ? colors.alertRed : d.isNewCase ? colors.beaconYellow : colors.signalGreen }}>
-                    {d.regressed ? 'Regressed' : d.isNewCase ? 'New case' : 'OK'}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <thead>
+                <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Current</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Baseline</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Delta</th>
+                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {regression.caseDiffs.map(d => (
+                  <tr key={d.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{d.evalCaseId.slice(0, 8)}…</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{d.currentScore}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{d.baselineScore ?? '—'}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{d.scoreDelta ?? '—'}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: d.regressed ? colors.alertRed : d.isNewCase ? colors.beaconYellow : colors.signalGreen, fontFamily: uiFontFamily }}>
+                      {d.regressed ? 'Regressed' : d.isNewCase ? 'New case' : 'OK'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Panel>
       )}
       {regressionError && (
         <Panel>
-          <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{regressionError}</StateText>
+          <StateText tone="error" style={{ fontSize: 12 }}>{regressionError}</StateText>
         </Panel>
       )}
     </div>
@@ -410,10 +423,20 @@ function PostHocView() {
             style={{ padding: '6px 10px', fontSize: 12, outline: 'none', width: '100%' }}
           />
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: colors.text }}>
-          <input type="checkbox" checked={forceRescore} onChange={e => setForceRescore(e.target.checked)} />
-          Force re-score (supersedes any prior post-hoc score for the same trace instead of skipping it)
-        </label>
+        <div style={{ marginTop: spacing.sm }}>
+          <Toggle
+            options={[
+              { value: false, label: 'Reuse scores' },
+              { value: true, label: 'Force re-score' },
+            ]}
+            value={forceRescore}
+            onChange={setForceRescore}
+            aria-label="Force re-score behavior for already-scored traces"
+          />
+          <StateText tone="muted" style={{ fontSize: 12, marginTop: spacing.xs }}>
+            Force re-score supersedes any prior post-hoc score for the same trace instead of skipping it.
+          </StateText>
+        </div>
         <Button
           variant="primary"
           onClick={submit}
@@ -439,32 +462,37 @@ function PostHocView() {
               Refresh summary
             </Button>
           </div>
-          {summaryError && <StateText tone="muted" style={{ color: colors.overlay0, fontSize: 12 }}>{summaryError}</StateText>}
+          {summaryError && <StateText tone="error" style={{ fontSize: 12 }}>{summaryError}</StateText>}
           {summary && (
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 13, color: colors.text }}>
-                Status: {summary.status} — {summary.scoredCount} scored, {summary.skippedAlreadyScoredCount} skipped
+              <div style={{ fontSize: 13, color: colors.text, fontFamily: uiFontFamily }}>
+                Status: {summary.status} —{' '}
+                <span style={{ fontFamily: dataFontFamily }}>{summary.scoredCount}</span> scored,{' '}
+                <span style={{ fontFamily: dataFontFamily }}>{summary.skippedAlreadyScoredCount}</span> skipped
                 (already scored)
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: 6 }}>
-                {(summary.passRate * 100).toFixed(0)}% pass rate ({summary.passedCount}/{summary.scoredCount})
+              <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: spacing.xs, fontFamily: uiFontFamily }}>
+                <span style={{ fontFamily: dataFontFamily }}>{(summary.passRate * 100).toFixed(0)}%</span> pass rate (
+                <span style={{ fontFamily: dataFontFamily }}>{summary.passedCount}/{summary.scoredCount}</span>)
               </div>
-              <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                    <th style={{ padding: '4px 8px' }}>Score range</th>
-                    <th style={{ padding: '4px 8px' }}>Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.scoreDistribution.map(b => (
-                    <tr key={b.range} style={{ borderTop: `1px solid ${colors.surface0}` }}>
-                      <td style={{ padding: '4px 8px', color: colors.text }}>{b.range}</td>
-                      <td style={{ padding: '4px 8px', color: colors.text }}>{b.count}</td>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+                  <thead>
+                    <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                      <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score range</th>
+                      <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Count</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {summary.scoreDistribution.map(b => (
+                      <tr key={b.range} style={{ borderTop: `1px solid ${colors.surface0}` }}>
+                        <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{b.range}</td>
+                        <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{b.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </Panel>

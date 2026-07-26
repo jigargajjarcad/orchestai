@@ -4,12 +4,13 @@ import '@xyflow/react/dist/style.css'
 import './observability/timelineFocus.css'
 import { useViewportWidth } from './hooks/useViewportWidth'
 import { authenticatedFetch } from './apiKey'
-import { colors, radii } from './theme/tokens'
+import { colors, radii, uiFontFamily, dataFontFamily, spacing } from './theme/tokens'
 import { Panel } from './components/Panel'
 import { Label } from './components/Label'
 import { StatusBadge } from './components/StatusBadge'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
+import { EmptyState } from './components/EmptyState'
 import { computeGraphLayout } from './observability/layout'
 import { AgentNode } from './observability/AgentNode'
 import { ToolCallNode } from './observability/ToolCallNode'
@@ -442,8 +443,8 @@ function TimelineView({ tasks }) {
 function SummaryStat({ label, value, color }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: colors.overlay0, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: color ?? colors.text }}>{value}</div>
+      <div style={{ fontSize: 10, color: colors.overlay0, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4, fontFamily: uiFontFamily }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: color ?? colors.text, fontFamily: dataFontFamily }}>{value}</div>
     </div>
   )
 }
@@ -471,13 +472,13 @@ function SummaryView({ tasks }) {
         <TaskPicker tasks={tasks} value={taskId} onChange={setTaskId} />
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
-      {!taskId && <StateText tone="muted">Select a task to view its summary card.</StateText>}
+      {!taskId && <EmptyState title="Select a task to view its summary card" />}
       {data && (
         <Panel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <StatusBadge status={data.status} borderAlphaSuffix="60" style={{ fontSize: 12, letterSpacing: '0.05em' }} />
             {data.checkpointRestored && (
-              <span style={{ fontSize: 11, color: colors.beaconYellow }}>⏮ Resumed from checkpoint</span>
+              <span style={{ fontSize: 11, color: colors.beaconYellow, fontFamily: uiFontFamily }}>⏮ Resumed from checkpoint</span>
             )}
           </div>
 
@@ -503,7 +504,7 @@ function SummaryView({ tasks }) {
               {data.agentsInvolved.map(a => (
                 <span key={a} style={{
                   fontSize: 11, color: AGENT_COLORS[a] ?? colors.text, border: `1px solid ${AGENT_COLORS[a] ?? colors.surface2}60`,
-                  borderRadius: 4, padding: '2px 8px',
+                  borderRadius: 4, padding: '2px 8px', fontFamily: uiFontFamily,
                 }}>{a}</span>
               ))}
             </div>
@@ -512,7 +513,7 @@ function SummaryView({ tasks }) {
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {data.providersAndModels.map(m => (
-                <span key={m} style={{ fontSize: 11, color: colors.subtext0, fontFamily: 'monospace' }}>{m}</span>
+                <span key={m} style={{ fontSize: 11, color: colors.subtext0, fontFamily: dataFontFamily }}>{m}</span>
               ))}
             </div>
           </div>
@@ -546,7 +547,7 @@ function BarChart({ entries, keyFn, valueFn, colorFn }) {
             width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
             background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
           }} />
-          <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40 }}>
+          <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
             {key.slice(5)}
           </div>
         </div>
@@ -597,34 +598,36 @@ function DashboardView() {
             <div style={{ marginBottom: 8 }}>
               <Label style={{ fontWeight: 400 }}>Breakdown by Agent / Model</Label>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-                  <th style={{ padding: '6px 8px' }}>Date</th>
-                  <th style={{ padding: '6px 8px' }}>Agent</th>
-                  <th style={{ padding: '6px 8px' }}>Model</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tokens</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right' }}>Cost</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right' }}>Executions</th>
-                  <th style={{ padding: '6px 8px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.breakdown.map((b, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${colors.mantle}` }}>
-                    <td style={{ padding: '6px 8px', color: colors.subtext0 }}>{b.date}</td>
-                    <td style={{ padding: '6px 8px', color: AGENT_COLORS[b.agentType] ?? colors.text }}>{b.agentType}</td>
-                    <td style={{ padding: '6px 8px', color: colors.overlay0, fontFamily: 'monospace', fontSize: 11 }}>{b.model}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0 }}>{b.inputTokens + b.outputTokens}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.signalGreen }}>{fmtCost(b.costUsd)}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0 }}>{b.executionCount}</td>
-                    <td style={{ padding: '6px 8px' }}>
-                      {b.isLive && <span style={{ fontSize: 9, color: colors.statusWarning }}>● LIVE</span>}
-                    </td>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+                    <th style={{ padding: '6px 8px' }}>Date</th>
+                    <th style={{ padding: '6px 8px' }}>Agent</th>
+                    <th style={{ padding: '6px 8px' }}>Model</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tokens</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Cost</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Executions</th>
+                    <th style={{ padding: '6px 8px' }}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.breakdown.map((b, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${colors.mantle}` }}>
+                      <td style={{ padding: '6px 8px', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.date}</td>
+                      <td style={{ padding: '6px 8px', color: AGENT_COLORS[b.agentType] ?? colors.text, fontFamily: uiFontFamily }}>{b.agentType}</td>
+                      <td style={{ padding: '6px 8px', color: colors.overlay0, fontFamily: dataFontFamily, fontSize: 11 }}>{b.model}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.inputTokens + b.outputTokens}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.signalGreen, fontFamily: dataFontFamily }}>{fmtCost(b.costUsd)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.executionCount}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        {b.isLive && <span style={{ fontSize: 9, color: colors.statusWarning, fontFamily: uiFontFamily }}>● LIVE</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Panel>
         </>
       )}
@@ -643,37 +646,39 @@ function ErrorRateTable({ title, rows, nameKey }) {
       {rows.length === 0 ? (
         <StateText tone="muted" style={{ fontSize: 12 }}>No data in this range.</StateText>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-              <th style={{ padding: '6px 8px' }}>{nameKey === 'agentType' ? 'Agent' : 'Tool'}</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failed</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failure Rate</th>
-              {nameKey === 'agentType' && <th style={{ padding: '6px 8px', textAlign: 'right' }}>Retries</th>}
-              <th style={{ padding: '6px 8px' }}>Failure Categories</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const failColor = r.failureRate > 0.2 ? colors.alertRed : r.failureRate > 0 ? colors.statusWarning : colors.signalGreen
-              return (
-                <tr key={i} style={{ borderBottom: `1px solid ${colors.mantle}` }}>
-                  <td style={{ padding: '6px 8px', color: colors.text, fontWeight: 600 }}>{r[nameKey]}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0 }}>{r.totalExecutions ?? r.totalCalls}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0 }}>{r.failedExecutions ?? r.failedCalls}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', color: failColor, fontWeight: 700 }}>
-                    {(r.failureRate * 100).toFixed(1)}%
-                  </td>
-                  {nameKey === 'agentType' && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.retryCount > 0 ? colors.statusWarning : colors.overlay0 }}>{r.retryCount}</td>}
-                  <td style={{ padding: '6px 8px', color: colors.overlay0, fontSize: 11 }}>
-                    {Object.entries(r.failuresByCategory).map(([cat, count]) => `${cat}: ${count}`).join(', ') || '—'}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+                <th style={{ padding: '6px 8px' }}>{nameKey === 'agentType' ? 'Agent' : 'Tool'}</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failed</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failure Rate</th>
+                {nameKey === 'agentType' && <th style={{ padding: '6px 8px', textAlign: 'right' }}>Retries</th>}
+                <th style={{ padding: '6px 8px' }}>Failure Categories</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const failColor = r.failureRate > 0.2 ? colors.alertRed : r.failureRate > 0 ? colors.statusWarning : colors.signalGreen
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${colors.mantle}` }}>
+                    <td style={{ padding: '6px 8px', color: colors.text, fontWeight: 600, fontFamily: uiFontFamily }}>{r[nameKey]}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{r.totalExecutions ?? r.totalCalls}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{r.failedExecutions ?? r.failedCalls}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: failColor, fontWeight: 700, fontFamily: dataFontFamily }}>
+                      {(r.failureRate * 100).toFixed(1)}%
+                    </td>
+                    {nameKey === 'agentType' && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.retryCount > 0 ? colors.statusWarning : colors.overlay0, fontFamily: dataFontFamily }}>{r.retryCount}</td>}
+                    <td style={{ padding: '6px 8px', color: colors.overlay0, fontSize: 11, fontFamily: dataFontFamily }}>
+                      {Object.entries(r.failuresByCategory).map(([cat, count]) => `${cat}: ${count}`).join(', ') || '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   )
@@ -715,7 +720,7 @@ function ComparisonSide({ side }) {
   if (!side) {
     return (
       <Panel style={{ flex: 1 }}>
-        <StateText tone="muted" style={{ fontSize: 12 }}>Select a task.</StateText>
+        <EmptyState title="Select a task" style={{ padding: `${spacing.xl} ${spacing.lg}` }} />
       </Panel>
     )
   }
@@ -746,7 +751,9 @@ function ComparisonSide({ side }) {
       </div>
       {side.executions.map((e, i) => (
         <div key={i} style={{ borderLeft: `3px solid ${AGENT_COLORS[e.agentType] ?? colors.surface2}`, padding: '4px 10px', marginBottom: 6 }}>
-          <div style={{ fontSize: 11, color: colors.text, fontWeight: 600 }}>{e.agentType} — {fmtDuration(e.durationMs)} — {fmtCost(e.costUsd)}</div>
+          <div style={{ fontSize: 11, color: colors.text, fontWeight: 600, fontFamily: uiFontFamily }}>
+            {e.agentType} — <span style={{ fontFamily: dataFontFamily }}>{fmtDuration(e.durationMs)}</span> — <span style={{ fontFamily: dataFontFamily }}>{fmtCost(e.costUsd)}</span>
+          </div>
         </div>
       ))}
     </Panel>
@@ -776,7 +783,7 @@ function CompareView({ tasks }) {
         <div style={{ flex: 1 }}><TaskPicker tasks={tasks} value={secondId} onChange={setSecondId} label="Second Task" /></div>
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
-      {(!firstId || !secondId) && <StateText tone="muted">Select two tasks to compare.</StateText>}
+      {(!firstId || !secondId) && <EmptyState title="Select two tasks to compare" />}
       {data && (
         <div style={{ display: 'flex', gap: 16 }}>
           <ComparisonSide side={data.first} />

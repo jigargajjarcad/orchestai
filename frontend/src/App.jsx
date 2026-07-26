@@ -81,9 +81,14 @@ function EvalsIcon() {
 // Sidebar `brand` node — the current header's h1/subtitle, unchanged text
 // and colors (colors.traceBlue / colors.surface2), just relocated.
 function Brand() {
+  // The wordmark is a brand mark, NOT the page heading — so it is a styled
+  // <div>, not an <h1>. The single page <h1> is TopBar's per-view title
+  // (VIEW_TITLES), preserving one-h1-per-view heading semantics after the
+  // shell migration (the old header made "OrchestAI" the h1; the new shell
+  // gives each surface its own titled h1 in the TopBar instead).
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: colors.traceBlue, margin: 0 }}>OrchestAI</h1>
+      <div style={{ fontSize: 20, fontWeight: 700, color: colors.traceBlue }}>OrchestAI</div>
       <p style={{ color: colors.surface2, margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
     </div>
   )

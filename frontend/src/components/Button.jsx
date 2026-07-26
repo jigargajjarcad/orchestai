@@ -45,11 +45,42 @@
 // over-decorate a single full-width action button.
 
 import { useState } from 'react'
-import { colors, radii, typography, buttonGhostBorderAlphaSuffix, interactiveState } from '../theme/tokens'
+import { colors, radii, spacing, typography, buttonGhostBorderAlphaSuffix, interactiveState } from '../theme/tokens'
 
-export function Button({ variant = 'primary', disabled, onClick, type = 'button', children, style }) {
+// P2-M1B Task 1 — additive `fullWidth` / `size` / `icon` props (deferred
+// from P2-M1A, needed by the shell migration's inline "Change key" control).
+// Not a redesign: existing callers (App.jsx's full-width "Run Agents", etc.)
+// pass none of these three props and must render byte-identically to the
+// pre-existing component (see Button.jsx's git history / task-1-report.md
+// for the renderToStaticMarkup proof).
+//
+// Per-size padding + fontSize. `md` reproduces today's only values exactly
+// (fullWidth padding '9px 0', fontSize typography.body.fontSize) so the
+// zero-new-props default path is unaffected. `fullWidth`'s vertical padding
+// for each size equals the vertical component of that size's inline
+// padding (sm 6 / md 9 / lg 11) — full-width mode only needs vertical
+// padding (the 100%-width already supplies horizontal extent); inline mode
+// needs real horizontal padding since the button now hugs its content.
+const SIZE_STYLES = {
+  sm: { fullWidthPadding: '6px 0', inlinePadding: '6px 12px', fontSize: '12px' },
+  md: { fullWidthPadding: '9px 0', inlinePadding: '9px 14px', fontSize: typography.body.fontSize },
+  lg: { fullWidthPadding: '11px 0', inlinePadding: '11px 18px', fontSize: '15px' },
+}
+
+export function Button({
+  variant = 'primary',
+  disabled,
+  onClick,
+  type = 'button',
+  children,
+  style,
+  fullWidth = true,
+  size = 'md',
+  icon,
+}) {
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
+  const sizeStyle = SIZE_STYLES[size] ?? SIZE_STYLES.md
 
   const stateAlphaSuffix = disabled
     ? null
@@ -87,16 +118,24 @@ export function Button({ variant = 'primary', disabled, onClick, type = 'button'
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
       style={{
-        width: '100%',
-        padding: '9px 0',
+        width: fullWidth ? '100%' : 'auto',
+        padding: fullWidth ? sizeStyle.fullWidthPadding : sizeStyle.inlinePadding,
         borderRadius: radii.lg,
         fontWeight: 700,
-        fontSize: typography.body.fontSize,
+        fontSize: sizeStyle.fontSize,
         cursor: disabled ? 'not-allowed' : 'pointer',
+        display: icon ? 'inline-flex' : undefined,
+        alignItems: icon ? 'center' : undefined,
+        gap: icon ? spacing.xs : undefined,
         ...variantStyle,
         ...style,
       }}
     >
+      {icon && (
+        <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {icon}
+        </span>
+      )}
       {children}
     </button>
   )

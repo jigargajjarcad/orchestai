@@ -5,12 +5,27 @@
 // radius, 13px text) with one deliberate override: background is mantle
 // (#181825), per DESIGN.md's literal spec and the app's actual current
 // textarea usage (App.jsx's rejection-note textarea), not design.json's
-// worked example (which shows base/#1e1e2e).
+// worked example (which shows base/#1e1e2e). `mantle` isn't one of the new
+// `surface` ramp's rungs (canvas/surface/raised/overlay) — it's a distinct,
+// deliberately-different neutral one step darker than `surface.surface`
+// (`colors.base`) — so this task leaves it as the existing `colors.mantle`
+// reference rather than forcing a `surface.*` token that would visibly
+// lighten every field.
 //
-// No custom focus ring: DESIGN.md's Inputs/Fields section states "this
-// system has not yet defined a custom focus treatment" — design.json's
-// .ds-input:focus rule (border-color: Trace Blue) is not carried over here,
-// per the task brief's explicit instruction not to invent one.
+// R1 Task 4 — focus is now tokenized product-wide (`focusRing` in
+// theme/tokens.js matches index.css's `.focus-ring:focus-visible` rule
+// exactly), superseding DESIGN.md's older "no custom focus treatment" note
+// referenced below (kept for history) — the `.focus-ring` class already
+// applied to both fields is sufficient, so no new focus styling is added
+// here.
+//
+// New: a `disabled` visual state (previously unstyled — the fields relied
+// on the browser's default disabled rendering). Detected via `rest.disabled`
+// (not destructured out of `...rest`, so it's still forwarded to the native
+// element as an attribute exactly as before) and rendered with
+// `interactiveState.disabledBackground`/`disabledText` — the same
+// surface0/overlay0 convention Button/DESIGN.md already use for disabled
+// controls, so disabled fields read consistently with disabled buttons.
 //
 // Both variants render an optional Label directly above the field, per
 // DESIGN.md:227-228 ("always the Label typography style directly above the
@@ -21,7 +36,7 @@
 // Label's default (matches Input/TextArea/Panel/Button/StateText's existing
 // override pattern).
 
-import { colors, radii, typography } from '../theme/tokens'
+import { colors, radii, typography, interactiveState } from '../theme/tokens'
 import { Label } from './Label'
 
 const fieldStyle = {
@@ -33,6 +48,12 @@ const fieldStyle = {
   background: colors.mantle,
   color: colors.text,
   fontSize: typography.body.fontSize,
+}
+
+const disabledFieldStyle = {
+  background: interactiveState.disabledBackground,
+  color: interactiveState.disabledText,
+  cursor: 'not-allowed',
 }
 
 export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
@@ -47,7 +68,11 @@ export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
         value={value}
         onChange={onChange}
         className="focus-ring"
-        style={{ ...fieldStyle, ...style }}
+        style={{
+          ...fieldStyle,
+          ...(rest.disabled ? disabledFieldStyle : null),
+          ...style,
+        }}
         {...rest}
       />
     </div>
@@ -66,7 +91,12 @@ export function TextArea({ label, labelStyle, value, onChange, style, ...rest })
         value={value}
         onChange={onChange}
         className="focus-ring"
-        style={{ ...fieldStyle, resize: 'vertical', ...style }}
+        style={{
+          ...fieldStyle,
+          resize: 'vertical',
+          ...(rest.disabled ? disabledFieldStyle : null),
+          ...style,
+        }}
         {...rest}
       />
     </div>

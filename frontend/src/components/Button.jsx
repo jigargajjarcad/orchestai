@@ -20,21 +20,57 @@
 // style, matching Input/TextArea's existing override pattern — lets a
 // caller override e.g. just the enabled-state text color without needing
 // to know the disabled-state values.
+//
+// R1 Task 4 — interactive-state matrix (master plan §3.7): hover/active use
+// self-contained React state (inline styles can't express `:hover`/
+// `:active`) and are computed from `interactiveState`'s hex-alpha-suffix
+// idiom, never a hardcoded color:
+//   - primary: bg is already an opaque solid (Trace Blue), so tinting it
+//     with *more* Trace Blue at low alpha is a no-op (same hue over itself).
+//     Instead this composes the button's own content color (`colors.crust`)
+//     as a translucent "state layer" *inset box-shadow* on top of the solid
+//     bg — the standard darken-on-hover pattern for a solid-fill button,
+//     expressed as an inset shadow (not a second DOM node) so it still
+//     respects `borderRadius` for free.
+//   - ghost: bg is transparent, so the border/text base color (Trace Blue)
+//     is applied directly as a translucent background fill on hover/active
+//     — same idiom NavItem uses for its non-selected hover fill.
+// Hover/active are suppressed whenever `disabled` (guarded, not just
+// visually inert) and never touch focus-visible, which stays on the
+// existing `.focus-ring` class/CSS (index.css already matches the
+// `focusRing` token's values — not re-tokenized here, see task report).
+// Kept deliberately shadow-free otherwise (no `elevation.raised` on
+// default/hover) — this product's understated, flat-by-default identity
+// per DESIGN.md; a permanent drop-shadow on every primary button would
+// over-decorate a single full-width action button.
 
-import { colors, radii, typography, buttonGhostBorderAlphaSuffix } from '../theme/tokens'
+import { useState } from 'react'
+import { colors, radii, typography, buttonGhostBorderAlphaSuffix, interactiveState } from '../theme/tokens'
 
 export function Button({ variant = 'primary', disabled, onClick, type = 'button', children, style }) {
+  const [hovered, setHovered] = useState(false)
+  const [pressed, setPressed] = useState(false)
+
+  const stateAlphaSuffix = disabled
+    ? null
+    : pressed
+      ? interactiveState.activeAlphaSuffix
+      : hovered
+        ? interactiveState.hoverAlphaSuffix
+        : null
+
   const variantStyle =
     variant === 'ghost'
       ? {
-          background: 'transparent',
+          background: stateAlphaSuffix ? `${colors.traceBlue}${stateAlphaSuffix}` : 'transparent',
           color: colors.traceBlue,
           border: `1px solid ${colors.traceBlue}${buttonGhostBorderAlphaSuffix}`,
         }
       : {
-          background: disabled ? colors.surface0 : colors.traceBlue,
-          color: disabled ? colors.overlay0 : colors.crust,
+          background: disabled ? interactiveState.disabledBackground : colors.traceBlue,
+          color: disabled ? interactiveState.disabledText : colors.crust,
           border: 'none',
+          boxShadow: stateAlphaSuffix ? `inset 0 0 0 999px ${colors.crust}${stateAlphaSuffix}` : 'none',
         }
 
   return (
@@ -43,6 +79,13 @@ export function Button({ variant = 'primary', disabled, onClick, type = 'button'
       onClick={onClick}
       disabled={disabled}
       className="focus-ring"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false)
+        setPressed(false)
+      }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
       style={{
         width: '100%',
         padding: '9px 0',

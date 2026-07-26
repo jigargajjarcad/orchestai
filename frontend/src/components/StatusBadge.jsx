@@ -21,6 +21,14 @@
 // one before migrating onto this component, and background alpha (the one
 // approved normalization) must stay untouched while border alpha is
 // restored to its original per-site value.
+//
+// R1 Task 4 — reviewed against the new surface/elevation/interactive-state/
+// semantic tokens: StatusBadge already consumes the canonical
+// `statusBadgeColors`/`statusBadgeAlphaSuffix` token set in full (Task 2),
+// is a static pill (no hover/active/selected/disabled states apply), and
+// its per-status colors are deliberately the harder "state" palette, not
+// `semantic.good/warn/critical` (Two-Palette Rule — see tokens.js). No
+// further token migration applies here.
 
 import { typography, radii, statusBadgeColors, statusBadgeAlphaSuffix } from '../theme/tokens'
 

@@ -12,6 +12,15 @@
 //
 // Optional `style` merges over (wins over) the tone-driven base style,
 // matching Input/TextArea's existing override pattern.
+//
+// R1 Task 4 — considered aliasing tone='error' onto `semantic.critical`
+// (`colors.statusFailed`, #dc2626) since this is a semantic-critical text
+// role. Rejected: this component's whole documented purpose for
+// `colors.alertRed` is to be the *soft* identity-palette error tone,
+// explicitly distinct from "the harder Status Failed tone" (see above) —
+// swapping to `semantic.critical` would collapse that intentional
+// distinction and change the rendered color. Left as `colors.alertRed`.
+// Static text primitive — no interactive-state matrix applies.
 
 import { colors, typography } from '../theme/tokens'
 

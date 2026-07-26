@@ -28,6 +28,14 @@
 // this properly likely needs a change to the wrapping div (Input.jsx/
 // MemoriesPage), not just this component in isolation — left as a known,
 // precisely-measured, open gap rather than accepting a worse regression.
+//
+// R1 Task 4 — reviewed against the new surface/elevation/interactive-state
+// tokens: Label is a static text primitive (no hover/active/selected/
+// disabled states apply to a span), and `colors.overlay0` isn't one of the
+// new surface ramp's rungs, so there is nothing here to re-point at a new
+// token. `typography.label` (UI face, from T3) and the box model are left
+// exactly as-is per this task's explicit constraints (no type-face flip
+// beyond what T3 already did; no `display` change — see the note above).
 
 import { colors, typography } from '../theme/tokens'
 

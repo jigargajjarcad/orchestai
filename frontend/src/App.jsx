@@ -5,13 +5,24 @@ import ObservabilityPage from './ObservabilityPage'
 import EvalsPage from './EvalsPage'
 import { hasApiKey, clearApiKey, authenticatedFetch } from './apiKey'
 import ApiKeyPrompt from './ApiKeyPrompt'
-import { colors, radii, spacing } from './theme/tokens'
+import {
+  colors,
+  radii,
+  spacing,
+  surface,
+  elevation,
+  uiFontFamily,
+  dataFontFamily,
+  buttonGhostBorderAlphaSuffix,
+} from './theme/tokens'
 import { StatusBadge } from './components/StatusBadge'
 import { Panel } from './components/Panel'
 import { Button } from './components/Button'
 import { Input, TextArea } from './components/Input'
 import { StateText } from './components/StateText'
 import { Label } from './components/Label'
+import { Toggle } from './components/Toggle'
+import { EmptyState } from './components/EmptyState'
 import { AppShell } from './components/shell/AppShell'
 import { Sidebar } from './components/shell/Sidebar'
 import { TopBar } from './components/shell/TopBar'
@@ -118,13 +129,15 @@ function ToolCallRow({ toolCall }) {
     <div style={{
       display: 'flex',
       alignItems: 'flex-start',
-      gap: 8,
+      gap: spacing.sm,
       padding: '5px 8px',
       background: colors.mantle,
       borderLeft: `3px solid ${color}`,
       borderRadius: `0 ${radii.md} ${radii.md} 0`,
-      marginTop: 4,
+      boxShadow: elevation.flat,
+      marginTop: spacing.xs,
       fontSize: 12,
+      fontFamily: dataFontFamily,
     }}>
       <span style={{ color, flexShrink: 0, minWidth: 14 }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -149,7 +162,7 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
       <Panel accentStatus={execution.status} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <strong style={{ color: colors.text, fontSize: 14 }}>{execution.agentType}</strong>
+            <strong style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily }}>{execution.agentType}</strong>
             {memoryCount > 0 && (
               <span title={`${memoryCount} saved ${memoryCount === 1 ? 'memory' : 'memories'} for this agent`} style={{ fontSize: 11, color: colors.subtext0 }}>
                 🧠 {memoryCount}
@@ -167,6 +180,7 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
             marginTop: 4,
             fontSize: 12,
             color: colors.subtext0,
+            fontFamily: dataFontFamily,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             maxHeight: 160,
@@ -185,7 +199,7 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
         )}
 
         {execution.costUsd > 0 && (
-          <div style={{ fontSize: 11, color: colors.surface2, marginTop: 8, display: 'flex', gap: 12 }}>
+          <div style={{ fontSize: 11, color: colors.surface2, marginTop: 8, display: 'flex', gap: 12, fontFamily: dataFontFamily }}>
             <span>{execution.inputTokens}in + {execution.outputTokens}out tokens</span>
             <span style={{ color: colors.overlay0 }}>${Number(execution.costUsd).toFixed(6)}</span>
           </div>
@@ -207,19 +221,20 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
 
   return (
     <div style={{
-      border: '1px solid #f59e0b60',
-      borderLeft: '3px solid #f59e0b',
+      border: `1px solid ${colors.statusWarning}60`,
+      borderLeft: `3px solid ${colors.statusWarning}`,
       borderRadius: radii.xl,
       padding: '14px 16px',
       marginBottom: 14,
-      background: colors.base,
+      background: surface.surface,
+      boxShadow: elevation.flat,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span>⏸</span>
-        <strong style={{ color: colors.statusWarning, fontSize: 13 }}>Waiting for Your Approval</strong>
+        <strong style={{ color: colors.statusWarning, fontSize: 13, fontFamily: uiFontFamily }}>Waiting for Your Approval</strong>
       </div>
-      <div style={{ fontSize: 12, color: colors.text, marginBottom: 8, lineHeight: 1.5 }}>{request.plan}</div>
-      <div style={{ fontSize: 11, color: colors.subtext0, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: colors.text, marginBottom: 8, lineHeight: 1.5, fontFamily: dataFontFamily }}>{request.plan}</div>
+      <div style={{ fontSize: 11, color: colors.subtext0, marginBottom: 12, fontFamily: uiFontFamily }}>
         <div>Agents selected: {request.selectedAgents?.join(', ')}</div>
         <div>Mode: {request.executionMode}</div>
       </div>
@@ -230,8 +245,9 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
             onClick={onApprove}
             disabled={busy}
             style={{
-              flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+              flex: 1, padding: '7px 0', borderRadius: radii.lg, border: 'none',
               background: colors.statusCompleted, color: colors.crust, fontWeight: 700, fontSize: 12,
+              fontFamily: uiFontFamily,
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -241,8 +257,9 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
             onClick={() => setShowRejectInput(true)}
             disabled={busy}
             style={{
-              flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #dc262680',
+              flex: 1, padding: '7px 0', borderRadius: radii.lg, border: `1px solid ${colors.statusFailed}${buttonGhostBorderAlphaSuffix}`,
               background: 'transparent', color: colors.alertRed, fontWeight: 700, fontSize: 12,
+              fontFamily: uiFontFamily,
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -263,8 +280,9 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
               onClick={() => onReject(note)}
               disabled={busy}
               style={{
-                flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                flex: 1, padding: '7px 0', borderRadius: radii.lg, border: 'none',
                 background: colors.statusFailed, color: colors.crust, fontWeight: 700, fontSize: 12,
+                fontFamily: uiFontFamily,
                 cursor: busy ? 'not-allowed' : 'pointer',
               }}
             >
@@ -274,8 +292,9 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
               onClick={() => setShowRejectInput(false)}
               disabled={busy}
               style={{
-                flex: 1, padding: '7px 0', borderRadius: 6, border: '1px solid #313244',
+                flex: 1, padding: '7px 0', borderRadius: radii.lg, border: `1px solid ${colors.surface0}`,
                 background: 'transparent', color: colors.subtext0, fontWeight: 700, fontSize: 12,
+                fontFamily: uiFontFamily,
                 cursor: busy ? 'not-allowed' : 'pointer',
               }}
             >
@@ -303,10 +322,10 @@ function ManagerReviewCard({ review }) {
     <div style={{ marginBottom: 10 }}>
       <Panel accentStatus={accentStatus} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ color: colors.text, fontSize: 14 }}>🎯 Manager Review</strong>
+          <strong style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily }}>🎯 Manager Review</strong>
           <StatusBadge status={accentStatus} label={isRunning ? 'Running' : 'Completed'} borderAlphaSuffix="60" style={{ padding: '1px 8px', letterSpacing: '0.05em' }} />
         </div>
-        <div style={{ fontSize: 12, color: colors.subtext0, marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: colors.subtext0, marginTop: 8, fontFamily: uiFontFamily }}>
           {isRunning
             ? 'Synthesizing and quality-checking all agent outputs…'
             : 'Synthesized and quality-checked all agent outputs into the final result.'}
@@ -729,8 +748,8 @@ export default function App() {
 
         {/* Left: Input + Agent Feed */}
         <div style={{
-          borderRight: playgroundStacked ? 'none' : '1px solid #1e1e2e',
-          borderBottom: playgroundStacked ? '1px solid #1e1e2e' : 'none',
+          borderRight: playgroundStacked ? 'none' : `1px solid ${colors.base}`,
+          borderBottom: playgroundStacked ? `1px solid ${colors.base}` : 'none',
           padding: 20, overflowY: 'auto',
         }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
@@ -757,14 +776,17 @@ export default function App() {
                 style={{ padding: '7px 10px', background: colors.base, outline: 'none' }}
               />
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12, color: colors.subtext0, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={requireApproval}
-                onChange={e => setRequireApproval(e.target.checked)}
+            <div style={{ marginBottom: 14 }}>
+              <Toggle
+                options={[
+                  { value: false, label: 'Auto-run' },
+                  { value: true, label: 'Require approval' },
+                ]}
+                value={requireApproval}
+                onChange={setRequireApproval}
+                aria-label="Require human approval before agents run"
               />
-              Require human approval before agents run
-            </label>
+            </div>
             <Button
               type="submit"
               variant="primary"
@@ -835,14 +857,14 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <StateText tone="muted" style={{ color: colors.surface0, ...(isActive ? {} : { maxWidth: 480, textAlign: 'left' }) }}>
-                {isActive ? 'Waiting for agents to complete…' : (
-                  <>
-                    <div>Fill in a task on the left and click Run Agents. Per-agent cards will stream in as they work, and the final result renders here when they finish.</div>
-                    <div style={{ marginTop: spacing.md }}>Once you've run a task or two: Observability has the cost and timeline breakdown for every run, and Evals runs scored test suites against known-good outputs.</div>
-                  </>
-                )}
-              </StateText>
+              {isActive ? (
+                <StateText tone="muted" style={{ color: colors.surface0 }}>Waiting for agents to complete…</StateText>
+              ) : (
+                <EmptyState
+                  title="No results yet"
+                  description="Fill in a task on the left and click Run Agents. Per-agent cards will stream in as they work, and the final result renders here when they finish. Once you've run a task or two: Observability has the cost and timeline breakdown for every run, and Evals runs scored test suites against known-good outputs."
+                />
+              )}
             </div>
           )}
         </div>

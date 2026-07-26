@@ -36,7 +36,7 @@
 // Label's default (matches Input/TextArea/Panel/Button/StateText's existing
 // override pattern).
 
-import { colors, radii, typography, interactiveState } from '../theme/tokens'
+import { colors, radii, typography, interactiveState, dataFontFamily } from '../theme/tokens'
 import { Label } from './Label'
 
 const fieldStyle = {
@@ -48,6 +48,7 @@ const fieldStyle = {
   background: colors.mantle,
   color: colors.text,
   fontSize: typography.body.fontSize,
+  fontFamily: dataFontFamily,
 }
 
 const disabledFieldStyle = {

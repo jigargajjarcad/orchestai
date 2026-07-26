@@ -86,7 +86,7 @@
 //     the same `spacing.xs` gap — byte-identical to the pre-edit `Nav`.
 
 import { useState } from 'react'
-import { colors, radii, spacing, interactiveState, surface } from '../theme/tokens'
+import { colors, radii, spacing, interactiveState, surface, uiFontFamily } from '../theme/tokens'
 
 export function NavItem({ active, onClick, children, style, icon, collapsed, label, ...rest }) {
   const [hovered, setHovered] = useState(false)
@@ -136,6 +136,7 @@ export function NavItem({ active, onClick, children, style, icon, collapsed, lab
         borderRadius: radii.lg,
         padding: '5px 12px',
         fontSize: 12,
+        fontFamily: uiFontFamily,
         cursor: 'pointer',
         // Icon/collapsed layout — additive. Every key here is `undefined`
         // (omitted from the rendered style) unless `icon`/`collapsed` is

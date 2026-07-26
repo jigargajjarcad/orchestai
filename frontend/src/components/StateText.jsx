@@ -22,7 +22,7 @@
 // distinction and change the rendered color. Left as `colors.alertRed`.
 // Static text primitive — no interactive-state matrix applies.
 
-import { colors, typography } from '../theme/tokens'
+import { colors, typography, uiFontFamily } from '../theme/tokens'
 
 export function StateText({ children, tone = 'muted', style }) {
   return (
@@ -30,6 +30,7 @@ export function StateText({ children, tone = 'muted', style }) {
       style={{
         color: tone === 'error' ? colors.alertRed : colors.surface2,
         fontSize: typography.body.fontSize,
+        fontFamily: uiFontFamily,
         ...style,
       }}
     >

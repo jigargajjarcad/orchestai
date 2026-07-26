@@ -45,7 +45,15 @@
 // over-decorate a single full-width action button.
 
 import { useState } from 'react'
-import { colors, radii, spacing, typography, buttonGhostBorderAlphaSuffix, interactiveState } from '../theme/tokens'
+import {
+  colors,
+  radii,
+  spacing,
+  typography,
+  buttonGhostBorderAlphaSuffix,
+  interactiveState,
+  uiFontFamily,
+} from '../theme/tokens'
 
 // P2-M1B Task 1 — additive `fullWidth` / `size` / `icon` props (deferred
 // from P2-M1A, needed by the shell migration's inline "Change key" control).
@@ -123,6 +131,7 @@ export function Button({
         borderRadius: radii.lg,
         fontWeight: 700,
         fontSize: sizeStyle.fontSize,
+        fontFamily: uiFontFamily,
         cursor: disabled ? 'not-allowed' : 'pointer',
         display: icon ? 'inline-flex' : undefined,
         alignItems: icon ? 'center' : undefined,

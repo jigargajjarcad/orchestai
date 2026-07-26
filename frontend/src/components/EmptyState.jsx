@@ -59,7 +59,7 @@
 // `icon` is `aria-hidden` since it is purely decorative and its meaning (if
 // any) is already carried by `title`/`description`.
 
-import { colors, spacing, typography } from '../theme/tokens'
+import { colors, spacing, typography, uiFontFamily } from '../theme/tokens'
 
 export function EmptyState({ title, description, action, icon, style }) {
   return (
@@ -97,7 +97,12 @@ export function EmptyState({ title, description, action, icon, style }) {
           style={{
             margin: 0,
             maxWidth: 360,
-            fontFamily: typography.body.fontFamily,
+            // P2-M2: the description is explanatory prose → UI face (IBM Plex
+            // Sans), not the mono/data `typography.body` face. Keep body's
+            // size/weight/line-height; only the face is corrected. (A2 migrated
+            // StateText prose to the UI face; EmptyState's description is the
+            // same category and was completed here.)
+            fontFamily: uiFontFamily,
             fontSize: typography.body.fontSize,
             fontWeight: typography.body.fontWeight,
             lineHeight: typography.body.lineHeight,

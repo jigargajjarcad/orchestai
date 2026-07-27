@@ -309,7 +309,24 @@ function ApprovalCard({ request, onApprove, onReject, busy }) {
   )
 }
 
-function ManagerReviewCard({ review }) {
+// Compact markdown treatment for the manager-review synthesis rendered inline
+// in the execution feed. Intentionally lighter than the right-pane Final Result
+// renderer (smaller headings, no code-block chrome) — this card is the
+// narrative "the manager synthesized this" beat, not the primary artifact.
+const reviewMarkdownComponents = {
+  h1: ({ children }) => <h3 style={{ color: colors.traceBlue, fontSize: 14, margin: '8px 0 4px' }}>{children}</h3>,
+  h2: ({ children }) => <h4 style={{ color: colors.traceBlue, fontSize: 13, margin: '8px 0 4px' }}>{children}</h4>,
+  h3: ({ children }) => <h5 style={{ color: colors.agentSky, fontSize: 12, margin: '8px 0 4px' }}>{children}</h5>,
+  a: ({ href, children }) => <a href={href} style={{ color: colors.traceBlue }} target="_blank" rel="noreferrer">{children}</a>,
+  p: ({ children }) => <p style={{ margin: '0 0 8px' }}>{children}</p>,
+  ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: '0 0 8px' }}>{children}</ul>,
+  li: ({ children }) => <li style={{ marginBottom: 3 }}>{children}</li>,
+  code: ({ inline, children }) => inline
+    ? <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
+    : <pre style={{ background: colors.mantle, borderRadius: 6, padding: '10px 12px', overflow: 'auto' }}><code style={{ fontSize: 11, fontFamily: dataFontFamily }}>{children}</code></pre>,
+}
+
+export function ManagerReviewCard({ review }) {
   const isRunning = review.status === 'running'
   // Panel's accentStatus prop only understands execution-status keys
   // (Pending/Running/WaitingForApproval/Completed/Failed/Skipped). This
@@ -319,6 +336,9 @@ function ManagerReviewCard({ review }) {
   // StatusBadge's `label` override supplying the correct RUNNING/COMPLETED
   // display text instead of WAITINGFORAPPROVAL/COMPLETED.
   const accentStatus = isRunning ? 'WaitingForApproval' : 'Completed'
+  // The synthesized review text (SSE `manager_review_completed` → `review.result`)
+  // was previously captured but never rendered; surface it once the review lands.
+  const hasResult = !isRunning && Boolean(review.result)
 
   return (
     <div style={{ marginBottom: 10 }}>
@@ -332,6 +352,13 @@ function ManagerReviewCard({ review }) {
             ? 'Synthesizing and quality-checking all agent outputs…'
             : 'Synthesized and quality-checked all agent outputs into the final result.'}
         </div>
+        {hasResult && (
+          <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6, color: colors.text, fontFamily: uiFontFamily }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={reviewMarkdownComponents}>
+              {review.result}
+            </ReactMarkdown>
+          </div>
+        )}
       </Panel>
     </div>
   )

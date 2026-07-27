@@ -20,8 +20,8 @@ import { Panel } from './components/Panel'
 import { Card } from './components/Card'
 import { Button } from './components/Button'
 import { Input, TextArea } from './components/Input'
-import { StateText } from './components/StateText'
 import { Spinner } from './components/Spinner'
+import { ErrorBanner } from './components/ErrorBanner'
 import { Label } from './components/Label'
 import { Toggle } from './components/Toggle'
 import { EmptyState } from './components/EmptyState'
@@ -370,11 +370,7 @@ function MemoriesPage({ onDelete }) {
         <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
       </div>
 
-      {error && (
-        <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
-          <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>
-        </div>
-      )}
+      {error && <ErrorBanner style={{ marginBottom: spacing.lg }}>{error}</ErrorBanner>}
 
       {memories == null ? (
         <Spinner label="Loading memories…" />
@@ -806,11 +802,7 @@ export default function App() {
             </Button>
           </form>
 
-          {error && (
-            <div style={{ background: colors.errorBg, border: `1px solid ${colors.statusFailed}80`, borderRadius: radii.lg, padding: '10px 12px', marginBottom: spacing.lg }}>
-              <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>
-            </div>
-          )}
+          {error && <ErrorBanner style={{ marginBottom: spacing.lg }}>{error}</ErrorBanner>}
 
           {approvalRequest && (
             <ApprovalCard

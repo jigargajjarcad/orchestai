@@ -12,6 +12,7 @@ import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
 import { Spinner } from './components/Spinner'
 import { EmptyState } from './components/EmptyState'
+import { ErrorBanner } from './components/ErrorBanner'
 import { computeGraphLayout } from './observability/layout'
 import { AgentNode } from './observability/AgentNode'
 import { ToolCallNode } from './observability/ToolCallNode'
@@ -475,7 +476,7 @@ function SummaryView({ tasks }) {
       <div style={{ marginBottom: 16, maxWidth: 480 }}>
         <TaskPicker tasks={tasks} value={taskId} onChange={setTaskId} />
       </div>
-      {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
       {!taskId && <EmptyState title="Select a task to view its summary card" />}
       {taskId && !data && !error && <Spinner label="Loading summary…" />}
       {data && (
@@ -580,7 +581,7 @@ function DashboardView() {
       <div style={{ marginBottom: 20 }}>
         <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </div>
-      {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
       {!data && !error && <Spinner label="Loading cost dashboard…" />}
       {data && (
         <>
@@ -709,7 +710,7 @@ function ErrorRatesView() {
       <div style={{ marginBottom: 20 }}>
         <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </div>
-      {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
       {!data && !error && <Spinner label="Loading error rates…" />}
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -789,7 +790,7 @@ function CompareView({ tasks }) {
         <div style={{ flex: 1 }}><TaskPicker tasks={tasks} value={firstId} onChange={setFirstId} label="First Task" /></div>
         <div style={{ flex: 1 }}><TaskPicker tasks={tasks} value={secondId} onChange={setSecondId} label="Second Task" /></div>
       </div>
-      {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
       {(!firstId || !secondId) && <EmptyState title="Select two tasks to compare" />}
       {firstId && secondId && !data && !error && <Spinner label="Loading comparison…" />}
       {data && (

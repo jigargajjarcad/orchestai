@@ -11,6 +11,7 @@ import { StateText } from './components/StateText'
 import { Spinner } from './components/Spinner'
 import { Toggle } from './components/Toggle'
 import { EmptyState } from './components/EmptyState'
+import { ErrorBanner } from './components/ErrorBanner'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 
@@ -56,35 +57,41 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
       <div style={{ marginBottom: 8 }}>
         <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
       </div>
-      {suites.length === 0 && (
-        <EmptyState
-          title="No eval suites yet"
-          description={
-            <>
-              Eval suites are provisioned out-of-band — create one via{' '}
-              <code>POST /api/v1/eval-suites</code>.
-            </>
-          }
-        />
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {suites.map(s => (
-          <div
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            style={{
-              padding: '10px 12px', borderRadius: radii.lg, cursor: 'pointer',
-              background: selectedSuiteId === s.id ? colors.surface0 : colors.mantle,
-              border: selectedSuiteId === s.id ? `1px solid ${colors.traceBlue}` : `1px solid ${colors.surface0}`,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</div>
-            <div style={{ fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
-              {s.targetAgentType} · {s.description}
-            </div>
+      {suites == null ? (
+        <Spinner label="Loading suites…" />
+      ) : (
+        <>
+          {suites.length === 0 && (
+            <EmptyState
+              title="No eval suites yet"
+              description={
+                <>
+                  Eval suites are provisioned out-of-band — create one via{' '}
+                  <code>POST /api/v1/eval-suites</code>.
+                </>
+              }
+            />
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {suites.map(s => (
+              <div
+                key={s.id}
+                onClick={() => onSelect(s.id)}
+                style={{
+                  padding: '10px 12px', borderRadius: radii.lg, cursor: 'pointer',
+                  background: selectedSuiteId === s.id ? colors.surface0 : colors.mantle,
+                  border: selectedSuiteId === s.id ? `1px solid ${colors.traceBlue}` : `1px solid ${colors.surface0}`,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</div>
+                <div style={{ fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
+                  {s.targetAgentType} · {s.description}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </Panel>
   )
 }
@@ -94,7 +101,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   const [subjectVersion, setSubjectVersion] = useState('')
   const [baselineRunId, setBaselineRunId] = useState('')
   const [error, setError] = useState(null)
-  const suite = suites.find(s => s.id === selectedSuiteId)
+  const suite = suites?.find(s => s.id === selectedSuiteId)
 
   useEffect(() => {
     if (!selectedSuiteId) return
@@ -169,7 +176,7 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
           Run suite
         </Button>
       </div>
-      {error && <StateText tone="error" style={{ fontSize: 12, marginTop: 10 }}>{error}</StateText>}
+      {error && <ErrorBanner style={{ marginTop: 10 }}>{error}</ErrorBanner>}
     </Panel>
   )
 }
@@ -231,11 +238,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
         </select>
       </Panel>
 
-      {resultsError && (
-        <Panel>
-          <StateText tone="error" style={{ fontSize: 12 }}>{resultsError}</StateText>
-        </Panel>
-      )}
+      {resultsError && <ErrorBanner>{resultsError}</ErrorBanner>}
 
       {selectedRunId && !results && !resultsError && (
         <Panel><Spinner label="Loading results…" /></Panel>
@@ -316,11 +319,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           </div>
         </Panel>
       )}
-      {regressionError && (
-        <Panel>
-          <StateText tone="error" style={{ fontSize: 12 }}>{regressionError}</StateText>
-        </Panel>
-      )}
+      {regressionError && <ErrorBanner>{regressionError}</ErrorBanner>}
     </div>
   )
 }
@@ -450,7 +449,7 @@ function PostHocView() {
         >
           Submit post-hoc scoring request
         </Button>
-        {error && <StateText tone="error" style={{ fontSize: 12, marginTop: 10 }}>{error}</StateText>}
+        {error && <ErrorBanner style={{ marginTop: 10 }}>{error}</ErrorBanner>}
       </Panel>
 
       {runId && (
@@ -467,7 +466,7 @@ function PostHocView() {
               Refresh summary
             </Button>
           </div>
-          {summaryError && <StateText tone="error" style={{ fontSize: 12 }}>{summaryError}</StateText>}
+          {summaryError && <ErrorBanner>{summaryError}</ErrorBanner>}
           {summary && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 13, color: colors.text, fontFamily: uiFontFamily }}>
@@ -508,7 +507,7 @@ function PostHocView() {
 
 export default function EvalsPage() {
   const [subView, setSubView] = useState('suites')
-  const [suites, setSuites] = useState([])
+  const [suites, setSuites] = useState(null)
   const [selectedSuiteId, setSelectedSuiteId] = useState(null)
   const [selectedRunId, setSelectedRunId] = useState(null)
 

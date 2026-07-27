@@ -361,3 +361,36 @@ jobs:
             vulnerable-packages.txt
             trivy-results.txt
           retention-days: 14
+
+  # Additive, isolated frontend job (P2-M3 T8). Runs alongside the backend jobs
+  # under the existing triggers; does not touch or depend on any backend job.
+  frontend-build-test:
+    name: frontend-build-test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test

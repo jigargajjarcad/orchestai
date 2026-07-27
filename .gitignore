@@ -442,3 +442,6 @@ FodyWeavers.xsd
 
 # SDD scratch (ledgers, task briefs/reports) — not product artifacts
 .superpowers/
+
+# Impeccable design-hook per-session cache — machine-local scratch, not a product artifact
+**/.impeccable/hook.cache.json

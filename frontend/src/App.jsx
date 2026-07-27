@@ -217,7 +217,7 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
   )
 }
 
-function ApprovalCard({ request, onApprove, onReject, busy }) {
+export function ApprovalCard({ request, onApprove, onReject, busy }) {
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [note, setNote] = useState('')
 

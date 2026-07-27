@@ -808,17 +808,24 @@ function CompareView({ tasks }) {
 export default function ObservabilityPage() {
   const [subView, setSubView] = useState('timeline')
   const [tasks, setTasks] = useState([])
+  const [tasksError, setTasksError] = useState(null)
 
   useEffect(() => {
+    // A failed tasks fetch previously collapsed silently to [] — indistinguishable
+    // from "no tasks yet", leaving the sub-view task pickers mysteriously empty.
     authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/tasks?limit=30`)
-      .then(res => res.ok ? res.json() : [])
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Couldn't load tasks: ${res.status}`)
+        return res.json()
+      })
       .then(setTasks)
-      .catch(() => setTasks([]))
+      .catch(err => { setTasks([]); setTasksError(err.message) })
   }, [])
 
   return (
     <div>
       <SubNav subView={subView} setSubView={setSubView} />
+      {tasksError && <ErrorBanner style={{ marginBottom: 12 }}>{tasksError}</ErrorBanner>}
       {subView === 'timeline' && <TimelineView tasks={tasks} />}
       {subView === 'summary' && <SummaryView tasks={tasks} />}
       {subView === 'dashboard' && <DashboardView />}

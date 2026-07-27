@@ -227,3 +227,13 @@ code {
   outline: 2px solid #89b4fa;
   outline-offset: 2px;
 }
+
+/* P2-M2 Task C1 — shared loading spinner (components/Spinner.jsx). Rotation
+ * lives in CSS so prefers-reduced-motion can disable it; the spinner always
+ * ships with a visible text label, so with motion disabled the loading state
+ * is still fully communicated (never animation-alone). */
+@keyframes orch-spin { to { transform: rotate(360deg); } }
+.orch-spinner { animation: orch-spin 0.7s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .orch-spinner { animation: none; }
+}

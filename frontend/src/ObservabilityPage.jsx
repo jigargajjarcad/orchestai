@@ -10,6 +10,7 @@ import { Label } from './components/Label'
 import { StatusBadge } from './components/StatusBadge'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
+import { Spinner } from './components/Spinner'
 import { EmptyState } from './components/EmptyState'
 import { computeGraphLayout } from './observability/layout'
 import { AgentNode } from './observability/AgentNode'
@@ -476,6 +477,7 @@ function SummaryView({ tasks }) {
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
       {!taskId && <EmptyState title="Select a task to view its summary card" />}
+      {taskId && !data && !error && <Spinner label="Loading summary…" />}
       {data && (
         <Panel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -579,6 +581,7 @@ function DashboardView() {
         <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {!data && !error && <Spinner label="Loading cost dashboard…" />}
       {data && (
         <>
           <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
@@ -707,6 +710,7 @@ function ErrorRatesView() {
         <DateRangePicker from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
+      {!data && !error && <Spinner label="Loading error rates…" />}
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <ErrorRateTable title="Agent Error Rates" rows={data.agentErrorRates} nameKey="agentType" />
@@ -787,6 +791,7 @@ function CompareView({ tasks }) {
       </div>
       {error && <StateText tone="error" style={{ fontSize: 12 }}>{error}</StateText>}
       {(!firstId || !secondId) && <EmptyState title="Select two tasks to compare" />}
+      {firstId && secondId && !data && !error && <Spinner label="Loading comparison…" />}
       {data && (
         <div style={{ display: 'flex', gap: 16 }}>
           <ComparisonSide side={data.first} />

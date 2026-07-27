@@ -8,6 +8,7 @@ import { Input, TextArea } from './components/Input'
 import { Button } from './components/Button'
 import { Nav, NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
+import { Spinner } from './components/Spinner'
 import { Toggle } from './components/Toggle'
 import { EmptyState } from './components/EmptyState'
 
@@ -234,6 +235,10 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
         <Panel>
           <StateText tone="error" style={{ fontSize: 12 }}>{resultsError}</StateText>
         </Panel>
+      )}
+
+      {selectedRunId && !results && !resultsError && (
+        <Panel><Spinner label="Loading results…" /></Panel>
       )}
 
       {results && (

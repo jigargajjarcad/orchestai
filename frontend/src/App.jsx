@@ -21,6 +21,7 @@ import { Card } from './components/Card'
 import { Button } from './components/Button'
 import { Input, TextArea } from './components/Input'
 import { StateText } from './components/StateText'
+import { Spinner } from './components/Spinner'
 import { Label } from './components/Label'
 import { Toggle } from './components/Toggle'
 import { EmptyState } from './components/EmptyState'
@@ -376,7 +377,7 @@ function MemoriesPage({ onDelete }) {
       )}
 
       {memories == null ? (
-        <StateText tone="muted">Loading memories…</StateText>
+        <Spinner label="Loading memories…" />
       ) : memories.length === 0 ? (
         <EmptyState
           title="No memories yet"
@@ -866,7 +867,7 @@ export default function App() {
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
               {isActive ? (
-                <StateText tone="muted" style={{ color: colors.surface0 }}>Waiting for agents to complete…</StateText>
+                <Spinner label="Waiting for agents to complete…" />
               ) : (
                 <EmptyState
                   title="No results yet"

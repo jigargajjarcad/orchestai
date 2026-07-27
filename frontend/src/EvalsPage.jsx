@@ -51,13 +51,17 @@ function SubNav({ subView, setSubView }) {
   )
 }
 
-function SuitesView({ suites, selectedSuiteId, onSelect }) {
+export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
   return (
     <Panel>
       <div style={{ marginBottom: 8 }}>
         <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
       </div>
-      {suites == null ? (
+      {error ? (
+        // A failed request must be distinguishable from "no suites yet" — the
+        // top-level fetch previously collapsed both into the empty state.
+        <ErrorBanner>{error}</ErrorBanner>
+      ) : suites == null ? (
         <Spinner label="Loading suites…" />
       ) : (
         <>
@@ -96,8 +100,10 @@ function SuitesView({ suites, selectedSuiteId, onSelect }) {
   )
 }
 
-function RunView({ suites, selectedSuiteId, onRunTriggered }) {
+export function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   const [runs, setRuns] = useState([])
+  const [runsLoading, setRunsLoading] = useState(false)
+  const [runsError, setRunsError] = useState(null)
   const [subjectVersion, setSubjectVersion] = useState('')
   const [baselineRunId, setBaselineRunId] = useState('')
   const [error, setError] = useState(null)
@@ -105,10 +111,18 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
 
   useEffect(() => {
     if (!selectedSuiteId) return
+    let cancelled = false
+    setRunsLoading(true)
+    setRunsError(null)
     authenticatedFetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
-      .then(res => res.json())
-      .then(data => setRuns(data.runs))
-      .catch(() => setRuns([]))
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Failed: ${res.status}`)
+        return res.json()
+      })
+      .then(data => { if (!cancelled) setRuns(data.runs) })
+      .catch(err => { if (!cancelled) { setRuns([]); setRunsError(err.message) } })
+      .finally(() => { if (!cancelled) setRunsLoading(false) })
+    return () => { cancelled = true }
   }, [selectedSuiteId])
 
   if (!selectedSuiteId) {
@@ -158,14 +172,24 @@ function RunView({ suites, selectedSuiteId, onRunTriggered }) {
           <div style={{ marginBottom: 8 }}>
             <Label style={{ fontWeight: 400 }}>Baseline run</Label>
           </div>
-          <select value={baselineRunId} onChange={e => setBaselineRunId(e.target.value)} style={{ ...selectStyle, width: 260 }}>
-            <option value="">None (first run for this suite)</option>
-            {runs.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.subjectVersion} — {r.status} — {new Date(r.triggeredAt).toLocaleString()}
+          {runsLoading ? (
+            <Spinner label="Loading runs…" />
+          ) : runsError ? (
+            // A failed runs fetch must not masquerade as "no prior runs" (which
+            // the bare <select> silently did on the previous `.catch(setRuns([]))`).
+            <ErrorBanner style={{ width: 260 }}>{runsError}</ErrorBanner>
+          ) : (
+            <select value={baselineRunId} onChange={e => setBaselineRunId(e.target.value)} style={{ ...selectStyle, width: 260 }}>
+              <option value="">
+                {runs.length === 0 ? 'None — no prior runs for this suite' : 'None (first run for this suite)'}
               </option>
-            ))}
-          </select>
+              {runs.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.subjectVersion} — {r.status} — {new Date(r.triggeredAt).toLocaleString()}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <Button
           variant="primary"
@@ -324,7 +348,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
   )
 }
 
-function PostHocView() {
+export function PostHocView() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [agentType, setAgentType] = useState('')
@@ -335,6 +359,7 @@ function PostHocView() {
   const [runId, setRunId] = useState(null)
   const [summary, setSummary] = useState(null)
   const [summaryError, setSummaryError] = useState(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
 
   const agentTypes = ['Orchestrator', 'Research', 'Writer', 'Code', 'Data', 'Browser']
 
@@ -368,13 +393,15 @@ function PostHocView() {
   const refreshSummary = () => {
     if (!runId) return
     setSummaryError(null)
+    setSummaryLoading(true)
     authenticatedFetch(`${API_BASE}/eval-runs/${runId}/posthoc-summary`)
       .then(async res => {
-        if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Failed: ${res.status}`)
         return res.json()
       })
       .then(setSummary)
       .catch(err => setSummaryError(err.message))
+      .finally(() => setSummaryLoading(false))
   }
 
   return (
@@ -456,7 +483,8 @@ function PostHocView() {
         <Panel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ marginBottom: 8 }}>
-              <Label style={{ fontWeight: 400 }}>Run {runId.slice(0, 8)}…</Label>
+              {/* "Run" is a UI-face label; the run id is data → data face (Two-Face Rule). */}
+              <Label style={{ fontWeight: 400 }}>Run <span style={{ fontFamily: dataFontFamily }}>{runId.slice(0, 8)}…</span></Label>
             </div>
             <Button
               variant="primary"
@@ -466,8 +494,9 @@ function PostHocView() {
               Refresh summary
             </Button>
           </div>
+          {summaryLoading && <Spinner label="Loading summary…" style={{ marginTop: 10 }} />}
           {summaryError && <ErrorBanner>{summaryError}</ErrorBanner>}
-          {summary && (
+          {summary && !summaryLoading && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 13, color: colors.text, fontFamily: uiFontFamily }}>
                 Status: {summary.status} —{' '}
@@ -508,21 +537,25 @@ function PostHocView() {
 export default function EvalsPage() {
   const [subView, setSubView] = useState('suites')
   const [suites, setSuites] = useState(null)
+  const [suitesError, setSuitesError] = useState(null)
   const [selectedSuiteId, setSelectedSuiteId] = useState(null)
   const [selectedRunId, setSelectedRunId] = useState(null)
 
   useEffect(() => {
     authenticatedFetch(`${API_BASE}/eval-suites`)
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Failed: ${res.status}`)
+        return res.json()
+      })
       .then(data => setSuites(data.suites))
-      .catch(() => setSuites([]))
+      .catch(err => setSuitesError(err.message))
   }, [])
 
   return (
     <div>
       <SubNav subView={subView} setSubView={setSubView} />
       {subView === 'suites' && (
-        <SuitesView suites={suites} selectedSuiteId={selectedSuiteId} onSelect={setSelectedSuiteId} />
+        <SuitesView suites={suites} error={suitesError} selectedSuiteId={selectedSuiteId} onSelect={setSelectedSuiteId} />
       )}
       {subView === 'run' && (
         <RunView

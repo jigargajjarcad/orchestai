@@ -35,4 +35,23 @@ describe('ManagerReviewCard (T1: manager-review result rendering)', () => {
       screen.getByText(/Synthesized and quality-checked all agent outputs/),
     ).toBeInTheDocument()
   })
+
+  it('renders inline code inline (not as a <pre> block) — react-markdown v10 has no `inline` prop', () => {
+    const { container } = render(
+      <ManagerReviewCard review={{ status: 'completed', result: 'Set the `maxTokens` value.' }} />,
+    )
+    const codeEl = screen.getByText('maxTokens')
+    expect(codeEl.tagName).toBe('CODE')
+    // The regression: inline code must NOT be wrapped in <pre>, and must sit
+    // inside the paragraph (a <pre> inside a <p> is invalid HTML).
+    expect(codeEl.closest('pre')).toBeNull()
+    expect(container.querySelector('p > code')).not.toBeNull()
+  })
+
+  it('renders a fenced code block inside a <pre>', () => {
+    const { container } = render(
+      <ManagerReviewCard review={{ status: 'completed', result: '```js\nconst x = 1\n```' }} />,
+    )
+    expect(container.querySelector('pre')).not.toBeNull()
+  })
 })

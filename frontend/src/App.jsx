@@ -321,9 +321,16 @@ const reviewMarkdownComponents = {
   p: ({ children }) => <p style={{ margin: '0 0 8px' }}>{children}</p>,
   ul: ({ children }) => <ul style={{ paddingLeft: 18, margin: '0 0 8px' }}>{children}</ul>,
   li: ({ children }) => <li style={{ marginBottom: 3 }}>{children}</li>,
-  code: ({ inline, children }) => inline
-    ? <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
-    : <pre style={{ background: colors.mantle, borderRadius: 6, padding: '10px 12px', overflow: 'auto' }}><code style={{ fontSize: 11, fontFamily: dataFontFamily }}>{children}</code></pre>,
+  pre: ({ children }) => <pre style={{ background: colors.mantle, borderRadius: 6, padding: '10px 12px', overflow: 'auto', margin: '0 0 8px' }}>{children}</pre>,
+  // react-markdown v10 no longer passes an `inline` flag to `code`, so detect a
+  // fenced block via its language class / multiline content instead. Inline
+  // backticks must stay inline `<code>` — never emit a <pre> inside a <p>.
+  code: ({ className, children }) => {
+    const isBlock = /language-/.test(className || '') || String(children).includes('\n')
+    return isBlock
+      ? <code style={{ fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
+      : <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
+  },
 }
 
 export function ManagerReviewCard({ review }) {

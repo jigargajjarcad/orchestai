@@ -145,4 +145,64 @@ describe('PlaygroundExecutionGraph — auto-refit as the trace grows (Defect 1 r
     rerender(<PlaygroundExecutionGraph spans={base.map(s => ({ ...s }))} />)
     expect(fitViewSpy.mock.calls.length).toBe(calls)
   })
+
+  // ---- Large-trace viewport clipping fix (final-verification defect) ----
+
+  // Faithful reproduction of the genuine 23-node geometry: orchestrator planning
+  // + Data + 3 db_query + Research + 16 perplexity_search + synthesis + review.
+  function largeTraceSpans() {
+    const events = [
+      ev('task_started', {}, T(0)),
+      ev('agent_started', { agentExecutionId: 'orch', agentType: 'Orchestrator' }, T(1)),
+      ev('agent_completed', { agentExecutionId: 'orch', agentType: 'Orchestrator' }, T(2)),
+      ev('orchestrator_plan', {}, T(2)),
+      ev('agent_started', { agentExecutionId: DATA, agentType: 'Data' }, T(3)),
+      ev('agent_started', { agentExecutionId: RESEARCH, agentType: 'Research' }, T(3)),
+    ]
+    for (let i = 0; i < 3; i++) {
+      events.push(ev('tool_started', { agentExecutionId: DATA, agentType: 'Data', toolName: 'db_query' }, T(4 + i)))
+      events.push(ev('tool_completed', { agentExecutionId: DATA, agentType: 'Data', toolName: 'db_query', success: true }, T(4 + i)))
+    }
+    for (let i = 0; i < 16; i++) {
+      events.push(ev('tool_started', { agentExecutionId: RESEARCH, agentType: 'Research', toolName: 'perplexity_search' }, T(5 + i)))
+      events.push(ev('tool_completed', { agentExecutionId: RESEARCH, agentType: 'Research', toolName: 'perplexity_search', success: true }, T(6 + i)))
+    }
+    events.push(ev('agent_started', { agentExecutionId: 'orch2', agentType: 'Orchestrator' }, T(38)))
+    events.push(ev('manager_review_started', {}, T(38)))
+    events.push(ev('agent_completed', { agentExecutionId: 'orch2', agentType: 'Orchestrator' }, T(40)))
+    events.push(ev('manager_review_completed', { result: 'synthesis' }, T(40)))
+    events.push(ev('task_completed', {}, T(41)))
+    return spansOf(events)
+  }
+
+  it('reproduces the genuine 23-node trace: 23 nodes, exactly 1 Orchestrator + 1 Manager Review', () => {
+    const spans = largeTraceSpans()
+    expect(spans).toHaveLength(23)
+    expect(spans.filter(s => s.label === 'Orchestrator')).toHaveLength(1)
+    expect(spans.filter(s => s.label === 'Manager Review')).toHaveLength(1)
+    expect(spans.filter(s => s.label === 'perplexity_search')).toHaveLength(16)
+    expect(spans.filter(s => s.label === 'db_query')).toHaveLength(3)
+  })
+
+  it('fits a 23-node trace with a minZoom BELOW the interactive floor so nothing is clipped', () => {
+    render(<PlaygroundExecutionGraph spans={largeTraceSpans()} />)
+    expect(fitViewSpy).toHaveBeenCalled()
+    const opts = fitViewSpy.mock.calls.at(-1)[0]
+    // The imperative fit must be allowed to zoom out well past the component's
+    // interactive minZoom={0.2}: a 23-row layout needs ~0.14, so the fit floor
+    // must be materially lower or the top/bottom nodes fall off-canvas.
+    expect(opts.minZoom).toBeDefined()
+    expect(opts.minZoom).toBeLessThan(0.2)
+    expect(opts.minZoom).toBeLessThanOrEqual(0.05)
+    expect(opts.padding).toBeLessThanOrEqual(0.1) // trimmed from 0.2; more fitting room
+  })
+
+  it('applies the same fit options to the initial fitView (large trace that arrives already-complete)', () => {
+    // A trace that mounts already at 23 nodes must also frame whole on first paint.
+    render(<PlaygroundExecutionGraph spans={largeTraceSpans()} />)
+    // AutoFitView ran with the low-minZoom options (asserted above); the initial
+    // fitViewOptions prop carries the same options so the very first fit matches.
+    const opts = fitViewSpy.mock.calls.at(-1)[0]
+    expect(opts.minZoom).toBeLessThanOrEqual(0.05)
+  })
 })

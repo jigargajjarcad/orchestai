@@ -19,6 +19,18 @@ const NODE_TYPES = { agentNode: AgentNode, toolCallNode: ToolCallNode }
 const EDGE_TYPES = { traceEdge: TraceEdge }
 const TICK_COUNT = 5
 
+// fitView options shared by the initial fit (fitViewOptions prop) and the live
+// AutoFitView refit. The `minZoom` here is the floor FITTING may use — deliberately
+// far below the ReactFlow component's interactive `minZoom={0.2}` (which only caps
+// user scroll/pinch). Without it, the imperative fitView() inherits 0.2 as its floor
+// and cannot zoom out enough to frame tall traces: a genuine 23-node run needs ~0.14,
+// so ~7 nodes (Orchestrator/Data/Research/Manager Review) fell outside the 460px
+// canvas. 0.05 frames very large traces whole (the reference Observability graph
+// likewise fits below 0.2 via its default initial fit); `padding: 0.1` leaves a small
+// margin without wasting fitting room. Normal traces stay readable — fitView never
+// zooms out MORE than needed to frame the content.
+const FIT_VIEW_OPTIONS = { padding: 0.1, minZoom: 0.05 }
+
 function formatMs(ms) {
   if (ms == null) return ''
   if (ms < 1000) return `${Math.round(ms)}ms`
@@ -40,7 +52,7 @@ function AutoFitView({ signature }) {
   useEffect(() => {
     // Defer one frame so ReactFlow has measured the newly-added nodes before we
     // fit to them (fall back to a macrotask where rAF is unavailable, e.g. tests).
-    const run = () => { fitView({ duration: 0, padding: 0.2 }) }
+    const run = () => { fitView({ duration: 0, ...FIT_VIEW_OPTIONS }) }
     if (typeof requestAnimationFrame === 'function') {
       const raf = requestAnimationFrame(run)
       return () => cancelAnimationFrame(raf)
@@ -110,6 +122,7 @@ export function PlaygroundExecutionGraph({ spans }) {
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
             fitView
+            fitViewOptions={FIT_VIEW_OPTIONS}
             nodesFocusable
             edgesFocusable
             minZoom={0.2}

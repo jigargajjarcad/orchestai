@@ -21,6 +21,15 @@
 export const ORCHESTRATOR_ID = 'orchestrator'
 export const MANAGER_REVIEW_ID = 'manager-review'
 
+// The backend emits agent_started/agent_completed/agent_failed with this
+// agentType for the orchestrator's OWN planning/synthesis passes — these are the
+// synthetic root's lifecycle, not separate specialist agents. Routing them to
+// the root (instead of creating a child node keyed by agentExecutionId) prevents
+// the duplicate "Orchestrator" nodes, and stops the synthesis pass from becoming
+// a second visual representation of the Manager Review. (Data/Research and every
+// other agentType keep their normal child-node handling.)
+export const ORCHESTRATOR_AGENT_TYPE = 'Orchestrator'
+
 /** Initial reducer state. `byId`+`order` materialize the span array;
  * `toolSeq`/`running` support synthetic tool-call identity + started→completed
  * matching for repeated same-tool calls (e.g. Research × N perplexity_search). */
@@ -131,12 +140,24 @@ export function applyEvent(state, rawEvent) {
 
     case 'agent_started': {
       if (!p.agentExecutionId) return state
+      // Orchestrator's own passes belong to the synthetic root — never a
+      // separate child node (see ORCHESTRATOR_AGENT_TYPE).
+      if (p.agentType === ORCHESTRATOR_AGENT_TYPE) {
+        ensureOrchestrator(next, now)
+        return next
+      }
       ensureAgent(next, p.agentExecutionId, p.agentType, now)
       return next
     }
 
     case 'agent_completed': {
       if (!p.agentExecutionId) return state
+      // The root's lifecycle is governed by orchestrator_plan + task_completed/
+      // task_failed; an orchestrator pass completing never creates/mutates a node.
+      if (p.agentType === ORCHESTRATOR_AGENT_TYPE) {
+        ensureOrchestrator(next, now)
+        return next
+      }
       ensureAgent(next, p.agentExecutionId, p.agentType, now)
       const s = next.byId[p.agentExecutionId]
       patch(next, p.agentExecutionId, {
@@ -149,6 +170,16 @@ export function applyEvent(state, rawEvent) {
 
     case 'agent_failed': {
       if (!p.agentExecutionId) return state
+      // An orchestrator failure is an overall orchestration failure → mark the
+      // synthetic root Failed; still never a separate child node.
+      if (p.agentType === ORCHESTRATOR_AGENT_TYPE) {
+        ensureOrchestrator(next, now)
+        const root = next.byId[ORCHESTRATOR_ID]
+        patch(next, ORCHESTRATOR_ID, {
+          status: 'Failed', completedAt: now, durationMs: msBetween(root.startedAt, now),
+        })
+        return next
+      }
       ensureAgent(next, p.agentExecutionId, p.agentType, now)
       const s = next.byId[p.agentExecutionId]
       patch(next, p.agentExecutionId, {

@@ -1,14 +1,19 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import {
   emptyGraphState, applyEvent, toSpanArray,
 } from './playgroundSpanModel'
+
+// Shared spy for the reused ReactFlow `fitView()` (Defect 1 regression). Hoisted
+// so it is usable inside the vi.mock factory below.
+const fitViewSpy = vi.hoisted(() => vi.fn())
 
 // jsdom cannot measure ReactFlow's viewport (no ResizeObserver layout), so we
 // mock @xyflow/react to a thin stand-in that surfaces the nodes/edges our
 // component feeds it. This keeps the test on OUR contract — "does the component
 // derive and hand the correct graph to ReactFlow" — while ReactFlow's own
 // rendering stays covered by its library tests + the Playwright visual pass.
+// useReactFlow is stubbed to expose the fitView spy AutoFitView calls.
 vi.mock('@xyflow/react', () => ({
   ReactFlowProvider: ({ children }) => <div data-testid="rf-provider">{children}</div>,
   ReactFlow: ({ nodes, edges, children }) => (
@@ -20,6 +25,7 @@ vi.mock('@xyflow/react', () => ({
   Background: () => <div data-testid="rf-background" />,
   Controls: () => <div data-testid="rf-controls" />,
   BackgroundVariant: { Dots: 'dots' },
+  useReactFlow: () => ({ fitView: fitViewSpy }),
 }))
 
 // Import AFTER the mock is registered.
@@ -76,5 +82,67 @@ describe('PlaygroundExecutionGraph (P2-M5 live graph render)', () => {
     expect(screen.getByText('0ms')).toBeInTheDocument()
     // total trace = T(0)..T(7) = 7s -> final tick formatted in seconds
     expect(screen.getByText('7.0s')).toBeInTheDocument()
+  })
+})
+
+describe('PlaygroundExecutionGraph — auto-refit as the trace grows (Defect 1 regression)', () => {
+  beforeEach(() => {
+    fitViewSpy.mockClear()
+    // Run AutoFitView's deferred fit synchronously so the observable effect
+    // (fitView invoked) is deterministic in jsdom.
+    vi.stubGlobal('requestAnimationFrame', (cb) => { cb(); return 1 })
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  // Short early layout: orchestrator + one agent, ~1s trace.
+  const smallSpans = spansOf([
+    ev('task_started', {}, T(0)),
+    ev('agent_started', { agentExecutionId: DATA, agentType: 'Data' }, T(1)),
+  ])
+  // Materially larger layout: more nodes + a ~30s trace (bigger time-scaled X).
+  const grownSpans = spansOf([
+    ev('task_started', {}, T(0)),
+    ev('agent_started', { agentExecutionId: DATA, agentType: 'Data' }, T(1)),
+    ev('agent_started', { agentExecutionId: RESEARCH, agentType: 'Research' }, T(1)),
+    ev('tool_started', { agentExecutionId: RESEARCH, agentType: 'Research', toolName: 'perplexity_search' }, T(2)),
+    ev('tool_completed', { agentExecutionId: RESEARCH, agentType: 'Research', toolName: 'perplexity_search', success: true }, T(30)),
+    ev('agent_completed', { agentExecutionId: DATA, agentType: 'Data' }, T(30)),
+    ev('task_completed', {}, T(30)),
+  ])
+
+  it('fits the viewport on initial render (nodes visible without interaction)', () => {
+    render(<PlaygroundExecutionGraph spans={smallSpans} />)
+    expect(fitViewSpy).toHaveBeenCalled()
+  })
+
+  it('re-fits when the layout grows materially — the streaming-goes-blank defect', () => {
+    const { rerender } = render(<PlaygroundExecutionGraph spans={smallSpans} />)
+    const afterInitial = fitViewSpy.mock.calls.length
+    expect(afterInitial).toBeGreaterThan(0)
+
+    // Simulates the live trace expanding (~1s -> ~30s, more nodes): the framing
+    // signature changes, so fitView runs again to bring the new nodes into view.
+    rerender(<PlaygroundExecutionGraph spans={grownSpans} />)
+    expect(fitViewSpy.mock.calls.length).toBeGreaterThan(afterInitial)
+  })
+
+  it('completion frame is fitted — a completed graph is never left off-canvas', () => {
+    // Mount directly with the final, grown+completed layout (the exact state the
+    // genuine run ended in): fitView must have run so the canvas is not blank.
+    render(<PlaygroundExecutionGraph spans={grownSpans} />)
+    expect(fitViewSpy).toHaveBeenCalled()
+  })
+
+  it('does NOT re-fit on a status/cost-only update that does not move nodes (no jitter)', () => {
+    const base = spansOf([
+      ev('task_started', {}, T(0)),
+      ev('agent_started', { agentExecutionId: DATA, agentType: 'Data' }, T(1)),
+    ])
+    const { rerender } = render(<PlaygroundExecutionGraph spans={base} />)
+    const calls = fitViewSpy.mock.calls.length
+    // New array, identical node geometry -> identical framing signature -> no refit.
+    rerender(<PlaygroundExecutionGraph spans={base.map(s => ({ ...s }))} />)
+    expect(fitViewSpy.mock.calls.length).toBe(calls)
   })
 })

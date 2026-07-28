@@ -13,6 +13,7 @@ vi.mock('@xyflow/react', () => ({
   Background: () => null,
   Controls: () => null,
   BackgroundVariant: { Dots: 'dots' },
+  useReactFlow: () => ({ fitView: () => {} }),
 }))
 
 const { default: App } = await import('./App')

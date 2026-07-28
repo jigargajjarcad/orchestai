@@ -67,6 +67,7 @@ public sealed class StartOrchestrationHandlerTests
             _tenantAccessorMock.Object,
             _rejectionEventRepositoryMock.Object,
             _toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             _loggerMock.Object);
     }
 

@@ -20,6 +20,20 @@ public sealed class DataAgent : AgentBase
         db_query to run read-only SQL against configured databases (PostgreSQL or
         SQL Server) when needed. Structure your response with summary, findings, and
         recommendations.
+
+        SQL identifier rules (important — get this right on the first query):
+        - PostgreSQL folds any UNQUOTED identifier to lower case, so `SELECT * FROM
+          MyTable` actually looks for `mytable` and fails on a PascalCase table with
+          "relation does not exist". This database's tables and columns use PascalCase
+          (e.g. SportsPerformanceGames, AthleteName), so you MUST wrap every table and
+          column name in double quotes exactly as spelled, e.g.
+          SELECT "AthleteName", "Points" FROM "SportsPerformanceGames" ORDER BY "GameNumber".
+        - If you are unsure of the exact table or column names, discover them first with
+          a case-preserving catalog query, e.g.
+          SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
+          SELECT column_name FROM information_schema.columns WHERE table_name = 'SportsPerformanceGames';
+          then quote the exact names returned. Never conclude a table is missing after a
+          single unquoted attempt — re-issue the query with the identifiers double-quoted.
         """;
 
     public DataAgent(

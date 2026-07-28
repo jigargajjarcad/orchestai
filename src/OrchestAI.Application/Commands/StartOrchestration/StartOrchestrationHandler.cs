@@ -23,6 +23,7 @@ public sealed class StartOrchestrationHandler
     private readonly ICurrentTenantAccessor _tenantAccessor;
     private readonly IRejectionEventRepository _rejectionEventRepository;
     private readonly ITaskToolCallBudget _toolCallBudget;
+    private readonly ICostLedgerRepository _costLedgerRepository;
     private readonly ILogger<StartOrchestrationHandler> _logger;
 
     public StartOrchestrationHandler(
@@ -37,6 +38,7 @@ public sealed class StartOrchestrationHandler
         ICurrentTenantAccessor tenantAccessor,
         IRejectionEventRepository rejectionEventRepository,
         ITaskToolCallBudget toolCallBudget,
+        ICostLedgerRepository costLedgerRepository,
         ILogger<StartOrchestrationHandler> logger)
     {
         _taskRepository = taskRepository;
@@ -50,6 +52,7 @@ public sealed class StartOrchestrationHandler
         _tenantAccessor = tenantAccessor;
         _rejectionEventRepository = rejectionEventRepository;
         _toolCallBudget = toolCallBudget;
+        _costLedgerRepository = costLedgerRepository;
         _logger = logger;
     }
 
@@ -221,6 +224,20 @@ public sealed class StartOrchestrationHandler
                 request.TaskId,
                 results.Select(r => r.AgentExecutionId).ToList().AsReadOnly());
         }
+        catch (Exception ex)
+        {
+            // Ultimate safety net: ANY unhandled exception in the dispatch block (a malformed
+            // plan, an agent-dispatch fault, a persistence error, etc.) must transition the task
+            // to a terminal Failed state — otherwise it stays Running forever (observed live: a
+            // KeyNotFoundException on a malformed plan left the task stuck Running with no
+            // completion). The fire-and-forget Task.Run in TasksController only logs the
+            // exception; this is where the task's own status/cost are made durable.
+            _logger.LogError(ex, "Unhandled error during orchestration dispatch for task {TaskId}", request.TaskId);
+            await AccumulateLedgerCostAsync(task, cancellationToken).ConfigureAwait(false);
+            await FailTaskAsync(
+                task, $"Orchestration failed: {ex.Message}", cancellationToken).ConfigureAwait(false);
+            return new StartOrchestrationResponse(request.TaskId, []);
+        }
         finally
         {
             // Releases both the concurrency slot and the budget reservation together — covers
@@ -285,6 +302,38 @@ public sealed class StartOrchestrationHandler
             task.Id,
             new { taskId = task.Id, errorMessage },
             DateTimeOffset.UtcNow));
+    }
+
+    // Real provider cost is written to the CostLedger per-execution as each agent runs, so it
+    // survives an orchestration crash even when the in-memory result aggregation (which only runs
+    // on the normal success/agent-failure path) never executes. On the crash path, recompute the
+    // task's cost from the persisted ledger so a task that incurred real paid calls does not
+    // falsely report $0. No-op when cost was already aggregated. Best-effort: a ledger read
+    // failure must never mask the underlying orchestration failure.
+    private async Task AccumulateLedgerCostAsync(OrchestrationTask task, CancellationToken cancellationToken)
+    {
+        if (task.TotalCostUsd != 0m)
+            return;
+
+        try
+        {
+            var entries = await _costLedgerRepository
+                .GetByTaskIdAsync(task.Id, cancellationToken)
+                .ConfigureAwait(false);
+            var production = entries.Where(e => e.Source == CostSource.Production).ToList();
+            if (production.Count == 0)
+                return;
+
+            task.AccumulateCost(
+                production.Sum(e => e.InputTokens),
+                production.Sum(e => e.OutputTokens),
+                production.Sum(e => e.CostUsd));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to aggregate ledger cost for failed task {TaskId}; it may report $0 cost", task.Id);
+        }
     }
 
     private async Task<AgentExecutionResult> RunSubAgentAsync(

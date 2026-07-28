@@ -64,6 +64,18 @@ public static class OrchestrationPlanParser
                 }
             }
 
+            // An agent named in the plan but given no prompt cannot be dispatched — the dispatch
+            // path looks up agent_prompts[agentType] directly, so an agent present in
+            // agents/execution_order but missing from agent_prompts would throw a
+            // KeyNotFoundException mid-orchestration (observed live: a plan naming "Writer" with no
+            // Writer prompt). Drop any such non-executable agent here so an inconsistent LLM plan
+            // can never crash dispatch. If nothing executable remains, treat the whole plan as
+            // invalid so the caller retries the plan or fails predictably.
+            selectedAgents = selectedAgents.Where(agentPrompts.ContainsKey).ToList();
+            executionOrder = executionOrder.Where(agentPrompts.ContainsKey).ToList();
+            if (executionOrder.Count == 0)
+                return false;
+
             plan = new OrchestrationPlan(planText, executionMode, selectedAgents, executionOrder, agentPrompts, null!);
             return true;
         }

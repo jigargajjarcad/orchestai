@@ -46,6 +46,7 @@ public sealed class StartOrchestrationReservationReleaseTests
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
             limitsProviderMock.Object, tenantAccessorMock.Object, Mock.Of<IRejectionEventRepository>(),
             toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             NullLogger<StartOrchestrationHandler>.Instance);
 
         return (handler, reservationRepoMock, orchestratorMock, taskRepoMock);

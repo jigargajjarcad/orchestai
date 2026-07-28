@@ -191,6 +191,7 @@ public sealed class AgentToolCallCapIntegrationTests
             taskRepoMock.Object, orchestratorMock.Object, agentFactoryMock.Object, eventBusMock.Object,
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
             limitsProviderMock.Object, accessorMock.Object, rejectionEventRepoMock.Object, toolCallBudget,
+            Mock.Of<ICostLedgerRepository>(),
             NullLogger<StartOrchestrationHandler>.Instance);
 
         await handler.Handle(new StartOrchestrationCommand(task.Id), CancellationToken.None);
@@ -436,6 +437,7 @@ public sealed class AgentToolCallCapIntegrationTests
             taskRepoMock.Object, orchestratorMock.Object, agentFactoryMock.Object, eventBusMock.Object,
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
             limitsProviderMock.Object, accessorMock.Object, rejectionEventRepoMock.Object, toolCallBudget,
+            Mock.Of<ICostLedgerRepository>(),
             NullLogger<StartOrchestrationHandler>.Instance);
 
         await handler.Handle(new StartOrchestrationCommand(task.Id), CancellationToken.None);

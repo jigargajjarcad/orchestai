@@ -57,6 +57,7 @@ public sealed class StartOrchestrationPlanningFailureTests
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
             limitsProviderMock.Object, tenantAccessorMock.Object, rejectionEventRepoMock.Object,
             toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             NullLogger<StartOrchestrationHandler>.Instance);
 
         // The bug this fixes meant this would throw, leaving the task stuck at Running — asserting

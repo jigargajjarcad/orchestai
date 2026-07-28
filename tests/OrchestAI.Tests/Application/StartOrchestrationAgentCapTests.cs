@@ -54,6 +54,7 @@ public sealed class StartOrchestrationAgentCapTests
             taskRepoMock.Object, orchestratorMock.Object, agentFactoryMock.Object, eventBusMock.Object,
             approvalGatewayMock.Object, checkpointRepoMock.Object, reservationRepoMock.Object,
             limitsProviderMock.Object, accessorMock.Object, rejectionEventRepoMock.Object, toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             NullLogger<StartOrchestrationHandler>.Instance);
 
         var response = await handler.Handle(new StartOrchestrationCommand(task.Id), CancellationToken.None);

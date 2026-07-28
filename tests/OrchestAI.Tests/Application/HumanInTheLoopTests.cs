@@ -97,6 +97,7 @@ public sealed class HumanInTheLoopTests
             tenantAccessorMock.Object,
             Mock.Of<IRejectionEventRepository>(),
             toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);
@@ -173,6 +174,7 @@ public sealed class HumanInTheLoopTests
             tenantAccessorMock.Object,
             Mock.Of<IRejectionEventRepository>(),
             toolCallBudgetMock.Object,
+            Mock.Of<ICostLedgerRepository>(),
             new Mock<ILogger<StartOrchestrationHandler>>().Object);
 
         var response = await handler.Handle(new StartOrchestrationCommand(taskId), CancellationToken.None);

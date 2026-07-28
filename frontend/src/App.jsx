@@ -31,6 +31,8 @@ import { TopBar } from './components/shell/TopBar'
 import { PageContainer } from './components/shell/PageContainer'
 import { useRouting } from './hooks/useRouting'
 import { useBreakpoint } from './hooks/useBreakpoint'
+import { usePlaygroundExecutionGraph } from './playground/usePlaygroundExecutionGraph'
+import { PlaygroundExecutionGraph } from './playground/PlaygroundExecutionGraph'
 import './App.css'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
@@ -470,6 +472,13 @@ export default function App() {
   const [approvalRequest, setApprovalRequest] = useState(null)
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
+  // P2-M5 — live execution graph. Additive: the same SSE events the card feed
+  // already consumes are ALSO folded into a derived span array for the graph;
+  // the card reducer (updateAgent/addToolCall/…) is untouched. Default 'graph'
+  // is the milestone's differentiator; 'list' is the unchanged card fallback.
+  const [playgroundViewMode, setPlaygroundViewMode] = useState('graph')
+  const [handoffTaskId, setHandoffTaskId] = useState(null)
+  const { liveSpans, dispatchGraphEvent, reset: resetGraph } = usePlaygroundExecutionGraph()
   const { view, navigate } = useRouting()
   // P2-M1B Task 2 — the old `useViewportWidth() <= 768` narrow check is
   // replaced by the shared breakpoint hook; the Playground 2-column grid
@@ -549,6 +558,8 @@ export default function App() {
     setApprovalRequest(null)
     setManagerReview(null)
     setSavedMemories({})
+    setHandoffTaskId(null)
+    resetGraph()
     eventSourceRef.current?.close()
 
     const baseline = await fetchMemoryCounts()
@@ -586,6 +597,11 @@ export default function App() {
         try {
           const data = JSON.parse(e.data)
           const p = data.payload ?? {}
+
+          // P2-M5 — additively fold every event into the live graph state. This
+          // is independent of and does not alter the card switch below; the
+          // graph reducer ignores events it doesn't care about.
+          dispatchGraphEvent(data)
 
           switch (data.event) {
             case 'task_started':
@@ -643,6 +659,7 @@ export default function App() {
             case 'task_completed':
               setTaskStatus('Completed')
               setTotalCost(p.totalCostUsd)
+              setHandoffTaskId(id)
               es.close()
               fetchFinalResult(id)
               refreshSavedMemories()
@@ -762,7 +779,7 @@ export default function App() {
       </PageContainer>
     ) : view === 'observability' ? (
       <PageContainer width="full" style={{ paddingBlock: spacing.xl }}>
-        <ObservabilityPage />
+        <ObservabilityPage initialTaskId={handoffTaskId} />
       </PageContainer>
     ) : view === 'evals' ? (
       <PageContainer width="wide" style={{ paddingBlock: spacing.xl }}>
@@ -863,9 +880,31 @@ export default function App() {
           )}
         </div>
 
-        {/* Right: Final Result */}
-        <div style={{ padding: 24, overflowY: 'auto' }}>
-          {finalResult ? (
+        {/* Right: live execution graph (default) / Final Result (List fallback).
+            Both read the same underlying state, so toggling never loses state
+            and works identically while running and after completion. */}
+        <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginBottom: 16 }}>
+            {/* Observability handoff — only after the run completes (§13). */}
+            <div>
+              {handoffTaskId && (
+                <Button variant="ghost" size="sm" fullWidth={false} onClick={() => navigate('observability')}>
+                  View full trace in Observability →
+                </Button>
+              )}
+            </div>
+            <Toggle
+              options={[{ value: 'graph', label: 'Graph' }, { value: 'list', label: 'List' }]}
+              value={playgroundViewMode}
+              onChange={setPlaygroundViewMode}
+              aria-label="Switch between the live execution graph and the result view"
+            />
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0 }}>
+          {playgroundViewMode === 'graph' ? (
+            <PlaygroundExecutionGraph spans={liveSpans} />
+          ) : finalResult ? (
             <div>
               <div style={{ marginBottom: 16 }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Final Result</Label></div>
               <Panel style={{ padding: '20px 24px' }}>
@@ -902,6 +941,7 @@ export default function App() {
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
       </PageContainer>

@@ -212,8 +212,11 @@ function SpanRow({ span, depth, traceStart, traceDurationMs }) {
   )
 }
 
-function TimelineView({ tasks }) {
-  const [taskId, setTaskId] = useState(null)
+function TimelineView({ tasks, initialTaskId = null }) {
+  // P2-M5 handoff: when the Playground navigates here on task_completed it
+  // passes the just-run task so this view pre-selects it. Absent → unchanged
+  // (null). Seeds initial selection only; the picker/renderer are untouched.
+  const [taskId, setTaskId] = useState(initialTaskId)
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   // Graph view is the new default (plan §3/§5); List stays available,
@@ -805,7 +808,7 @@ function CompareView({ tasks }) {
 
 // ── Top-level page ──
 
-export default function ObservabilityPage() {
+export default function ObservabilityPage({ initialTaskId = null }) {
   const [subView, setSubView] = useState('timeline')
   const [tasks, setTasks] = useState([])
   const [tasksError, setTasksError] = useState(null)
@@ -826,7 +829,7 @@ export default function ObservabilityPage() {
     <div>
       <SubNav subView={subView} setSubView={setSubView} />
       {tasksError && <ErrorBanner style={{ marginBottom: 12 }}>{tasksError}</ErrorBanner>}
-      {subView === 'timeline' && <TimelineView tasks={tasks} />}
+      {subView === 'timeline' && <TimelineView tasks={tasks} initialTaskId={initialTaskId} />}
       {subView === 'summary' && <SummaryView tasks={tasks} />}
       {subView === 'dashboard' && <DashboardView />}
       {subView === 'errors' && <ErrorRatesView />}

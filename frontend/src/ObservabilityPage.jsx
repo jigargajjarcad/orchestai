@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useId } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, BackgroundVariant } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './observability/timelineFocus.css'
@@ -70,6 +70,9 @@ function fmtDuration(ms) {
 // values instead. Matches the original selectStyle shape exactly (padding,
 // borderRadius, border, background, color, fontSize, outline), just with
 // hardcoded hex replaced by token references.
+// P2-M6.3 — `outline:'none'` removed so keyboard focus is visible again: the
+// inline outline previously beat index.css's global `:focus-visible` ring (M6.1),
+// leaving native selects/date inputs with no focus indicator.
 const selectStyle = {
   padding: '6px 10px',
   borderRadius: radii.lg,
@@ -77,7 +80,6 @@ const selectStyle = {
   background: colors.mantle,
   color: colors.text,
   fontSize: 12,
-  outline: 'none',
 }
 
 function SubNav({ subView, setSubView }) {
@@ -107,12 +109,13 @@ function SubNav({ subView, setSubView }) {
 }
 
 function TaskPicker({ tasks, value, onChange, label = 'Task' }) {
+  const id = useId()
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>{label}</Label>
+        <Label htmlFor={id} style={{ fontWeight: 400 }}>{label}</Label>
       </div>
-      <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
+      <select id={id} value={value ?? ''} onChange={e => onChange(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
         <option value="" disabled>Select a task…</option>
         {tasks.map(t => (
           <option key={t.id} value={t.id}>

@@ -20,6 +20,8 @@ const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-producti
 // styled directly from tokens.js values instead. Matches the original selectStyle
 // shape exactly (padding, borderRadius, border, background, color, fontSize,
 // outline), just with hardcoded hex replaced by token references.
+// P2-M6.3 — `outline:'none'` removed so keyboard focus is visible again (the
+// inline outline beat index.css's global `:focus-visible` ring from M6.1).
 const selectStyle = {
   padding: '6px 10px',
   borderRadius: radii.lg,
@@ -28,7 +30,6 @@ const selectStyle = {
   color: colors.text,
   fontSize: 12,
   fontFamily: dataFontFamily,
-  outline: 'none',
 }
 
 function SubNav({ subView, setSubView }) {
@@ -165,7 +166,8 @@ export function RunView({ suites, selectedSuiteId, onRunTriggered }) {
             value={subjectVersion}
             onChange={e => setSubjectVersion(e.target.value)}
             placeholder="git SHA or prompt version"
-            style={{ padding: '6px 10px', fontSize: 12, outline: 'none', width: 220 }}
+            aria-label="Subject version"
+            style={{ padding: '6px 10px', fontSize: 12, width: 220 }}
           />
         </div>
         <div>
@@ -179,7 +181,7 @@ export function RunView({ suites, selectedSuiteId, onRunTriggered }) {
             // the bare <select> silently did on the previous `.catch(setRuns([]))`).
             <ErrorBanner style={{ width: 260 }}>{runsError}</ErrorBanner>
           ) : (
-            <select value={baselineRunId} onChange={e => setBaselineRunId(e.target.value)} style={{ ...selectStyle, width: 260 }}>
+            <select value={baselineRunId} onChange={e => setBaselineRunId(e.target.value)} aria-label="Baseline run" style={{ ...selectStyle, width: 260 }}>
               <option value="">
                 {runs.length === 0 ? 'None — no prior runs for this suite' : 'None (first run for this suite)'}
               </option>
@@ -252,7 +254,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
         <div style={{ marginBottom: 8 }}>
           <Label style={{ fontWeight: 400 }}>Run</Label>
         </div>
-        <select value={selectedRunId ?? ''} onChange={e => onSelectRun(e.target.value)} style={{ ...selectStyle, width: '100%' }}>
+        <select value={selectedRunId ?? ''} onChange={e => onSelectRun(e.target.value)} aria-label="Run" style={{ ...selectStyle, width: '100%' }}>
           <option value="" disabled>Select a run…</option>
           {runs.map(r => (
             <option key={r.id} value={r.id}>
@@ -415,19 +417,19 @@ export function PostHocView() {
             <div style={{ marginBottom: 8 }}>
               <Label style={{ fontWeight: 400 }}>From</Label>
             </div>
-            <input type="datetime-local" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={selectStyle} />
+            <input type="datetime-local" value={dateFrom} onChange={e => setDateFrom(e.target.value)} aria-label="From date" style={selectStyle} />
           </div>
           <div>
             <div style={{ marginBottom: 8 }}>
               <Label style={{ fontWeight: 400 }}>To</Label>
             </div>
-            <input type="datetime-local" value={dateTo} onChange={e => setDateTo(e.target.value)} style={selectStyle} />
+            <input type="datetime-local" value={dateTo} onChange={e => setDateTo(e.target.value)} aria-label="To date" style={selectStyle} />
           </div>
           <div>
             <div style={{ marginBottom: 8 }}>
               <Label style={{ fontWeight: 400 }}>Agent type</Label>
             </div>
-            <select value={agentType} onChange={e => setAgentType(e.target.value)} style={selectStyle}>
+            <select value={agentType} onChange={e => setAgentType(e.target.value)} aria-label="Agent type" style={selectStyle}>
               <option value="">Any</option>
               {agentTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -438,6 +440,7 @@ export function PostHocView() {
             </div>
             <input
               type="number" value={maxTraces} onChange={e => setMaxTraces(e.target.value)}
+              aria-label="Max traces"
               style={{ ...selectStyle, width: 90 }}
             />
           </div>
@@ -450,8 +453,9 @@ export function PostHocView() {
             value={rubric}
             onChange={e => setRubric(e.target.value)}
             placeholder="e.g. Was the tool call appropriate given the user's request?"
+            aria-label="Rubric"
             rows={3}
-            style={{ padding: '6px 10px', fontSize: 12, outline: 'none', width: '100%' }}
+            style={{ padding: '6px 10px', fontSize: 12, width: '100%' }}
           />
         </div>
         <div style={{ marginTop: spacing.sm }}>

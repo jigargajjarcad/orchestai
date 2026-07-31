@@ -25,6 +25,13 @@ import { formatDuration as formatNodeDuration } from './observability/format'
 // here for the Graph view canvas/detail-panel responsive pass (Task 6/§6).
 const NARROW_VIEWPORT_BREAKPOINT = 768
 
+// Visually-hidden (screen-reader-only) style — keeps content in the a11y tree
+// while removing it from the visual layout. Mirrors App.jsx's `srOnly`.
+const srOnly = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+}
+
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 
@@ -540,7 +547,7 @@ function SummaryView({ tasks }) {
 
 // ── Cost Dashboard ──
 
-function BarChart({ entries, keyFn, valueFn, colorFn }) {
+function BarChart({ entries, keyFn, valueFn, colorFn, label = 'Bar chart' }) {
   const grouped = useMemo(() => {
     const map = new Map()
     for (const e of entries) {
@@ -554,20 +561,40 @@ function BarChart({ entries, keyFn, valueFn, colorFn }) {
 
   if (grouped.length === 0) return <StateText tone="muted" style={{ fontSize: 12 }}>No data in this range.</StateText>
 
+  // The bars carry no text a11y meaning — `title` isn't reliably announced. Give
+  // screen readers a role=img summary of the visual, plus an off-screen data
+  // table for the exact per-bar values (a sibling, not a child: children of a
+  // role=img node are presentational and would be dropped from the a11y tree).
+  const peak = grouped.reduce((m, [k, v]) => (v > m.v ? { k, v } : m), { k: grouped[0][0], v: -Infinity })
+  const summary = `${label}: ${grouped.length} bars from ${grouped[0][0]} to ${grouped[grouped.length - 1][0]}. Peak ${fmtCost(peak.v)} on ${peak.k}.`
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '8px 0' }}>
-      {grouped.map(([key, value]) => (
-        <div key={key} title={`${key}: ${fmtCost(value)}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{
-            width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
-            background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
-          }} />
-          <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
-            {key.slice(5)}
+    <>
+      <div role="img" aria-label={summary} style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '8px 0' }}>
+        {grouped.map(([key, value]) => (
+          <div key={key} title={`${key}: ${fmtCost(value)}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{
+              width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
+              background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
+            }} />
+            <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
+              {key.slice(5)}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <table style={srOnly}>
+        <caption>{label} — full data</caption>
+        <thead>
+          <tr><th scope="col">Date</th><th scope="col">Cost</th></tr>
+        </thead>
+        <tbody>
+          {grouped.map(([key, value]) => (
+            <tr key={key}><td>{key}</td><td>{fmtCost(value)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   )
 }
 
@@ -607,7 +634,7 @@ function DashboardView() {
             <div style={{ marginBottom: 8 }}>
               <Label style={{ fontWeight: 400 }}>Cost Over Time</Label>
             </div>
-            <BarChart entries={data.breakdown} keyFn={b => b.date} valueFn={b => b.costUsd} />
+            <BarChart entries={data.breakdown} keyFn={b => b.date} valueFn={b => b.costUsd} label="Cost over time" />
           </Panel>
 
           <Panel>

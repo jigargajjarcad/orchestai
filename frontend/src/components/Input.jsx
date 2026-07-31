@@ -36,6 +36,15 @@
 // Label's default (matches Input/TextArea/Panel/Button/StateText's existing
 // override pattern).
 
+// P2-M6.1 — accessible label association. Each field generates a stable id
+// (`useId`) applied to the native element and referenced by its visible
+// `<Label htmlFor>`, so screen readers announce the field's name and clicking
+// the label focuses it. A caller-supplied `id` (via `...rest`) still wins.
+// Accessibility contract: pass a `label` (associated automatically) OR, for a
+// placeholder-only field, pass `aria-label`/`aria-labelledby` via `...rest` —
+// every field must have an accessible name.
+
+import { useId } from 'react'
 import { colors, radii, typography, interactiveState, dataFontFamily } from '../theme/tokens'
 import { Label } from './Label'
 
@@ -58,14 +67,17 @@ const disabledFieldStyle = {
 }
 
 export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
+  const autoId = useId()
+  const fieldId = rest.id ?? autoId
   return (
     <div>
       {label && (
         <div style={{ marginBottom: 4 }}>
-          <Label style={labelStyle}>{label}</Label>
+          <Label htmlFor={fieldId} style={labelStyle}>{label}</Label>
         </div>
       )}
       <input
+        id={fieldId}
         value={value}
         onChange={onChange}
         className="focus-ring"
@@ -81,14 +93,17 @@ export function Input({ label, labelStyle, value, onChange, style, ...rest }) {
 }
 
 export function TextArea({ label, labelStyle, value, onChange, style, ...rest }) {
+  const autoId = useId()
+  const fieldId = rest.id ?? autoId
   return (
     <div>
       {label && (
         <div style={{ marginBottom: 4 }}>
-          <Label style={labelStyle}>{label}</Label>
+          <Label htmlFor={fieldId} style={labelStyle}>{label}</Label>
         </div>
       )}
       <textarea
+        id={fieldId}
         value={value}
         onChange={onChange}
         className="focus-ring"

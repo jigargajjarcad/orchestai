@@ -39,9 +39,18 @@
 
 import { colors, typography } from '../theme/tokens'
 
-export function Label({ children, style }) {
+// P2-M6.1 — optional `htmlFor`: when provided, Label renders a real
+// `<label htmlFor>` so form fields get a programmatically-associated,
+// clickable caption (Input/TextArea pass their generated field id). When
+// absent (section eyebrows / column headers, which are NOT form labels), it
+// stays a `<span>` exactly as before. Both `<label>` and `<span>` are inline
+// by default, so this is a semantic change only — no `display`/box-model
+// change, avoiding the layout regression documented above.
+export function Label({ children, style, htmlFor }) {
+  const Tag = htmlFor ? 'label' : 'span'
   return (
-    <span
+    <Tag
+      htmlFor={htmlFor}
       style={{
         fontFamily: typography.label.fontFamily,
         fontSize: typography.label.fontSize,
@@ -54,6 +63,6 @@ export function Label({ children, style }) {
       }}
     >
       {children}
-    </span>
+    </Tag>
   )
 }

@@ -98,6 +98,40 @@ describe('M6.2 — Playground execution graph a11y (M6.2.5)', () => {
   })
 })
 
+async function startRun() {
+  fireEvent.change(screen.getByPlaceholderText(/Research LangGraph/i), { target: { value: 'T' } })
+  fireEvent.change(screen.getByPlaceholderText(/Describe what you need/i), { target: { value: 'P' } })
+  await act(async () => { fireEvent.click(screen.getByText('Run Agents')) })
+  await waitFor(() => expect(esInstances).toHaveLength(1))
+  return esInstances[0]
+}
+
+describe('M6.2 — streaming announcements + approval focus (M6.2.1/M6.2.2)', () => {
+  it('announces execution phase transitions in a single polite live region', async () => {
+    render(<App />)
+    const es = await startRun()
+    const status = screen.getByTestId('playground-live-status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    await act(async () => { es.emit({ event: 'task_started', payload: {}, timestamp: T(0) }) })
+    await waitFor(() => expect(status).toHaveTextContent(/Task started/i))
+    await act(async () => { es.emit({ event: 'agent_started', payload: { agentExecutionId: 'a', agentType: 'Data' }, timestamp: T(1) }) })
+    await waitFor(() => expect(status).toHaveTextContent(/Data agent started/i))
+    await act(async () => { es.emit({ event: 'task_completed', payload: { totalCostUsd: 0.02 }, timestamp: T(2) }) })
+    await waitFor(() => expect(status).toHaveTextContent(/Task completed/i))
+  })
+
+  it('moves focus to the approval card and announces it on approval_required', async () => {
+    render(<App />)
+    const es = await startRun()
+    await act(async () => {
+      es.emit({ event: 'approval_required', payload: { plan: 'Do X', selectedAgents: ['Data'], executionMode: 'parallel' }, timestamp: T(0) })
+    })
+    const card = await screen.findByRole('group', { name: 'Approval required' })
+    expect(card).toHaveFocus()
+    expect(screen.getByTestId('playground-live-status')).toHaveTextContent(/Waiting for your approval/i)
+  })
+})
+
 describe('M6.2 — agent feed labeling (M6.2.4)', () => {
   it('renders section + agent names as headings and exposes tool status as text', async () => {
     render(<App />)

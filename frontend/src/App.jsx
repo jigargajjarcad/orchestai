@@ -234,9 +234,25 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
 export function ApprovalCard({ request, onApprove, onReject, busy }) {
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [note, setNote] = useState('')
+  // P2-M6.2 — the run pauses here waiting on the user; move focus to the card on
+  // mount so keyboard/screen-reader users are taken to it (the SSE live region
+  // also announces it). tabIndex=-1 = a programmatic focus target only.
+  const cardRef = useRef(null)
+  useEffect(() => { cardRef.current?.focus() }, [])
+  // When the reject-note field is revealed, move focus into it (it replaces the
+  // focused Reject button). Done via a ref-effect rather than `autoFocus` so no
+  // jsx-a11y no-autofocus warning is introduced.
+  useEffect(() => {
+    if (showRejectInput) cardRef.current?.querySelector('textarea')?.focus()
+  }, [showRejectInput])
 
   return (
-    <div style={{
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      role="group"
+      aria-label="Approval required"
+      style={{
       border: `1px solid ${colors.statusWarning}60`,
       borderLeft: `3px solid ${colors.statusWarning}`,
       borderRadius: radii.xl,
@@ -244,6 +260,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
       marginBottom: 14,
       background: surface.surface,
       boxShadow: elevation.flat,
+      outline: 'none',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span aria-hidden="true">⏸</span>
@@ -260,6 +277,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
           <button
             onClick={onApprove}
             disabled={busy}
+            className="focus-ring"
             style={{
               flex: 1, padding: '7px 0', borderRadius: radii.lg, border: 'none',
               background: colors.statusCompleted, color: colors.crust, fontWeight: 700, fontSize: 12,
@@ -272,6 +290,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
           <button
             onClick={() => setShowRejectInput(true)}
             disabled={busy}
+            className="focus-ring"
             style={{
               flex: 1, padding: '7px 0', borderRadius: radii.lg, border: `1px solid ${colors.statusFailed}${buttonGhostBorderAlphaSuffix}`,
               background: 'transparent', color: colors.alertRed, fontWeight: 700, fontSize: 12,
@@ -288,6 +307,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="Reason for rejection (optional)"
+            aria-label="Reason for rejection (optional)"
             rows={2}
             style={{ padding: '6px 8px', fontSize: 12, marginBottom: 8 }}
           />
@@ -295,6 +315,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
             <button
               onClick={() => onReject(note)}
               disabled={busy}
+              className="focus-ring"
               style={{
                 flex: 1, padding: '7px 0', borderRadius: radii.lg, border: 'none',
                 background: colors.statusFailed, color: colors.crust, fontWeight: 700, fontSize: 12,
@@ -307,6 +328,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
             <button
               onClick={() => setShowRejectInput(false)}
               disabled={busy}
+              className="focus-ring"
               style={{
                 flex: 1, padding: '7px 0', borderRadius: radii.lg, border: `1px solid ${colors.surface0}`,
                 background: 'transparent', color: colors.subtext0, fontWeight: 700, fontSize: 12,
@@ -484,6 +506,11 @@ export default function App() {
   const [approvalRequest, setApprovalRequest] = useState(null)
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [managerReview, setManagerReview] = useState(null)
+  // P2-M6.2 — a single curated status string announced to screen readers on
+  // execution PHASE transitions (task/agent/review start+end), rendered in one
+  // visually-hidden aria-live="polite" region. Deliberately NOT per-token/
+  // per-tool (that would spam AT) — see the SSE handler below.
+  const [liveStatus, setLiveStatus] = useState('')
   // P2-M5 — live execution graph. Additive: the same SSE events the card feed
   // already consumes are ALSO folded into a derived span array for the graph;
   // the card reducer (updateAgent/addToolCall/…) is untouched. Default 'graph'
@@ -571,6 +598,7 @@ export default function App() {
     setManagerReview(null)
     setSavedMemories({})
     setHandoffTaskId(null)
+    setLiveStatus('')
     resetGraph()
     eventSourceRef.current?.close()
 
@@ -618,10 +646,12 @@ export default function App() {
           switch (data.event) {
             case 'task_started':
               setTaskStatus('Running')
+              setLiveStatus('Task started. Agents are running.')
               break
             case 'approval_required':
               setTaskStatus('WaitingForApproval')
               setApprovalRequest(p)
+              setLiveStatus('Waiting for your approval to run the agents.')
               break
             case 'task_approved':
               setApprovalRequest(null)
@@ -632,9 +662,11 @@ export default function App() {
               break
             case 'manager_review_started':
               setManagerReview({ status: 'running' })
+              setLiveStatus('Manager review started.')
               break
             case 'manager_review_completed':
               setManagerReview({ status: 'completed', result: p.result })
+              setLiveStatus('Manager review completed.')
               break
             case 'agent_started':
               setAgentOrder(prev => prev.includes(p.agentExecutionId) ? prev : [...prev, p.agentExecutionId])
@@ -647,6 +679,7 @@ export default function App() {
                 outputTokens: 0,
                 costUsd: 0,
               })
+              setLiveStatus(`${p.agentType} agent started.`)
               break
             case 'message_written':
               appendAgentMessage(p.agentExecutionId, p.agentType, p.contentPreview)
@@ -664,14 +697,17 @@ export default function App() {
                 outputTokens: p.outputTokens,
                 costUsd: p.costUsd,
               })
+              setLiveStatus(`${p.agentType} agent completed.`)
               break
             case 'agent_failed':
               updateAgent(p.agentExecutionId, { status: 'Failed' })
+              setLiveStatus(`${p.agentType} agent failed.`)
               break
             case 'task_completed':
               setTaskStatus('Completed')
               setTotalCost(p.totalCostUsd)
               setHandoffTaskId(id)
+              setLiveStatus(`Task completed.${p.totalCostUsd != null ? ` Total cost $${Number(p.totalCostUsd).toFixed(4)}.` : ''}`)
               es.close()
               fetchFinalResult(id)
               refreshSavedMemories()
@@ -680,6 +716,7 @@ export default function App() {
               setTaskStatus('Failed')
               setApprovalRequest(null)
               setError(p.errorMessage ?? 'Task failed')
+              setLiveStatus('Task failed.')
               es.close()
               refreshSavedMemories()
               break
@@ -823,6 +860,9 @@ export default function App() {
           // track wider than its share and being clipped by main's overflowX.
           padding: 20, overflowY: 'auto', minWidth: 0,
         }}>
+          {/* P2-M6.2 — single polite live region for streaming-status
+              announcements (always mounted so updates are reliably announced). */}
+          <div data-testid="playground-live-status" role="status" aria-live="polite" style={srOnly}>{liveStatus}</div>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
             <div style={{ marginBottom: 10 }}>
               <Input

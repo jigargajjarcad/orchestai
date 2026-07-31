@@ -32,6 +32,19 @@ const srOnly = {
   overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 }
 
+// `srOnly` is position:absolute, so without a POSITIONED ancestor its containing
+// block is the viewport itself — which means it is clipped by nothing, ignores
+// the `overflow-x:auto` table wrappers AND `main`'s `overflow-x:hidden`, and
+// still contributes to the document's scrollable area. Measured: the off-screen
+// "Live status" header span landed at x=461 in a 375px viewport and made the
+// whole PAGE scroll 86px sideways — invisible content causing a visible bug.
+// Anything hosting an `srOnly` node therefore has to establish a containing
+// block, either by spreading this onto an existing box or by wrapping.
+const srOnlyAnchor = { position: 'relative' }
+// Standalone wrapper for an `srOnly` block (e.g. a whole off-screen <table>)
+// that has no natural host element: takes no layout space and clips its child.
+const srOnlyHost = { position: 'relative', width: 1, height: 1, overflow: 'hidden' }
+
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 
@@ -576,30 +589,41 @@ function BarChart({ entries, keyFn, valueFn, colorFn, label = 'Bar chart' }) {
 
   return (
     <>
-      <div role="img" aria-label={summary} style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '8px 0' }}>
-        {grouped.map(([key, value]) => (
-          <div key={key} title={`${key}: ${fmtCost(value)}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{
-              width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
-              background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
-            }} />
-            <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
-              {key.slice(5)}
-            </div>
-          </div>
-        ))}
-      </div>
-      <table style={srOnly}>
-        <caption>{label} — full data</caption>
-        <thead>
-          <tr><th scope="col">Date</th><th scope="col">Cost</th></tr>
-        </thead>
-        <tbody>
+      {/* P2-M6.3 — the bar row can't shrink below its min-content width (each
+          bar carries a rotated date label), so a 14-day range pushed the whole
+          PAGE 86px wider than a 375px viewport — verified in Chrome at 375px.
+          Scrolling the chart in place is the same containment the data tables
+          on this page already use, and keeps every bar legible instead of
+          crushing them. `flex: 1 0 auto` + `minWidth` keeps bars from collapsing
+          to slivers while still letting them expand to fill a wide viewport. */}
+      <div style={{ overflowX: 'auto' }}>
+        <div role="img" aria-label={summary} style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '8px 0', minWidth: 'min-content' }}>
           {grouped.map(([key, value]) => (
-            <tr key={key}><td>{key}</td><td>{fmtCost(value)}</td></tr>
+            <div key={key} title={`${key}: ${fmtCost(value)}`} style={{ flex: '1 0 auto', minWidth: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
+                background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
+              }} />
+              <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
+                {key.slice(5)}
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      <div style={srOnlyHost}>
+        <table style={srOnly}>
+          <caption>{label} — full data</caption>
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col">Cost</th></tr>
+          </thead>
+          <tbody>
+            {grouped.map(([key, value]) => (
+              <tr key={key}><td>{key}</td><td>{fmtCost(value)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }
@@ -648,7 +672,7 @@ function DashboardView() {
               <Label style={{ fontWeight: 400 }}>Breakdown by Agent / Model</Label>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
                 <caption style={srOnly}>Cost and token breakdown by date, agent, and model</caption>
                 <thead>
                   <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
@@ -658,7 +682,7 @@ function DashboardView() {
                     <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Tokens</th>
                     <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Cost</th>
                     <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Executions</th>
-                    <th scope="col" style={{ padding: '6px 8px' }}><span style={srOnly}>Live status</span></th>
+                    <th scope="col" style={{ padding: '6px 8px', ...srOnlyAnchor }}><span style={srOnly}>Live status</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -697,7 +721,7 @@ function ErrorRateTable({ title, rows, nameKey }) {
         <StateText tone="muted" style={{ fontSize: 12 }}>No data in this range.</StateText>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
             <caption style={srOnly}>Failure rates by {nameKey === 'agentType' ? 'agent' : 'tool'}</caption>
             <thead>
               <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>

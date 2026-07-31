@@ -21,6 +21,15 @@ const srOnly = {
   overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 }
 
+// Spread onto whatever hosts an `srOnly` node. Because `srOnly` is
+// position:absolute, an unpositioned host leaves its containing block as the
+// viewport — the off-screen node then escapes every `overflow` clip on the way
+// up and adds its width to the document's scrollable area. That is exactly how
+// an invisible <span> made the Observability page scroll 86px sideways at 375px
+// (see ObservabilityPage's srOnlyAnchor note). Applied to the caption-bearing
+// tables here so the same bug can't appear as these tables grow.
+const srOnlyAnchor = { position: 'relative' }
+
 // <select>/native date & number inputs aren't a good fit for the Input component
 // (whose fieldStyle padding/fontSize differ from this file's original look) —
 // styled directly from tokens.js values instead. Matches the original selectStyle
@@ -303,7 +312,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             <span style={{ fontFamily: dataFontFamily }}>{passCount} / {results.results.length}</span> passed
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+            <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Pass/fail summary by case and scorer</caption>
               <thead>
                 <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
@@ -343,7 +352,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             </span>
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Per-case score regression against baseline</caption>
               <thead>
                 <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
@@ -539,7 +548,7 @@ export function PostHocView() {
                 <span style={{ fontFamily: dataFontFamily }}>{summary.passedCount}/{summary.scoredCount}</span>)
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+                <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
                   <caption style={srOnly}>Score distribution by range</caption>
                   <thead>
                     <tr style={{ color: colors.overlay0, textAlign: 'left' }}>

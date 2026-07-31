@@ -736,13 +736,13 @@ function ErrorRatesView() {
 function ComparisonSide({ side }) {
   if (!side) {
     return (
-      <Panel style={{ flex: 1 }}>
+      <Panel style={{ flex: '1 1 320px' }}>
         <EmptyState title="Select a task" style={{ padding: `${spacing.xl} ${spacing.lg}` }} />
       </Panel>
     )
   }
   return (
-    <Panel style={{ flex: 1 }}>
+    <Panel style={{ flex: '1 1 320px' }}>
       <div style={{ fontSize: 13, color: colors.text, fontWeight: 700, marginBottom: 4 }}>{side.userPrompt}</div>
       <StatusBadge status={side.status} borderAlphaSuffix="60" style={{ padding: '1px 8px', fontSize: 10, letterSpacing: 'normal' }} />
 
@@ -795,15 +795,17 @@ function CompareView({ tasks }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-        <div style={{ flex: 1 }}><TaskPicker tasks={tasks} value={firstId} onChange={setFirstId} label="First Task" /></div>
-        <div style={{ flex: 1 }}><TaskPicker tasks={tasks} value={secondId} onChange={setSecondId} label="Second Task" /></div>
+      {/* P2-M6.3 — flexWrap + flex-basis lets the two pickers stack on narrow
+          viewports instead of crushing side by side (O5 responsive). */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <div style={{ flex: '1 1 200px' }}><TaskPicker tasks={tasks} value={firstId} onChange={setFirstId} label="First Task" /></div>
+        <div style={{ flex: '1 1 200px' }}><TaskPicker tasks={tasks} value={secondId} onChange={setSecondId} label="Second Task" /></div>
       </div>
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {(!firstId || !secondId) && <EmptyState title="Select two tasks to compare" />}
       {firstId && secondId && !data && !error && <Spinner label="Loading comparison…" />}
       {data && (
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           <ComparisonSide side={data.first} />
           <ComparisonSide side={data.second} />
         </div>

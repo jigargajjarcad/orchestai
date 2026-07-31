@@ -912,16 +912,36 @@ export default function App() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      h1: ({ children }) => <h1 style={{ color: colors.traceBlue, fontSize: 20, marginTop: 0 }}>{children}</h1>,
-                      h2: ({ children }) => <h2 style={{ color: colors.traceBlue, fontSize: 17 }}>{children}</h2>,
-                      h3: ({ children }) => <h3 style={{ color: colors.agentSky, fontSize: 15 }}>{children}</h3>,
-                      code: ({ inline, children }) => inline
-                        ? <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 12 }}>{children}</code>
-                        : <pre style={{ background: colors.mantle, borderRadius: 6, padding: '12px 16px', overflow: 'auto' }}><code style={{ fontSize: 12 }}>{children}</code></pre>,
+                      // P2-M6.2 — offset model-output headings down one level so
+                      // they never emit an <h1> that competes with the per-view
+                      // page <h1> (one-h1-per-view invariant). Visual sizes kept.
+                      h1: ({ children }) => <h2 style={{ color: colors.traceBlue, fontSize: 20, marginTop: 0 }}>{children}</h2>,
+                      h2: ({ children }) => <h3 style={{ color: colors.traceBlue, fontSize: 17 }}>{children}</h3>,
+                      h3: ({ children }) => <h4 style={{ color: colors.agentSky, fontSize: 15 }}>{children}</h4>,
+                      // P2-M6.2 — react-markdown v10 no longer passes an `inline`
+                      // flag to `code`; detect a fenced block via its language
+                      // class / multiline content instead (the proven pattern from
+                      // reviewMarkdownComponents). Inline backticks stay inline
+                      // <code>; the block wrapper is the separate `pre` handler,
+                      // so no <pre> is ever emitted inside a <p>.
+                      pre: ({ children }) => <pre style={{ background: colors.mantle, borderRadius: 6, padding: '12px 16px', overflow: 'auto' }}>{children}</pre>,
+                      code: ({ className, children }) => {
+                        const isBlock = /language-/.test(className || '') || String(children).includes('\n')
+                        return isBlock
+                          ? <code style={{ fontSize: 12, fontFamily: dataFontFamily }}>{children}</code>
+                          : <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 12, fontFamily: dataFontFamily }}>{children}</code>
+                      },
                       a: ({ href, children }) => <a href={href} style={{ color: colors.traceBlue }} target="_blank" rel="noreferrer">{children}</a>,
                       p: ({ children }) => <p style={{ margin: '0 0 12px' }}>{children}</p>,
                       ul: ({ children }) => <ul style={{ paddingLeft: 20, margin: '0 0 12px' }}>{children}</ul>,
                       li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
+                      // P2-M6.2 — wide GFM tables scroll inside their own box so
+                      // the page never overflows horizontally on narrow viewports.
+                      table: ({ children }) => (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', width: '100%' }}>{children}</table>
+                        </div>
+                      ),
                     }}
                   >
                     {finalResult}

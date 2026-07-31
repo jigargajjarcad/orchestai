@@ -89,3 +89,11 @@ describe('M6.2 — Playground final-result markdown (P4/P5)', () => {
     expect(within(resultRegion).queryByRole('heading', { level: 1 })).toBeNull()
   })
 })
+
+describe('M6.2 — Playground execution graph a11y (M6.2.5)', () => {
+  it('labels the live graph region (default graph view after a run)', async () => {
+    render(<App />)
+    await runToCompletion()
+    expect(screen.getByRole('group', { name: /Live execution graph/i })).toBeInTheDocument()
+  })
+})

@@ -99,8 +99,15 @@ export function PlaygroundExecutionGraph({ spans }) {
   }
 
   return (
-    <div data-testid="playground-execution-graph">
+    <div
+      data-testid="playground-execution-graph"
+      role="group"
+      aria-label="Live execution graph: the orchestrator, its agents, their tool calls, and the manager review"
+    >
+      {/* Decorative time-axis ruler — the same durations are conveyed by each
+          node's own label, so hide the tick row from assistive tech. */}
       <div
+        aria-hidden="true"
         style={{
           display: 'flex', justifyContent: 'space-between', padding: '0 14px 6px',
           fontFamily: 'monospace', fontSize: 10, color: colors.overlay0,
@@ -110,7 +117,10 @@ export function PlaygroundExecutionGraph({ spans }) {
       </div>
       <div
         style={{
-          width: '100%', height: 460, borderRadius: radii.lg, overflow: 'hidden',
+          // P2-M6.2 — responsive height: caps at the desktop 460px (unchanged
+          // when the viewport is tall), but shrinks toward 300px on short/phone
+          // screens so the graph doesn't eat the whole viewport. fitView adapts.
+          width: '100%', height: 'clamp(300px, 60svh, 460px)', borderRadius: radii.lg, overflow: 'hidden',
           background: timelineSurface.canvas, border: `1px solid ${timelineSurface.panelBorder}`,
           '--observability-focus-ring': focusRing,
         }}

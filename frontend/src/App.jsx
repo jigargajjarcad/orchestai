@@ -806,7 +806,10 @@ export default function App() {
         <div style={{
           borderRight: playgroundStacked ? 'none' : `1px solid ${colors.base}`,
           borderBottom: playgroundStacked ? `1px solid ${colors.base}` : 'none',
-          padding: 20, overflowY: 'auto',
+          // P2-M6.2 — minWidth:0 lets the grid track shrink so intrinsic-width
+          // content (wide code/tables) scrolls in-box instead of forcing the
+          // track wider than its share and being clipped by main's overflowX.
+          padding: 20, overflowY: 'auto', minWidth: 0,
         }}>
           <form onSubmit={handleSubmit} style={{ marginBottom: 24 }}>
             <div style={{ marginBottom: 10 }}>
@@ -883,7 +886,7 @@ export default function App() {
         {/* Right: live execution graph (default) / Final Result (List fallback).
             Both read the same underlying state, so toggling never loses state
             and works identically while running and after completion. */}
-        <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginBottom: 16 }}>
             {/* Observability handoff — only after the run completes (§13). */}
             <div>

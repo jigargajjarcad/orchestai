@@ -38,6 +38,14 @@ import './App.css'
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 const DEV_USER_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
 
+// P2-M6.2 — visually-hidden-but-screen-reader-available text. Used to convey
+// status that is otherwise carried only by a decorative glyph/color (tool-call
+// state) and for the live streaming-status announcement region.
+const srOnly = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+}
+
 // ---------------------------------------------------------------------------
 // P2-M1B Task 2 — Sidebar nav content: inline monochrome stroke icons
 // (`currentColor`, ~18px), matching the approved shell-demo icon style
@@ -127,6 +135,9 @@ function ToolCallRow({ toolCall }) {
   const isRunning = toolCall.durationMs == null
   const color = isRunning ? colors.statusWarning : (toolCall.success ? colors.statusCompleted : colors.statusFailed)
   const label = isRunning ? '⏳' : (toolCall.success ? '✓' : '✗')
+  // P2-M6.2 — status is otherwise carried only by the glyph + color (color-alone
+  // to a screen reader); expose it as text and hide the decorative glyph.
+  const statusWord = isRunning ? 'running' : (toolCall.success ? 'completed' : 'failed')
   const duration = toolCall.durationMs != null ? ` · ${toolCall.durationMs}ms` : ''
 
   return (
@@ -143,8 +154,9 @@ function ToolCallRow({ toolCall }) {
       fontSize: 12,
       fontFamily: dataFontFamily,
     }}>
-      <span style={{ color, flexShrink: 0, minWidth: 14 }}>{label}</span>
+      <span aria-hidden="true" style={{ color, flexShrink: 0, minWidth: 14 }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={srOnly}>Tool {toolCall.name} {statusWord}. </span>
         <span style={{ color: colors.traceBlue, fontWeight: 600 }}>{toolCall.name}</span>
         <span style={{ color: colors.surface2 }}>{duration}</span>
         {toolCall.output && (
@@ -166,10 +178,10 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
       <Panel accentStatus={execution.status} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <strong style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily }}>{execution.agentType}</strong>
+            <h3 style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily, fontWeight: 700, margin: 0 }}>{execution.agentType}</h3>
             {memoryCount > 0 && (
               <span title={`${memoryCount} saved ${memoryCount === 1 ? 'memory' : 'memories'} for this agent`} style={{ fontSize: 11, color: colors.subtext0 }}>
-                🧠 {memoryCount}
+                <span aria-hidden="true">🧠</span> {memoryCount}
               </span>
             )}
           </div>
@@ -234,7 +246,7 @@ export function ApprovalCard({ request, onApprove, onReject, busy }) {
       boxShadow: elevation.flat,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span>⏸</span>
+        <span aria-hidden="true">⏸</span>
         <strong style={{ color: colors.statusWarning, fontSize: 13, fontFamily: uiFontFamily }}>Waiting for Your Approval</strong>
       </div>
       <div style={{ fontSize: 12, color: colors.text, marginBottom: 8, lineHeight: 1.5, fontFamily: dataFontFamily }}>{request.plan}</div>
@@ -353,7 +365,7 @@ export function ManagerReviewCard({ review }) {
     <div style={{ marginBottom: 10 }}>
       <Panel accentStatus={accentStatus} style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily }}>🎯 Manager Review</strong>
+          <h3 style={{ color: colors.text, fontSize: 14, fontFamily: uiFontFamily, fontWeight: 700, margin: 0 }}><span aria-hidden="true">🎯</span> Manager Review</h3>
           <StatusBadge status={accentStatus} label={isRunning ? 'Running' : 'Completed'} borderAlphaSuffix="60" style={{ padding: '1px 8px', letterSpacing: '0.05em' }} />
         </div>
         <div style={{ fontSize: 12, color: colors.subtext0, marginTop: 8, fontFamily: uiFontFamily }}>
@@ -869,7 +881,7 @@ export default function App() {
 
           {(agentOrder.length > 0 || managerReview) && (
             <div>
-              <div style={{ marginBottom: 10 }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Executions</Label></div>
+              <h2 style={{ margin: '0 0 10px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Executions</Label></h2>
               {agentOrder.map(id => agents[id] && (
                 <AgentCard
                   key={id}
@@ -909,7 +921,7 @@ export default function App() {
             <PlaygroundExecutionGraph spans={liveSpans} />
           ) : finalResult ? (
             <div>
-              <div style={{ marginBottom: 16 }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Final Result</Label></div>
+              <h2 style={{ margin: '0 0 16px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Final Result</Label></h2>
               <Panel style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
                   <ReactMarkdown

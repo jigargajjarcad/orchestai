@@ -97,3 +97,24 @@ describe('M6.2 — Playground execution graph a11y (M6.2.5)', () => {
     expect(screen.getByRole('group', { name: /Live execution graph/i })).toBeInTheDocument()
   })
 })
+
+describe('M6.2 — agent feed labeling (M6.2.4)', () => {
+  it('renders section + agent names as headings and exposes tool status as text', async () => {
+    render(<App />)
+    fireEvent.change(screen.getByPlaceholderText(/Research LangGraph/i), { target: { value: 'T' } })
+    fireEvent.change(screen.getByPlaceholderText(/Describe what you need/i), { target: { value: 'P' } })
+    await act(async () => { fireEvent.click(screen.getByText('Run Agents')) })
+    await waitFor(() => expect(esInstances).toHaveLength(1))
+    const es = esInstances[0]
+    await act(async () => {
+      es.emit({ event: 'task_started', payload: {}, timestamp: T(0) })
+      es.emit({ event: 'agent_started', payload: { agentExecutionId: 'a', agentType: 'Data' }, timestamp: T(1) })
+      es.emit({ event: 'tool_started', payload: { agentExecutionId: 'a', agentType: 'Data', toolName: 'db_query' }, timestamp: T(2) })
+      es.emit({ event: 'tool_completed', payload: { agentExecutionId: 'a', agentType: 'Data', toolName: 'db_query', success: true, durationMs: 18 }, timestamp: T(3) })
+    })
+    expect(await screen.findByRole('heading', { name: 'Agent Executions' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Data' })).toBeInTheDocument()
+    // Tool status is conveyed as text (not glyph/color alone).
+    expect(screen.getByText(/Tool db_query completed/i)).toBeInTheDocument()
+  })
+})

@@ -15,6 +15,12 @@ import { ErrorBanner } from './components/ErrorBanner'
 
 const API_BASE = `${(import.meta.env.VITE_API_URL ?? 'https://orchestai-production.up.railway.app').replace(/\/$/, '')}/api/v1`
 
+// Visually-hidden (screen-reader-only) style. Mirrors App.jsx / ObservabilityPage.
+const srOnly = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+}
+
 // <select>/native date & number inputs aren't a good fit for the Input component
 // (whose fieldStyle padding/fontSize differ from this file's original look) —
 // styled directly from tokens.js values instead. Matches the original selectStyle
@@ -283,12 +289,13 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <caption style={srOnly}>Pass/fail summary by case and scorer</caption>
               <thead>
                 <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Scorer</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Passed</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Scorer</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Passed</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,13 +329,14 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+              <caption style={srOnly}>Per-case score regression against baseline</caption>
               <thead>
                 <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Current</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Baseline</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Delta</th>
-                  <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Status</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Current</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Baseline</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Delta</th>
+                  <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -517,10 +525,11 @@ export function PostHocView() {
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+                  <caption style={srOnly}>Score distribution by range</caption>
                   <thead>
                     <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
-                      <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score range</th>
-                      <th style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Count</th>
+                      <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score range</th>
+                      <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Count</th>
                     </tr>
                   </thead>
                   <tbody>

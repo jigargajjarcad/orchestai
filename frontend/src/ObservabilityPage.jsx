@@ -643,15 +643,16 @@ function DashboardView() {
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+                <caption style={srOnly}>Cost and token breakdown by date, agent, and model</caption>
                 <thead>
                   <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-                    <th style={{ padding: '6px 8px' }}>Date</th>
-                    <th style={{ padding: '6px 8px' }}>Agent</th>
-                    <th style={{ padding: '6px 8px' }}>Model</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Tokens</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Cost</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Executions</th>
-                    <th style={{ padding: '6px 8px' }}></th>
+                    <th scope="col" style={{ padding: '6px 8px' }}>Date</th>
+                    <th scope="col" style={{ padding: '6px 8px' }}>Agent</th>
+                    <th scope="col" style={{ padding: '6px 8px' }}>Model</th>
+                    <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Tokens</th>
+                    <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Cost</th>
+                    <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Executions</th>
+                    <th scope="col" style={{ padding: '6px 8px' }}><span style={srOnly}>Live status</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -691,14 +692,15 @@ function ErrorRateTable({ title, rows, nameKey }) {
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+            <caption style={srOnly}>Failure rates by {nameKey === 'agentType' ? 'agent' : 'tool'}</caption>
             <thead>
               <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-                <th style={{ padding: '6px 8px' }}>{nameKey === 'agentType' ? 'Agent' : 'Tool'}</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failed</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Failure Rate</th>
-                {nameKey === 'agentType' && <th style={{ padding: '6px 8px', textAlign: 'right' }}>Retries</th>}
-                <th style={{ padding: '6px 8px' }}>Failure Categories</th>
+                <th scope="col" style={{ padding: '6px 8px' }}>{nameKey === 'agentType' ? 'Agent' : 'Tool'}</th>
+                <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
+                <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Failed</th>
+                <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Failure Rate</th>
+                {nameKey === 'agentType' && <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Retries</th>}
+                <th scope="col" style={{ padding: '6px 8px' }}>Failure Categories</th>
               </tr>
             </thead>
             <tbody>

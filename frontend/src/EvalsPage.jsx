@@ -67,12 +67,14 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
       <div style={{ marginBottom: 8 }}>
         <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
       </div>
-      {/* P2-M6.3 — announce async load state to screen readers (the visual
-          Spinner alone isn't reliably read). Mirrors App.jsx's live-status region. */}
+      {/* P2-M6.3 — announce the RESOLVED load state to screen readers. Scoped
+          deliberately to the success case: the loading state is already a live
+          region (Spinner renders role=status "Loading suites…") and the failure
+          state is already announced by ErrorBanner's role=alert, so repeating
+          either here would make AT read the same transition twice. The settled
+          count is the one thing nothing else announces. */}
       <div role="status" aria-live="polite" style={srOnly}>
-        {error ? 'Failed to load eval suites.'
-          : suites == null ? 'Loading eval suites.'
-          : `${suites.length} eval suite${suites.length === 1 ? '' : 's'} loaded.`}
+        {error || suites == null ? '' : `${suites.length} eval suite${suites.length === 1 ? '' : 's'} loaded.`}
       </div>
       {error ? (
         // A failed request must be distinguishable from "no suites yet" — the

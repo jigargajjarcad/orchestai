@@ -6,7 +6,7 @@ import { Panel } from './components/Panel'
 import { Label } from './components/Label'
 import { Input, TextArea } from './components/Input'
 import { Button } from './components/Button'
-import { Nav, NavItem } from './components/NavItem'
+import { NavItem } from './components/NavItem'
 import { StateText } from './components/StateText'
 import { Spinner } from './components/Spinner'
 import { Toggle } from './components/Toggle'
@@ -36,7 +36,10 @@ function SubNav({ subView, setSubView }) {
   const tabs = [['suites', 'Suites'], ['run', 'Run'], ['results', 'Results'], ['posthoc', 'Post-Hoc']]
   return (
     <div style={{ marginBottom: 20, borderBottom: `1px solid ${colors.base}`, paddingBottom: 12 }}>
-      <Nav>
+      {/* P2-M6.3 — role=group + aria-label names the view switcher for AT;
+          flexWrap lets the tab bar wrap instead of overflowing on phones.
+          Items stay real <button>s (aria-current) — no NavItem role change (A2). */}
+      <div role="group" aria-label="Evaluation views" style={{ display: 'flex', flexWrap: 'wrap', gap: spacing.xs }}>
         {tabs.map(([key, label]) => (
           <NavItem
             key={key}
@@ -47,7 +50,7 @@ function SubNav({ subView, setSubView }) {
             {label}
           </NavItem>
         ))}
-      </Nav>
+      </div>
     </div>
   )
 }

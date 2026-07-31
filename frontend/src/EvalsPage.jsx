@@ -67,6 +67,13 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
       <div style={{ marginBottom: 8 }}>
         <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
       </div>
+      {/* P2-M6.3 — announce async load state to screen readers (the visual
+          Spinner alone isn't reliably read). Mirrors App.jsx's live-status region. */}
+      <div role="status" aria-live="polite" style={srOnly}>
+        {error ? 'Failed to load eval suites.'
+          : suites == null ? 'Loading eval suites.'
+          : `${suites.length} eval suite${suites.length === 1 ? '' : 's'} loaded.`}
+      </div>
       {error ? (
         // A failed request must be distinguishable from "no suites yet" — the
         // top-level fetch previously collapsed both into the empty state.
@@ -86,22 +93,28 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
               }
             />
           )}
+          {/* Rows are real <button>s (was a click-only <div>): keyboard-operable,
+              focusable, and aria-current marks the selected suite among siblings. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {suites.map(s => (
-              <div
+              <button
                 key={s.id}
+                type="button"
+                className="focus-ring"
                 onClick={() => onSelect(s.id)}
+                aria-current={selectedSuiteId === s.id ? 'true' : undefined}
                 style={{
+                  display: 'block', width: '100%', textAlign: 'left', font: 'inherit',
                   padding: '10px 12px', borderRadius: radii.lg, cursor: 'pointer',
                   background: selectedSuiteId === s.id ? colors.surface0 : colors.mantle,
                   border: selectedSuiteId === s.id ? `1px solid ${colors.traceBlue}` : `1px solid ${colors.surface0}`,
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</span>
+                <span style={{ display: 'block', fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
                   {s.targetAgentType} · {s.description}
-                </div>
-              </div>
+                </span>
+              </button>
             ))}
           </div>
         </>

@@ -104,7 +104,7 @@ function Brand() {
   return (
     <div>
       <div style={{ fontSize: 20, fontWeight: 700, color: colors.traceBlue }}>OrchestAI</div>
-      <p style={{ color: colors.surface2, margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
+      <p style={{ color: colors.subtext0, margin: 0, fontSize: 11 }}>Multi-agent CQRS orchestration · .NET 8</p>
     </div>
   )
 }
@@ -752,10 +752,10 @@ export default function App() {
     <>
       {taskId && view === 'playground' && (
         <>
-          <span style={{ fontSize: 11, color: colors.surface2 }}>{taskId.slice(0, 8)}…</span>
+          <span style={{ fontSize: 11, color: colors.subtext0 }}>{taskId.slice(0, 8)}…</span>
           <StatusBadge status={taskStatus} borderAlphaSuffix="50" style={{ textTransform: 'none' }} />
           {totalCost != null && (
-            <span style={{ fontSize: 11, color: colors.overlay0 }}>
+            <span style={{ fontSize: 11, color: colors.subtext0 }}>
               ${Number(totalCost).toFixed(6)} total
             </span>
           )}

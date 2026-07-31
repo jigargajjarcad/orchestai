@@ -228,6 +228,46 @@ code {
   outline-offset: 2px;
 }
 
+/* P2-M6.1 — global keyboard-focus safety net. Any focusable element that does
+   not opt into `.focus-ring` still gets a visible focus indicator on
+   keyboard/programmatic focus. Deliberately lowest specificity (bare
+   `:focus-visible`, 0,1,0): the `.focus-ring:focus-visible` rule above (0,2,0)
+   and the observability graph's `.react-flow__node:focus-visible !important`
+   (timelineFocus.css) both still win where they apply, so tuned rings are
+   unchanged. Elements with an inline `outline:none` are unaffected (inline
+   wins) and are addressed at their call sites in later milestones. */
+:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 2px;
+}
+
+/* P2-M6.1 — skip-to-content link. Visually hidden but present in the tab order
+   and available to assistive tech; the first focusable element in the shell,
+   it reveals on keyboard focus and jumps focus to `#main`. No transition, so
+   it is inherently reduced-motion-safe. */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #89b4fa;
+  color: #11111b;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:not(:focus) {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* P2-M2 Task C1 — shared loading spinner (components/Spinner.jsx). Rotation
  * lives in CSS so prefers-reduced-motion can disable it; the spinner always
  * ships with a visible text label, so with motion disabled the loading state

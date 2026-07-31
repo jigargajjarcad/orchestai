@@ -131,7 +131,7 @@ export function NavItem({ active, onClick, children, style, icon, collapsed, lab
           : showHoverFill
             ? `${colors.traceBlue}${interactiveState.hoverAlphaSuffix}`
             : 'transparent',
-        color: active ? colors.text : colors.overlay0,
+        color: active ? colors.text : colors.subtext0,
         border: 'none',
         borderRadius: radii.lg,
         padding: '5px 12px',

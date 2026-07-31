@@ -399,6 +399,11 @@ export function AppShell({ sidebar, topBar, children }) {
           overflowX: 'hidden',
         }}
       >
+        {/* P2-M6.1 — skip-to-content link: first focusable element in the shell,
+            visually hidden until keyboard focus (see .skip-link in index.css),
+            jumps focus to the `<main id="main">` region below. Position:absolute
+            (via .skip-link) keeps it out of the grid layout. */}
+        <a className="skip-link" href="#main">Skip to main content</a>
         {showGridSidebar && (
           <div
             style={{
@@ -427,11 +432,14 @@ export function AppShell({ sidebar, topBar, children }) {
           </div>
 
           <main
+            id="main"
             role="main"
+            tabIndex={-1}
             style={{
               flex: 1,
               minWidth: 0,
               overflowX: 'hidden',
+              outline: 'none',
             }}
           >
             {children}

@@ -138,19 +138,25 @@ function TaskPicker({ tasks, value, onChange, label = 'Task' }) {
 }
 
 function DateRangePicker({ from, to, setFrom, setTo }) {
+  // P2-M6.3 — the two date inputs previously had visually-adjacent captions but
+  // no programmatic association, so their accessible name was empty ("edit text"
+  // to AT). `useId` + `htmlFor` mirrors TaskPicker. flexWrap lets the pair stack
+  // rather than overflow once the viewport can't fit both side by side.
+  const fromId = useId()
+  const toId = useId()
   return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
       <div>
         <div style={{ marginBottom: 8 }}>
-          <Label style={{ fontWeight: 400 }}>From</Label>
+          <Label htmlFor={fromId} style={{ fontWeight: 400 }}>From</Label>
         </div>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={selectStyle} />
+        <input id={fromId} type="date" value={from} onChange={e => setFrom(e.target.value)} style={selectStyle} />
       </div>
       <div>
         <div style={{ marginBottom: 8 }}>
-          <Label style={{ fontWeight: 400 }}>To</Label>
+          <Label htmlFor={toId} style={{ fontWeight: 400 }}>To</Label>
         </div>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} style={selectStyle} />
+        <input id={toId} type="date" value={to} onChange={e => setTo(e.target.value)} style={selectStyle} />
       </div>
     </div>
   )

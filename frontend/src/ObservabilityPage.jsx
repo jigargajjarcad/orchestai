@@ -226,7 +226,7 @@ function SpanRow({ span, depth, traceStart, traceDurationMs }) {
             aria-expanded={expanded}
             aria-label={`${expanded ? 'Collapse' : 'Expand'} ${span.label}`}
             style={{
-              width: 14, flexShrink: 0, cursor: 'pointer', color: colors.overlay0, fontSize: 10,
+              width: 14, flexShrink: 0, cursor: 'pointer', color: colors.textMuted, fontSize: 10,
               background: 'none', border: 'none', padding: 0, font: 'inherit', lineHeight: 1,
             }}
           >
@@ -248,12 +248,12 @@ function SpanRow({ span, depth, traceStart, traceDurationMs }) {
             background: isFailed ? `${colors.statusFailed}90` : `${color}90`, borderRadius: 3, minWidth: 2,
           }} />
         </div>
-        <span style={{ fontSize: 11, color: colors.overlay0, width: 70, textAlign: 'right' }}>{fmtDuration(span.durationMs)}</span>
-        <span style={{ fontSize: 11, color: colors.overlay0, width: 90, textAlign: 'right' }}>
+        <span style={{ fontSize: 11, color: colors.textMuted, width: 70, textAlign: 'right' }}>{fmtDuration(span.durationMs)}</span>
+        <span style={{ fontSize: 11, color: colors.textMuted, width: 90, textAlign: 'right' }}>
           {span.costUsd != null ? fmtCost(span.costUsd) : ''}
         </span>
         <span style={{
-          fontSize: 10, fontWeight: 700, color: STATUS_COLORS[span.status] ?? colors.overlay0, width: 70, textAlign: 'right',
+          fontSize: 10, fontWeight: 700, color: STATUS_COLORS[span.status] ?? colors.textMuted, width: 70, textAlign: 'right',
         }}>{span.status}</span>
       </div>
       {expanded && span.children.map(child => (
@@ -410,7 +410,7 @@ function TimelineView({ tasks, initialTaskId = null }) {
       {data && (
         <Panel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: colors.surface2 }}>
+            <div style={{ fontSize: 11, color: colors.textMuted }}>
               Trace <span style={{ color: colors.traceBlue, fontFamily: 'monospace' }}>{data.traceId}</span> · {data.spans.length} spans
             </div>
             <div role="group" aria-label="Timeline view mode" style={{ display: 'flex', gap: 6 }}>
@@ -442,7 +442,7 @@ function TimelineView({ tasks, initialTaskId = null }) {
               <div
                 style={{
                   display: 'flex', justifyContent: 'space-between', padding: '0 14px 6px',
-                  fontFamily: 'monospace', fontSize: 10, color: colors.overlay0,
+                  fontFamily: 'monospace', fontSize: 10, color: colors.textMuted,
                 }}
               >
                 {timeAxisTicks.map((tick, i) => <span key={i}>{tick}</span>)}
@@ -502,7 +502,7 @@ function SummaryStat({ label, value, color, categorical }) {
   // are categorical/status info per the Two-Face Rule, not data.
   return (
     <div>
-      <div style={{ fontSize: 10, color: colors.overlay0, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4, fontFamily: uiFontFamily }}>{label}</div>
+      <div style={{ fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4, fontFamily: uiFontFamily }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: color ?? colors.text, fontFamily: categorical ? uiFontFamily : dataFontFamily }}>{value}</div>
     </div>
   )
@@ -629,7 +629,7 @@ function BarChart({ entries, keyFn, valueFn, colorFn, label = 'Bar chart' }) {
                 width: '100%', maxWidth: 28, height: `${(value / max) * 110}px`, minHeight: 2,
                 background: colorFn ? colorFn(key) : colors.traceBlue, borderRadius: '3px 3px 0 0',
               }} />
-              <div style={{ fontSize: 9, color: colors.overlay0, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
+              <div style={{ fontSize: 9, color: colors.textMuted, writingMode: 'vertical-rl', textOrientation: 'mixed', height: 40, fontFamily: dataFontFamily }}>
                 {key.slice(5)}
               </div>
             </div>
@@ -704,7 +704,7 @@ function DashboardView() {
               <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
                 <caption style={srOnly}>Cost and token breakdown by date, agent, and model</caption>
                 <thead>
-                  <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+                  <tr style={{ textAlign: 'left', color: colors.textMuted, borderBottom: `1px solid ${colors.surface0}` }}>
                     <th scope="col" style={{ padding: '6px 8px' }}>Date</th>
                     <th scope="col" style={{ padding: '6px 8px' }}>Agent</th>
                     <th scope="col" style={{ padding: '6px 8px' }}>Model</th>
@@ -719,7 +719,7 @@ function DashboardView() {
                     <tr key={i} style={{ borderBottom: `1px solid ${colors.mantle}` }}>
                       <td style={{ padding: '6px 8px', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.date}</td>
                       <td style={{ padding: '6px 8px', color: AGENT_COLORS[b.agentType] ?? colors.text, fontFamily: uiFontFamily }}>{b.agentType}</td>
-                      <td style={{ padding: '6px 8px', color: colors.overlay0, fontFamily: dataFontFamily, fontSize: 11 }}>{b.model}</td>
+                      <td style={{ padding: '6px 8px', color: colors.textMuted, fontFamily: dataFontFamily, fontSize: 11 }}>{b.model}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.inputTokens + b.outputTokens}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.signalGreen, fontFamily: dataFontFamily }}>{fmtCost(b.costUsd)}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', color: colors.subtext0, fontFamily: dataFontFamily }}>{b.executionCount}</td>
@@ -753,7 +753,7 @@ function ErrorRateTable({ title, rows, nameKey }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
             <caption style={srOnly}>Failure rates by {nameKey === 'agentType' ? 'agent' : 'tool'}</caption>
             <thead>
-              <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+              <tr style={{ textAlign: 'left', color: colors.textMuted, borderBottom: `1px solid ${colors.surface0}` }}>
                 <th scope="col" style={{ padding: '6px 8px' }}>{nameKey === 'agentType' ? 'Agent' : 'Tool'}</th>
                 <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
                 <th scope="col" style={{ padding: '6px 8px', textAlign: 'right' }}>Failed</th>
@@ -773,8 +773,8 @@ function ErrorRateTable({ title, rows, nameKey }) {
                     <td style={{ padding: '6px 8px', textAlign: 'right', color: failColor, fontWeight: 700, fontFamily: dataFontFamily }}>
                       {(r.failureRate * 100).toFixed(1)}%
                     </td>
-                    {nameKey === 'agentType' && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.retryCount > 0 ? colors.statusWarning : colors.overlay0, fontFamily: dataFontFamily }}>{r.retryCount}</td>}
-                    <td style={{ padding: '6px 8px', color: colors.overlay0, fontSize: 11, fontFamily: dataFontFamily }}>
+                    {nameKey === 'agentType' && <td style={{ padding: '6px 8px', textAlign: 'right', color: r.retryCount > 0 ? colors.statusWarning : colors.textMuted, fontFamily: dataFontFamily }}>{r.retryCount}</td>}
+                    <td style={{ padding: '6px 8px', color: colors.textMuted, fontSize: 11, fontFamily: dataFontFamily }}>
                       {Object.entries(r.failuresByCategory).map(([cat, count]) => `${cat}: ${count}`).join(', ') || '—'}
                     </td>
                   </tr>

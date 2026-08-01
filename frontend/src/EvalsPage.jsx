@@ -122,7 +122,7 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
                 }}
               >
                 <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</span>
-                <span style={{ display: 'block', fontSize: 11, color: colors.overlay0, fontFamily: uiFontFamily }}>
+                <span style={{ display: 'block', fontSize: 11, color: colors.textMuted, fontFamily: uiFontFamily }}>
                   {s.targetAgentType} · {s.description}
                 </span>
               </button>
@@ -329,7 +329,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Pass/fail summary by case and scorer</caption>
               <thead>
-                <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                <tr style={{ color: colors.textMuted, textAlign: 'left' }}>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Scorer</th>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score</th>
@@ -340,7 +340,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
                 {results.results.map(r => (
                   <tr key={r.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{r.evalCaseId.slice(0, 8)}…</td>
-                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: uiFontFamily }}>{r.scorerType}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.textMuted, fontFamily: uiFontFamily }}>{r.scorerType}</td>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{r.score}</td>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: r.passed ? colors.signalGreen : colors.alertRed, fontFamily: uiFontFamily }}>
                       {r.passed ? 'Pass' : 'Fail'}
@@ -369,7 +369,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Per-case score regression against baseline</caption>
               <thead>
-                <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                <tr style={{ color: colors.textMuted, textAlign: 'left' }}>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Case</th>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Current</th>
                   <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Baseline</th>
@@ -382,8 +382,8 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
                   <tr key={d.evalCaseId} style={{ borderTop: `1px solid ${colors.surface0}` }}>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{d.evalCaseId.slice(0, 8)}…</td>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.text, fontFamily: dataFontFamily }}>{d.currentScore}</td>
-                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{d.baselineScore ?? '—'}</td>
-                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{d.scoreDelta ?? '—'}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.textMuted, fontFamily: dataFontFamily }}>{d.baselineScore ?? '—'}</td>
+                    <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: colors.textMuted, fontFamily: dataFontFamily }}>{d.scoreDelta ?? '—'}</td>
                     <td style={{ padding: `${spacing.xs} ${spacing.sm}`, color: d.regressed ? colors.alertRed : d.isNewCase ? colors.beaconYellow : colors.signalGreen, fontFamily: uiFontFamily }}>
                       {d.regressed ? 'Regressed' : d.isNewCase ? 'New case' : 'OK'}
                     </td>
@@ -565,7 +565,7 @@ export function PostHocView() {
                 <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
                   <caption style={srOnly}>Score distribution by range</caption>
                   <thead>
-                    <tr style={{ color: colors.overlay0, textAlign: 'left' }}>
+                    <tr style={{ color: colors.textMuted, textAlign: 'left' }}>
                       <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Score range</th>
                       <th scope="col" style={{ padding: `${spacing.xs} ${spacing.sm}` }}>Count</th>
                     </tr>

@@ -80,7 +80,7 @@ export function EmptyState({ title, description, action, icon, style, headingLev
       }}
     >
       {icon && (
-        <div aria-hidden="true" style={{ color: colors.overlay0, display: 'flex' }}>
+        <div aria-hidden="true" style={{ color: colors.textMuted, display: 'flex' }}>
           {icon}
         </div>
       )}

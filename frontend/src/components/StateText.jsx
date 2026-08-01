@@ -28,7 +28,7 @@ export function StateText({ children, tone = 'muted', style }) {
   return (
     <div
       style={{
-        color: tone === 'error' ? colors.alertRed : colors.surface2,
+        color: tone === 'error' ? colors.alertRed : colors.textMuted,
         fontSize: typography.body.fontSize,
         fontFamily: uiFontFamily,
         ...style,

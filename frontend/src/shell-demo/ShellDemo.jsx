@@ -213,7 +213,7 @@ const headerCellStyle = {
   borderBottom: `1px solid ${surface.border}`,
   whiteSpace: 'nowrap',
   ...typography.label,
-  color: colors.overlay0,
+  color: colors.textMuted,
 }
 
 const TABLE_COLUMNS = ['Span ID', 'Agent', 'Status', 'Model', 'Duration', 'Tokens In', 'Tokens Out', 'Cost', 'Started']
@@ -436,7 +436,7 @@ function LongView() {
             <p style={{ margin: `${spacing.sm} 0 0`, ...typography.body, color: colors.subtext0 }}>{section.body}</p>
             <div style={{ marginTop: spacing.sm, display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
               <StatusBadge status={RUN_STATUSES[section.id % RUN_STATUSES.length]} />
-              <span style={{ ...typography.body, color: colors.overlay0 }}>
+              <span style={{ ...typography.body, color: colors.textMuted }}>
                 span_{(0x4f2a + section.id).toString(16)}
               </span>
             </div>

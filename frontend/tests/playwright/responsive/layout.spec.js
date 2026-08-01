@@ -111,9 +111,11 @@ test.describe('wide content containment', () => {
 // decisions no milestone was scoped to change. They are recorded as expected
 // failures so the checks stay in the repo and stay visible — and so that fixing
 // the underlying issue makes the test fail loudly, prompting the flag's removal.
-test.describe('known gaps (frozen — see docs/superpowers/verification)', () => {
+test.describe('contrast (F1: fixed) and touch targets (known gap)', () => {
+  // F1 RESOLVED — this was a known failure carried as test.fail(). The flag did
+  // its job: once the tokens were fixed the test failed as "expected to fail,
+  // but passed", prompting this promotion to a real gate.
   test('WCAG AA contrast on label and header text', async ({ page }) => {
-    test.fail(true, 'overlay0 3.36-3.84:1 and surface2 2.81:1 vs 4.5:1 — frozen in tokens.js/DESIGN.md')
     await openApp(page)
     await gotoView(page, 'Memories')
     const failures = await page.evaluate(() => {

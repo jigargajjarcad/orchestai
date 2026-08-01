@@ -276,7 +276,11 @@ the finer `typeScale` above is Phase 2 work):
   does the real per-element split.
 - **Label** (700, 11px, 0.07em letter-spacing, uppercase, **UI face**): section eyebrows and
   column headers ("TASK TITLE", "AGENT ERROR RATES") — never the data value itself. Always
-  paired with `overlay0` or `surface2` color, never full-brightness text.
+  paired with `textMuted` color, never full-brightness text. (F1: was `overlay0` or
+  `surface2` — both are SURFACE-ramp steps measuring 3.36-3.84:1 and 2.81:1, below the
+  4.5:1 WCAG AA bar for body text. `textMuted` (#9399b2) is the lowest neutral-ramp step
+  clearing 4.5:1 against all four surface tiers. `overlay0`/`surface2` keep their values
+  and remain correct for borders, fills and disabled states.)
 - **Micro** (9–10px): chart axis labels and the smallest secondary annotations only.
 
 ### Named Rules

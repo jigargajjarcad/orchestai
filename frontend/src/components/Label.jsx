@@ -57,7 +57,7 @@ export function Label({ children, style, htmlFor }) {
         fontWeight: typography.label.fontWeight,
         lineHeight: typography.label.lineHeight,
         letterSpacing: typography.label.letterSpacing,
-        color: colors.overlay0,
+        color: colors.textMuted,
         textTransform: 'uppercase',
         ...style,
       }}

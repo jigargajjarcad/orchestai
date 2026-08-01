@@ -110,7 +110,7 @@ export function PlaygroundExecutionGraph({ spans }) {
         aria-hidden="true"
         style={{
           display: 'flex', justifyContent: 'space-between', padding: '0 14px 6px',
-          fontFamily: 'monospace', fontSize: 10, color: colors.overlay0,
+          fontFamily: 'monospace', fontSize: 10, color: colors.textMuted,
         }}
       >
         {ticks.map((tick, i) => <span key={i}>{tick}</span>)}

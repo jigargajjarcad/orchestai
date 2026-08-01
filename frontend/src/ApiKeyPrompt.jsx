@@ -53,7 +53,7 @@ export default function ApiKeyPrompt({ onSubmitted }) {
       <Card level="raised" padding={spacing.xxl} style={{ maxWidth: 480, width: '100%', borderRadius: radii.xxl }}>
         <h2 style={{ margin: 0, color: colors.text, fontFamily: uiFontFamily }}>OrchestAI</h2>
         <div style={{ marginTop: spacing.xs }}>
-          <Label style={{ color: colors.surface2, fontWeight: 400 }}>Multi-agent CQRS orchestration · .NET 8</Label>
+          <Label style={{ color: colors.textMuted, fontWeight: 400 }}>Multi-agent CQRS orchestration · .NET 8</Label>
         </div>
         <p style={{ margin: `${spacing.lg} 0 0`, color: colors.subtext0, fontSize: 13, fontFamily: uiFontFamily }}>
           An API key is required to run agents and query stored data. This instance has no

@@ -87,7 +87,7 @@ function SubLabel({ children }) {
   return (
     <div
       style={{
-        color: colors.overlay0,
+        color: colors.textMuted,
         fontFamily: typeScale.label.fontFamily,
         fontSize: typeScale.label.fontSize,
         fontWeight: typeScale.label.fontWeight,
@@ -165,7 +165,7 @@ function TypeSpecimenRow({ roleName }) {
       >
         <div style={{ fontWeight: 600, color: colors.text }}>typeScale.{roleName}</div>
         <div>{TYPE_ROLE_FACE[roleName]}</div>
-        <div style={{ color: colors.overlay0 }}>
+        <div style={{ color: colors.textMuted }}>
           {style.fontSize} / {style.fontWeight}
         </div>
       </div>
@@ -644,7 +644,7 @@ function TwoFaceColumn({ title, children }) {
           fontWeight: typeScale.label.fontWeight,
           letterSpacing: typeScale.label.letterSpacing,
           textTransform: 'uppercase',
-          color: colors.overlay0,
+          color: colors.textMuted,
           marginBottom: spacing.md,
         }}
       >

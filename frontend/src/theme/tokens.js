@@ -28,6 +28,20 @@ export const colors = {
   surface0: '#313244',
   surface2: '#585b70',
   overlay0: '#6c7086',
+  // F1 — dedicated MUTED TEXT role. Labels, column headers and secondary text
+  // were painted with `overlay0`/`surface2`, which are SURFACE-ramp steps: at
+  // 3.36-3.84:1 and 2.81:1 they sit below the 4.5:1 WCAG AA bar for body text,
+  // and DESIGN.md's Label rule mandated exactly that pairing. This is the
+  // lowest step of the existing neutral ramp (`overlay2`) that clears 4.5:1
+  // against ALL FOUR surface tiers — crust 6.64, base 5.81, raised 5.45,
+  // overlay 4.95. `overlay1` was measured first and rejected: it fails on three
+  // of the four (4.44/4.16/3.78).
+  //
+  // Deliberately a NEW token rather than a value change to overlay0/surface2:
+  // both are also used for borders, backgrounds and disabled states, so
+  // changing their values would have altered visuals accessibility does not
+  // require. Those uses keep their original colours untouched.
+  textMuted: '#9399b2',
   subtext0: '#a6adc8',
   text: '#cdd6f4',
 

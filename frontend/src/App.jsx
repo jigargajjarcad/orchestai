@@ -170,7 +170,7 @@ function ToolCallRow({ toolCall }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <span style={srOnly}>Tool {toolCall.name} {statusWord}. </span>
         <span style={{ color: colors.traceBlue, fontWeight: 600 }}>{toolCall.name}</span>
-        <span style={{ color: colors.surface2 }}>{duration}</span>
+        <span style={{ color: colors.textMuted }}>{duration}</span>
         {toolCall.output && (
           <div style={{ color: colors.subtext0, marginTop: 2, wordBreak: 'break-word' }}>
             {toolCall.output.length > 120 ? toolCall.output.slice(0, 120) + '…' : toolCall.output}
@@ -227,9 +227,9 @@ function AgentCard({ execution, memoryCount, savedMemories }) {
         )}
 
         {execution.costUsd > 0 && (
-          <div style={{ fontSize: 11, color: colors.surface2, marginTop: 8, display: 'flex', gap: 12, fontFamily: dataFontFamily }}>
+          <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 8, display: 'flex', gap: 12, fontFamily: dataFontFamily }}>
             <span>{execution.inputTokens}in + {execution.outputTokens}out tokens</span>
-            <span style={{ color: colors.overlay0 }}>${Number(execution.costUsd).toFixed(6)}</span>
+            <span style={{ color: colors.textMuted }}>${Number(execution.costUsd).toFixed(6)}</span>
           </div>
         )}
 
@@ -480,7 +480,7 @@ function MemoriesPage({ onDelete }) {
           the tab order). */}
       <div style={{ marginBottom: 16 }}>
         <h2 ref={headingRef} tabIndex={-1} style={{ margin: 0, font: 'inherit', letterSpacing: 'inherit' }}>
-          <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
+          <Label style={{ color: colors.textMuted, fontWeight: 400 }}>Agent Memories</Label>
         </h2>
       </div>
 
@@ -507,7 +507,7 @@ function MemoriesPage({ onDelete }) {
             <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Stored agent memories, with a delete control per row</caption>
               <thead>
-                <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
+                <tr style={{ textAlign: 'left', color: colors.textMuted, borderBottom: `1px solid ${colors.surface0}` }}>
                   <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Agent</th>
                   <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Key</th>
                   <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Value</th>
@@ -528,8 +528,8 @@ function MemoriesPage({ onDelete }) {
                     <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.traceBlue, fontFamily: uiFontFamily }}>{m.agentType}</td>
                     <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.text, fontFamily: dataFontFamily }}>{m.key}</td>
                     <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.subtext0, fontFamily: uiFontFamily, maxWidth: 400, wordBreak: 'break-word' }}>{m.value}</td>
-                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{m.importance}</td>
-                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{new Date(m.updatedAt).toLocaleString()}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.textMuted, fontFamily: dataFontFamily }}>{m.importance}</td>
+                    <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.textMuted, fontFamily: dataFontFamily }}>{new Date(m.updatedAt).toLocaleString()}</td>
                     <td style={{ padding: `${spacing.sm} ${spacing.md}` }}>
                       {/* Every row's control reads as a bare "Delete" to a screen
                           reader listing buttons — indistinguishable, and this one
@@ -1061,7 +1061,7 @@ export default function App() {
 
           {(agentOrder.length > 0 || managerReview) && (
             <div>
-              <h2 style={{ margin: '0 0 10px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Executions</Label></h2>
+              <h2 style={{ margin: '0 0 10px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.textMuted, fontWeight: 400 }}>Agent Executions</Label></h2>
               {agentOrder.map(id => agents[id] && (
                 <AgentCard
                   key={id}
@@ -1101,7 +1101,7 @@ export default function App() {
             <PlaygroundExecutionGraph spans={liveSpans} />
           ) : finalResult ? (
             <div>
-              <h2 style={{ margin: '0 0 16px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.surface2, fontWeight: 400 }}>Final Result</Label></h2>
+              <h2 style={{ margin: '0 0 16px', font: 'inherit', letterSpacing: 'inherit' }}><Label style={{ color: colors.textMuted, fontWeight: 400 }}>Final Result</Label></h2>
               <Panel style={{ padding: '20px 24px' }}>
                 <div style={{ fontSize: 13, lineHeight: 1.7, color: colors.text }}>
                   <ReactMarkdown

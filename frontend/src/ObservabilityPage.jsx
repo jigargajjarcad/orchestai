@@ -496,14 +496,20 @@ function SummaryView({ tasks }) {
   const width = useViewportWidth()
   const statGridCols = width <= 1024 ? 2 : 4
 
+  // Switching tasks leaves the previous request in flight; without this guard a
+  // slow response for the task you just left lands after the new one and
+  // repaints the view with data the picker no longer names. Same `cancelled`
+  // pattern EvalsPage already uses for its runs fetch.
   useEffect(() => {
     if (!taskId) return
+    let cancelled = false
     setData(null)
     setError(null)
     authenticatedFetch(`${API_BASE}/tasks/${taskId}/summary`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
-      .then(setData)
-      .catch(err => setError(err.message))
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+    return () => { cancelled = true }
   }, [taskId])
 
   return (
@@ -634,12 +640,16 @@ function DashboardView() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
 
+  // Each date edit re-fires this while the previous range is still loading;
+  // without the guard the slower range can land last and contradict the picker.
   useEffect(() => {
+    let cancelled = false
     setError(null)
     authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/observability/cost-dashboard?from=${from}&to=${to}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
-      .then(setData)
-      .catch(err => setError(err.message))
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+    return () => { cancelled = true }
   }, [from, to])
 
   return (
@@ -765,12 +775,15 @@ function ErrorRatesView() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
 
+  // See DashboardView: same date-range race, same guard.
   useEffect(() => {
+    let cancelled = false
     setError(null)
     authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/observability/error-rates?from=${from}&to=${to}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
-      .then(setData)
-      .catch(err => setError(err.message))
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+    return () => { cancelled = true }
   }, [from, to])
 
   return (
@@ -842,14 +855,18 @@ function CompareView({ tasks }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
 
+  // Two pickers means two ways to invalidate an in-flight comparison; the guard
+  // keeps a superseded pair from overwriting the one on screen.
   useEffect(() => {
     if (!firstId || !secondId) return
+    let cancelled = false
     setData(null)
     setError(null)
     authenticatedFetch(`${API_BASE}/tasks/compare?firstTaskId=${firstId}&secondTaskId=${secondId}`)
       .then(res => { if (!res.ok) throw new Error(`Failed: ${res.status}`); return res.json() })
-      .then(setData)
-      .catch(err => setError(err.message))
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(err => { if (!cancelled) setError(err.message) })
+    return () => { cancelled = true }
   }, [firstId, secondId])
 
   return (
@@ -883,13 +900,17 @@ export default function ObservabilityPage({ initialTaskId = null }) {
   useEffect(() => {
     // A failed tasks fetch previously collapsed silently to [] — indistinguishable
     // from "no tasks yet", leaving the sub-view task pickers mysteriously empty.
+    // This one runs once, so it cannot race itself; the guard is for unmount —
+    // navigating away mid-flight must not write to a gone component.
+    let cancelled = false
     authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/tasks?limit=30`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Couldn't load tasks: ${res.status}`)
         return res.json()
       })
-      .then(setTasks)
-      .catch(err => { setTasks([]); setTasksError(err.message) })
+      .then(t => { if (!cancelled) setTasks(t) })
+      .catch(err => { if (!cancelled) { setTasks([]); setTasksError(err.message) } })
+    return () => { cancelled = true }
   }, [])
 
   return (

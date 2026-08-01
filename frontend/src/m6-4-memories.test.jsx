@@ -58,6 +58,18 @@ describe('M6.4 — Memories table semantics', () => {
     expect(within(table).getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument()
   })
 
+  it('anchors every off-screen node so it cannot widen the page', async () => {
+    const table = await openMemories()
+    // Not a style-preference assertion — measured in Chrome at 375px, the
+    // off-screen "Actions" span lands at x=483, i.e. 108px PAST the viewport.
+    // It is harmless only because its host is positioned, which keeps it
+    // clipped by the table's scroll container instead of letting it resolve
+    // against the viewport and extend the document (the M6.3 defect exactly).
+    const actionsHeader = within(table).getByRole('columnheader', { name: 'Actions' })
+    expect(actionsHeader).toHaveStyle({ position: 'relative' })
+    expect(table).toHaveStyle({ position: 'relative' })
+  })
+
   it('exposes the section title as a real heading', async () => {
     await openMemories()
     expect(screen.getByRole('heading', { name: 'Agent Memories', level: 2 })).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { setApiKey } from './apiKey'
 import { Input } from './components/Input'
 import { Button } from './components/Button'
@@ -8,6 +8,23 @@ import { colors, spacing, radii, surface, uiFontFamily } from './theme/tokens'
 
 export default function ApiKeyPrompt({ onSubmitted }) {
   const [value, setValue] = useState('')
+  const fieldRef = useRef(null)
+
+  // P2-M6.4 — this gate is the app's only entry surface and the field is its
+  // only purpose, so focus starts there. Without it a keyboard or screen-reader
+  // user lands on <body> and has to tab past the whole explanatory card to reach
+  // the single control.
+  //
+  // Focus is moved here rather than via the `autoFocus` attribute. The behaviour
+  // is identical; the difference is that jsx-a11y's no-autofocus rule fires on
+  // the attribute, and the rule is right in the general case — moving focus on
+  // load is hostile when it steals the caret on a content page or picks one of
+  // several fields. Neither applies to a dedicated full-page gate with exactly
+  // one input, which is why the plan asked for it. Doing it explicitly keeps
+  // the intent readable and testable instead of leaving a bare attribute for a
+  // future reader to second-guess. React 19 passes `ref` straight through
+  // Input's ...rest to the native element, so the shared primitive is untouched.
+  useEffect(() => { fieldRef.current?.focus() }, [])
 
   const submit = () => {
     if (!value.trim()) return
@@ -52,6 +69,7 @@ export default function ApiKeyPrompt({ onSubmitted }) {
         </p>
         <div style={{ marginTop: spacing.lg }}>
           <Input
+            ref={fieldRef}
             label="API key"
             type="password"
             value={value}

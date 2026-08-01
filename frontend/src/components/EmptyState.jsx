@@ -47,11 +47,15 @@
 //     above — matches every other primitive's override pattern (Button,
 //     Input, Label, Panel, StatusBadge, StateText).
 //
+// P2-M6.5 — `headingLevel` (default 2) ADDED. The note below correctly said to
+// wait for a real call site; axe supplied one. Empty states sit directly under
+// the per-view page `<h1>`, so a hardcoded `<h3>` skipped a level and tripped
+// axe's heading-order rule on the Playground and Evals surfaces. The default is
+// therefore `<h2>`; pass a different level where an empty state is nested under
+// a deeper section heading. Level affects the ELEMENT only — every visual
+// property here is inline, so the rendering is identical at any level.
+//
 // Deliberately NOT added (scope decisions):
-//   - no `headingLevel` prop — callers needing an `<h2>`/`<h4>` instead of
-//     `<h3>` would need the *element*, not just its style, so a style
-//     override can't satisfy that; left out until a real call site needs it
-//     (YAGNI, matching the master plan's stated bias for this component set).
 //   - no built-in `action` button — kept a plain node so this component never
 //     needs to know about `Button`'s variants/handlers.
 //
@@ -61,7 +65,8 @@
 
 import { colors, spacing, typography, uiFontFamily } from '../theme/tokens'
 
-export function EmptyState({ title, description, action, icon, style }) {
+export function EmptyState({ title, description, action, icon, style, headingLevel = 2 }) {
+  const Heading = `h${headingLevel}`
   return (
     <div
       style={{
@@ -79,7 +84,7 @@ export function EmptyState({ title, description, action, icon, style }) {
           {icon}
         </div>
       )}
-      <h3
+      <Heading
         style={{
           margin: 0,
           fontFamily: typography.title.fontFamily,
@@ -91,7 +96,7 @@ export function EmptyState({ title, description, action, icon, style }) {
         }}
       >
         {title}
-      </h3>
+      </Heading>
       {description && (
         <p
           style={{

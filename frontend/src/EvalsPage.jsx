@@ -247,16 +247,28 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
   const [regression, setRegression] = useState(null)
   const [regressionError, setRegressionError] = useState(null)
 
+  // Guarded for consistency with the rest of the page and with Observability.
+  // Changing the suite currently unmounts this view, so there is no reachable
+  // stale-overwrite today; the guard covers the unmount write and stops a later
+  // refactor that keeps the view mounted from silently reintroducing the race.
   useEffect(() => {
     if (!selectedSuiteId) return
+    let cancelled = false
     authenticatedFetch(`${API_BASE}/eval-suites/${selectedSuiteId}/runs`)
       .then(res => res.json())
-      .then(data => setRuns(data.runs))
-      .catch(() => setRuns([]))
+      .then(data => { if (!cancelled) setRuns(data.runs) })
+      .catch(() => { if (!cancelled) setRuns([]) })
+    return () => { cancelled = true }
   }, [selectedSuiteId])
 
+  // Two requests per run, and the run picker stays mounted while you change it —
+  // so a slow response for the run you just left could overwrite the one on
+  // screen, and a slow FAILURE could put an error banner over results that
+  // loaded fine. One `cancelled` flag covers both requests, since both are
+  // invalidated by the same change.
   useEffect(() => {
     if (!selectedRunId) return
+    let cancelled = false
     setResults(null)
     setResultsError(null)
     setRegression(null)
@@ -267,16 +279,18 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
         if (!res.ok) throw new Error((await res.json()).title ?? `Failed: ${res.status}`)
         return res.json()
       })
-      .then(setResults)
-      .catch(err => setResultsError(err.message))
+      .then(d => { if (!cancelled) setResults(d) })
+      .catch(err => { if (!cancelled) setResultsError(err.message) })
 
     authenticatedFetch(`${API_BASE}/eval-runs/${selectedRunId}/regression-report`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json()).title ?? 'No baseline set for this run')
         return res.json()
       })
-      .then(setRegression)
-      .catch(err => setRegressionError(err.message))
+      .then(d => { if (!cancelled) setRegression(d) })
+      .catch(err => { if (!cancelled) setRegressionError(err.message) })
+
+    return () => { cancelled = true }
   }, [selectedRunId])
 
   const passCount = results ? results.results.filter(r => r.passed).length : 0
@@ -581,14 +595,18 @@ export default function EvalsPage() {
   const [selectedSuiteId, setSelectedSuiteId] = useState(null)
   const [selectedRunId, setSelectedRunId] = useState(null)
 
+  // Empty deps: runs once, so it cannot race itself. The guard is unmount-safety
+  // only, matching Observability's page-level tasks fetch.
   useEffect(() => {
+    let cancelled = false
     authenticatedFetch(`${API_BASE}/eval-suites`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).title ?? `Failed: ${res.status}`)
         return res.json()
       })
-      .then(data => setSuites(data.suites))
-      .catch(err => setSuitesError(err.message))
+      .then(data => { if (!cancelled) setSuites(data.suites) })
+      .catch(err => { if (!cancelled) setSuitesError(err.message) })
+    return () => { cancelled = true }
   }, [])
 
   return (

@@ -24,6 +24,7 @@ vi.mock('@xyflow/react', () => ({
 
 const { default: App } = await import('./App')
 const { default: ObservabilityPage } = await import('./ObservabilityPage')
+const { default: EvalsPage } = await import('./EvalsPage')
 
 const TASK_ID = '99999999-2222-3333-4444-555555555555'
 const T = (s) => `2026-08-01T09:00:${String(s).padStart(2, '0')}.000Z`
@@ -261,4 +262,108 @@ describe('H2 — Observability must not let a stale response win', () => {
     await waitFor(() => expect(screen.getByText('$2.220000')).toBeInTheDocument())
     expect(screen.queryByText('$9.990000')).toBeNull()
   })
+})
+
+// ────────────────────── H2b (M6.5.1) — EvalsPage ──────────────────────
+// The same stale-response race, on the page whose ONE guarded effect was the
+// reference used to fix Observability. Independent verification found the other
+// three unguarded: ResultsView's runs fetch, ResultsView's results+regression
+// pair, and the page-level suites fetch.
+//
+// RunView's runs effect (EvalsPage.jsx:146) was verified ALREADY SAFE and is
+// deliberately not covered here — nothing changed about it.
+
+describe('H2b — Evals must not let a stale response win', () => {
+  const SUITES = [
+    { id: 'suite-1', name: 'Suite One', targetAgentType: 'Research', description: 'first' },
+    { id: 'suite-2', name: 'Suite Two', targetAgentType: 'Code', description: 'second' },
+  ]
+  const resultsWith = (passCount) => ({
+    results: Array.from({ length: 4 }, (_, i) => ({
+      evalCaseId: `case-${i}`, scorerType: 'ExpectedSubstring',
+      score: '0.9', passed: i < passCount,
+    })),
+  })
+
+  async function openResultsForSuite(fetchImpl) {
+    globalThis.fetch = vi.fn(fetchImpl)
+    render(<EvalsPage />)
+    // Pick a suite, then move to the Results tab. findBy* must be awaited
+    // OUTSIDE act(): its poller cannot observe updates from inside the batch.
+    const suiteRow = await screen.findByRole('button', { name: /Suite One/ })
+    await act(async () => { fireEvent.click(suiteRow) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Results' })) })
+    return screen.findByRole('combobox', { name: 'Run' })
+  }
+
+  it('ignores a stale results response when the run selection moved on (L258)', async () => {
+    const slowRunA = deferred()
+    await openResultsForSuite((url) => {
+      const u = String(url)
+      if (u.endsWith('/eval-suites')) return jsonOk({ suites: SUITES })
+      if (u.includes('/eval-suites/suite-1/runs')) return jsonOk({
+        runs: [
+          { id: 'run-a', subjectVersion: 'va', status: 'Completed', triggeredAt: '2026-07-30T09:00:00Z' },
+          { id: 'run-b', subjectVersion: 'vb', status: 'Completed', triggeredAt: '2026-07-30T10:00:00Z' },
+        ],
+      })
+      if (u.includes('/eval-runs/run-a/results')) return slowRunA.promise
+      if (u.includes('/eval-runs/run-b/results')) return jsonOk(resultsWith(3))
+      return jsonOk({ caseDiffs: [], currentPassRate: 0, baselinePassRate: 0, passRateDelta: 0 })
+    })
+
+    const picker = await screen.findByRole('combobox', { name: 'Run' })
+    await screen.findByRole('option', { name: /va/ })
+
+    await act(async () => { fireEvent.change(picker, { target: { value: 'run-a' } }) })
+    await act(async () => { fireEvent.change(picker, { target: { value: 'run-b' } }) })
+    await waitFor(() => expect(screen.getByText('3 / 4')).toBeInTheDocument())
+
+    // run-a answers late, with the user now looking at run-b.
+    await act(async () => { slowRunA.resolve({ ok: true, json: async () => resultsWith(1) }) })
+
+    await waitFor(() => expect(screen.getByText('3 / 4')).toBeInTheDocument())
+    expect(screen.queryByText('1 / 4')).toBeNull()
+  })
+
+  it('ignores a stale results FAILURE instead of erroring over a good view (L258)', async () => {
+    const slowRunA = deferred()
+    await openResultsForSuite((url) => {
+      const u = String(url)
+      if (u.endsWith('/eval-suites')) return jsonOk({ suites: SUITES })
+      if (u.includes('/eval-suites/suite-1/runs')) return jsonOk({
+        runs: [
+          { id: 'run-a', subjectVersion: 'va', status: 'Completed', triggeredAt: '2026-07-30T09:00:00Z' },
+          { id: 'run-b', subjectVersion: 'vb', status: 'Completed', triggeredAt: '2026-07-30T10:00:00Z' },
+        ],
+      })
+      if (u.includes('/eval-runs/run-a/results')) return slowRunA.promise
+      if (u.includes('/eval-runs/run-b/results')) return jsonOk(resultsWith(2))
+      return jsonOk({ caseDiffs: [], currentPassRate: 0, baselinePassRate: 0, passRateDelta: 0 })
+    })
+
+    const picker = await screen.findByRole('combobox', { name: 'Run' })
+    await screen.findByRole('option', { name: /va/ })
+    await act(async () => { fireEvent.change(picker, { target: { value: 'run-a' } }) })
+    await act(async () => { fireEvent.change(picker, { target: { value: 'run-b' } }) })
+    await waitFor(() => expect(screen.getByText('2 / 4')).toBeInTheDocument())
+
+    await act(async () => {
+      slowRunA.resolve({ ok: false, status: 500, json: async () => ({ title: 'run-a blew up' }) })
+    })
+
+    expect(screen.queryByText(/run-a blew up/)).toBeNull()
+    expect(screen.getByText('2 / 4')).toBeInTheDocument()
+  })
+
+  // NO race test for L250 (ResultsView's runs fetch) or L584 (the page-level
+  // suites fetch), deliberately. Verified by experiment, not assumption: a test
+  // driving a suite switch PASSES against the unguarded code, because changing
+  // `selectedSuiteId` means leaving the Results tab, which UNMOUNTS ResultsView.
+  // The late response then writes to a dead component instead of overwriting a
+  // live one. L584 has empty deps and runs once, so it cannot race itself.
+  // Both are still guarded — for unmount-safety and so a future refactor that
+  // keeps the view mounted cannot silently reintroduce the race — but claiming
+  // a stale-overwrite test for them would be inventing a failure that does not
+  // occur. The same reasoning applied to Observability's page-level tasks fetch.
 })

@@ -54,9 +54,14 @@ const ERROR_RATES = {
   ],
 }
 
+// Values are DERIVED FROM THE TASK ID on purpose. Identical fixtures across
+// tasks make a stale-response test vacuous: an overwrite would be invisible
+// because both payloads render the same. The leading digit drives the numbers
+// so a test can assert which task's data is actually on screen.
 const summaryFor = (id) => ({
   status: id.startsWith('3') ? 'Failed' : 'Completed',
-  durationSeconds: 48.6, totalCostUsd: 0.184, totalInputTokens: 18422, totalOutputTokens: 5310,
+  durationSeconds: Number(`${id[0]}0.5`), totalCostUsd: Number(`0.${id[0]}84`),
+  totalInputTokens: 18422, totalOutputTokens: 5310,
   toolCallCount: 12, retryCount: 1, errorCount: 0, memoryUsed: true, checkpointRestored: false,
   agentsInvolved: AGENTS, providersAndModels: ['anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-1'],
 })

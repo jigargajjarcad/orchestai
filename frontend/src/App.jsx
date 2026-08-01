@@ -601,6 +601,14 @@ export default function App() {
   const [memoryBaseline, setMemoryBaseline] = useState({})
   const [savedMemories, setSavedMemories] = useState({})
   const eventSourceRef = useRef(null)
+  // P2-M6.5 (H1) — a dropped SSE connection used to leave the run visibly
+  // in-flight forever: `onerror` closed the socket and set nothing, so no
+  // terminal event ever arrived and nothing told the user. These two carry the
+  // recovery state. `streamSettledRef` is a ref, not state, because `onerror`
+  // fires from a long-lived closure that would otherwise read a stale value.
+  const [streamError, setStreamError] = useState(null)
+  const [reconnecting, setReconnecting] = useState(false)
+  const streamSettledRef = useRef(false)
 
   const fetchMemoryCounts = async () => {
     try {
@@ -668,6 +676,8 @@ export default function App() {
     setSavedMemories({})
     setHandoffTaskId(null)
     setLiveStatus('')
+    setStreamError(null)
+    streamSettledRef.current = false
     resetGraph()
     eventSourceRef.current?.close()
 
@@ -690,6 +700,18 @@ export default function App() {
       await authenticatedFetch(`${API_BASE}/tasks/${id}/start`, { method: 'POST' })
       setTaskStatus('Running')
 
+      await openStream(id)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Opens (or re-opens) the live stream for a task. Split out of handleSubmit so
+  // the reconnect path below can reuse it verbatim — a reconnect needs the exact
+  // same ticket-then-EventSource dance, because the ticket is single-use.
+  const openStream = async (id) => {
       // EventSource is a native browser API and cannot set custom request headers, so it can't
       // carry the normal Authorization: Bearer header every other call uses. Mint a short-lived,
       // single-use ticket bound to this task via a normal authenticated fetch() first, then pass
@@ -701,6 +723,7 @@ export default function App() {
 
       const es = new EventSource(`${API_BASE}/tasks/${id}/stream?ticket=${encodeURIComponent(ticket)}`)
       eventSourceRef.current = es
+      streamSettledRef.current = false
 
       es.onmessage = (e) => {
         try {
@@ -773,6 +796,7 @@ export default function App() {
               setLiveStatus(`${p.agentType} agent failed.`)
               break
             case 'task_completed':
+              streamSettledRef.current = true
               setTaskStatus('Completed')
               setTotalCost(p.totalCostUsd)
               setHandoffTaskId(id)
@@ -782,6 +806,7 @@ export default function App() {
               refreshSavedMemories()
               break
             case 'task_failed':
+              streamSettledRef.current = true
               setTaskStatus('Failed')
               setApprovalRequest(null)
               setError(p.errorMessage ?? 'Task failed')
@@ -793,11 +818,35 @@ export default function App() {
         } catch (_) {}
       }
 
-      es.onerror = () => es.close()
+      // A dropped connection is the common case here, not an exotic one: a
+      // server restart, a proxy timeout, a phone changing networks. Native
+      // EventSource retry cannot rescue it — the ticket in the URL is single-use
+      // and already spent, so the browser's automatic reconnect would replay a
+      // dead credential in a loop. Hence: close, then hand the user an explicit,
+      // announced recovery path. `streamSettledRef` keeps a post-completion
+      // disconnect (servers routinely close right after the terminal event) from
+      // being reported as a failure.
+      es.onerror = () => {
+        es.close()
+        if (streamSettledRef.current) return
+        setStreamError('Live updates disconnected. The task may still be running on the server.')
+        setLiveStatus('Live updates disconnected. Use Reconnect to resume following this task.')
+      }
+  }
+
+  const handleReconnect = async () => {
+    if (!taskId) return
+    setReconnecting(true)
+    setStreamError(null)
+    setLiveStatus('Reconnecting to live updates.')
+    eventSourceRef.current?.close()
+    try {
+      await openStream(taskId)
     } catch (err) {
-      setError(err.message)
+      setStreamError(`Reconnect failed: ${err.message}`)
+      setLiveStatus('Reconnect failed.')
     } finally {
-      setSubmitting(false)
+      setReconnecting(false)
     }
   }
 
@@ -856,7 +905,10 @@ export default function App() {
 
   useEffect(() => () => eventSourceRef.current?.close(), [])
 
-  const isActive = taskStatus === 'Running' || taskStatus === 'WaitingForApproval'
+  // A lost stream means we can no longer claim the run is progressing, even
+  // though the server-side task may well still be. Dropping out of "active"
+  // is what stops the perpetual in-flight spinner.
+  const isActive = (taskStatus === 'Running' || taskStatus === 'WaitingForApproval') && !streamError
 
   if (!keySet) {
     return <ApiKeyPrompt onSubmitted={() => setKeySet(true)} />
@@ -978,6 +1030,25 @@ export default function App() {
           </form>
 
           {error && <ErrorBanner style={{ marginBottom: spacing.lg }}>{error}</ErrorBanner>}
+
+          {/* P2-M6.5 (H1) — the recovery path for a dropped stream. ErrorBanner
+              is role="alert", so this is announced as well as visible. */}
+          {streamError && (
+            <ErrorBanner style={{ marginBottom: spacing.lg }}>
+              {streamError}
+              <div style={{ marginTop: spacing.sm }}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  fullWidth={false}
+                  onClick={handleReconnect}
+                  disabled={reconnecting}
+                >
+                  {reconnecting ? 'Reconnecting…' : 'Reconnect'}
+                </Button>
+              </div>
+            </ErrorBanner>
+          )}
 
           {approvalRequest && (
             <ApprovalCard

@@ -58,6 +58,16 @@ const ERROR_RATES = {
 // tasks make a stale-response test vacuous: an overwrite would be invisible
 // because both payloads render the same. The leading digit drives the numbers
 // so a test can assert which task's data is actually on screen.
+// Nested spans so the Timeline renders real SpanRows — including a parent with
+// children, which is what the expand/collapse control operates on.
+const T0 = '2026-07-30T10:00:00.000Z'
+const TIMELINE_SPANS = [
+  { spanId: 's1', parentSpanId: null, label: 'Orchestrator', spanType: 'Agent', agentType: 'Orchestrator', status: 'Completed', startedAt: T0, durationMs: 5200 },
+  { spanId: 's2', parentSpanId: 's1', label: 'Research agent', spanType: 'Agent', agentType: 'Research', status: 'Completed', startedAt: T0, durationMs: 3100 },
+  { spanId: 's3', parentSpanId: 's2', label: 'web_search', spanType: 'ToolCall', agentType: 'Research', status: 'Completed', startedAt: T0, durationMs: 900 },
+  { spanId: 's4', parentSpanId: 's1', label: 'Data agent', spanType: 'Agent', agentType: 'Data', status: 'Failed', startedAt: T0, durationMs: 1200 },
+]
+
 const summaryFor = (id) => ({
   status: id.startsWith('3') ? 'Failed' : 'Completed',
   durationSeconds: Number(`${id[0]}0.5`), totalCostUsd: Number(`0.${id[0]}84`),
@@ -130,7 +140,7 @@ function route(pathname, search, method) {
   let m = pathname.match(/^\/api\/v1\/tasks\/([^/]+)\/summary$/)
   if (m) return summaryFor(m[1])
   m = pathname.match(/^\/api\/v1\/tasks\/([^/]+)\/timeline$/)
-  if (m) return { spans: [] }
+  if (m) return { spans: TIMELINE_SPANS }
   if (pathname === '/api/v1/eval-suites') return { suites: SUITES }
   if (/^\/api\/v1\/eval-suites\/[^/]+\/runs$/.test(pathname)) return { runs: RUNS }
   if (/^\/api\/v1\/eval-runs\/[^/]+\/results$/.test(pathname)) return RESULTS

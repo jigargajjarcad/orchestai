@@ -165,8 +165,14 @@ export function Sidebar({ items, active, onNavigate, brand }) {
   // desktop/tablet-only. See file header.
   const effectiveCollapsed = collapsed && !isMobile
 
+  // F1 — `<aside>` (complementary landmark), not a bare <div>. The brand block
+  // below sits outside <nav>, so with a plain div it belonged to no landmark at
+  // all: axe reported a `region` violation on every one of the eleven surfaces
+  // audited. Wrapping the column makes all of its content reachable by landmark
+  // navigation. Presentation is unchanged — <aside> carries no default styling
+  // here, and the nav landmark inside it is unaffected.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+    <aside aria-label="Sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
       {brand && !effectiveCollapsed && (
         <div
           style={{
@@ -232,6 +238,6 @@ export function Sidebar({ items, active, onNavigate, brand }) {
           </button>
         </div>
       )}
-    </div>
+    </aside>
   )
 }

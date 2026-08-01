@@ -210,12 +210,31 @@ function SpanRow({ span, depth, traceStart, traceDurationMs }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', paddingLeft: depth * 20 }}>
-        <span
-          onClick={() => span.children.length > 0 && setExpanded(e => !e)}
-          style={{ width: 14, flexShrink: 0, cursor: span.children.length > 0 ? 'pointer' : 'default', color: colors.overlay0, fontSize: 10 }}
-        >
-          {span.children.length > 0 ? (expanded ? '▾' : '▸') : ''}
-        </span>
+        {/* F1 — was a click-only <span>, the last keyboard-inoperable control
+            in the app: a keyboard user could not expand or collapse a span at
+            all. Now a real <button> (Enter/Space for free) with aria-expanded
+            so the state is announced, and the shared focus-ring class.
+            Rows without children render an inert placeholder, exactly as
+            before, so nothing empty enters the tab order. Every visual
+            property is preserved: same 14px box, same colour, same 10px
+            glyph — the button is reset to look like the span it replaces. */}
+        {span.children.length > 0 ? (
+          <button
+            type="button"
+            className="focus-ring"
+            onClick={() => setExpanded(e => !e)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${span.label}`}
+            style={{
+              width: 14, flexShrink: 0, cursor: 'pointer', color: colors.overlay0, fontSize: 10,
+              background: 'none', border: 'none', padding: 0, font: 'inherit', lineHeight: 1,
+            }}
+          >
+            <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+          </button>
+        ) : (
+          <span style={{ width: 14, flexShrink: 0, fontSize: 10 }} />
+        )}
         <span style={{
           width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0,
           border: isFailed ? `2px solid ${colors.alertRed}` : 'none',

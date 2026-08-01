@@ -124,7 +124,7 @@ export function Toggle({ options, value, onChange, style, ...rest }) {
             role="radio"
             aria-checked={selected}
             tabIndex={focusable ? 0 : -1}
-            className="focus-ring"
+            className="focus-ring touch-target"
             onClick={() => onChange(option.value)}
             onKeyDown={event => handleKeyDown(event, index)}
             style={{

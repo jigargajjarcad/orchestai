@@ -540,7 +540,7 @@ function MemoriesPage({ onDelete }) {
                           if (el) deleteButtonRefs.current.set(m.id, el)
                           else deleteButtonRefs.current.delete(m.id)
                         }}
-                        className="focus-ring"
+                        className="focus-ring touch-target"
                         aria-label={`Delete memory ${m.key} from ${m.agentType}`}
                         onClick={() => handleDelete(m.id)}
                         style={{ background: 'transparent', border: `1px solid ${colors.statusFailed}80`, color: colors.alertRed, borderRadius: radii.md, padding: '3px 8px', fontSize: 11, fontFamily: uiFontFamily, cursor: 'pointer' }}

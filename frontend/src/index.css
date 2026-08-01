@@ -277,3 +277,32 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .orch-spinner { animation: none; }
 }
+
+/* F1 — minimum touch target without changing visual density.
+ *
+ * Some controls are visually small by design (a 22px table-row Delete, a 23px
+ * toggle). Growing their padding would enlarge the visible box and change the
+ * layout the design intends. Instead an invisible ::after overlay extends the
+ * CLICKABLE area to the 44px floor the design spec asks for, centred on the
+ * control, while the painted button stays exactly the size it was.
+ *
+ * Note on standards: WCAG 2.1 AA has no touch-target criterion (2.5.5 Target
+ * Size is AAA; 2.5.8 is WCAG 2.2 AA at 24px). This is the project's own 44px
+ * goal, so it exceeds AA rather than being required by it.
+ *
+ * Only the vertical axis is expanded. Widening would let neighbouring controls'
+ * hit areas overlap and steal each other's clicks. */
+.touch-target {
+  position: relative;
+}
+
+.touch-target::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  min-height: 44px;
+  height: 100%;
+}

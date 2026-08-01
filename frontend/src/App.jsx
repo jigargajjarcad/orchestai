@@ -46,6 +46,18 @@ const srOnly = {
   overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
 }
 
+// P2-M6.4 — spread onto whatever hosts an `srOnly` node. `srOnly` is
+// position:absolute, so an unpositioned host leaves its containing block as the
+// viewport: the hidden node then escapes every `overflow` clip above it and adds
+// its own width to the document's scrollable area. That is exactly how an
+// invisible <span> made the Observability page scroll 86px sideways at 375px in
+// M6.3. Cheap to apply, and it makes the containment local to the host.
+const srOnlyAnchor = { position: 'relative' }
+
+// Sentinel for MemoriesPage's post-delete focus target: the section heading,
+// used when no row remains to receive focus.
+const HEADING_FOCUS_TARGET = '__heading__'
+
 // ---------------------------------------------------------------------------
 // P2-M1B Task 2 — Sidebar nav content: inline monochrome stroke icons
 // (`currentColor`, ~18px), matching the approved shell-demo icon style
@@ -410,6 +422,14 @@ export function ManagerReviewCard({ review }) {
 function MemoriesPage({ onDelete }) {
   const [memories, setMemories] = useState(null)
   const [error, setError] = useState(null)
+  // P2-M6.4 — deleting a row destroys the button that had focus, which drops
+  // focus to <body>: a keyboard user loses their place entirely and has to tab
+  // back from the top of the document. Track the row buttons so focus can be
+  // moved somewhere deliberate instead, and remember the intended target across
+  // the re-render that removes the row.
+  const deleteButtonRefs = useRef(new Map())
+  const headingRef = useRef(null)
+  const [focusAfterDelete, setFocusAfterDelete] = useState(null)
 
   const load = async () => {
     try {
@@ -424,10 +444,27 @@ function MemoriesPage({ onDelete }) {
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    if (focusAfterDelete == null) return
+    // Prefer the row that took the deleted row's place, then the one before it,
+    // and fall back to the section heading when the table is gone entirely.
+    const target = focusAfterDelete === HEADING_FOCUS_TARGET
+      ? headingRef.current
+      : deleteButtonRefs.current.get(focusAfterDelete)
+    ;(target ?? headingRef.current)?.focus()
+    setFocusAfterDelete(null)
+  }, [focusAfterDelete, memories])
+
   const handleDelete = async (id) => {
+    // Resolve the successor BEFORE the row disappears — afterwards the index is
+    // gone and there is nothing left to compute a neighbour from.
+    const index = memories?.findIndex(m => m.id === id) ?? -1
+    const successor = memories?.[index + 1] ?? memories?.[index - 1] ?? null
     try {
       await authenticatedFetch(`${API_BASE}/users/${DEV_USER_ID}/memories/${id}`, { method: 'DELETE' })
       setMemories(prev => prev.filter(m => m.id !== id))
+      deleteButtonRefs.current.delete(id)
+      setFocusAfterDelete(successor ? successor.id : HEADING_FOCUS_TARGET)
       onDelete?.()
     } catch (err) {
       setError(err.message)
@@ -436,8 +473,15 @@ function MemoriesPage({ onDelete }) {
 
   return (
     <div>
+      {/* Section heading, matching M6.2's pattern elsewhere in this file: a real
+          <h2> wrapping the Label so the visual treatment is byte-for-byte the
+          same while the structure becomes navigable. tabIndex=-1 makes it a
+          programmatic focus target for post-delete focus recovery (it is not in
+          the tab order). */}
       <div style={{ marginBottom: 16 }}>
-        <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
+        <h2 ref={headingRef} tabIndex={-1} style={{ margin: 0, font: 'inherit', letterSpacing: 'inherit' }}>
+          <Label style={{ color: colors.surface2, fontWeight: 400 }}>Agent Memories</Label>
+        </h2>
       </div>
 
       {error && <ErrorBanner style={{ marginBottom: spacing.lg }}>{error}</ErrorBanner>}
@@ -452,15 +496,22 @@ function MemoriesPage({ onDelete }) {
       ) : (
         <Card level="surface">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: uiFontFamily }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
+              <caption style={srOnly}>Stored agent memories, with a delete control per row</caption>
               <thead>
                 <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Agent</th>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Key</th>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Value</th>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Importance</th>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}>Updated</th>
-                  <th style={{ padding: `${spacing.sm} ${spacing.md}` }}></th>
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Agent</th>
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Key</th>
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Value</th>
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Importance</th>
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}` }}>Updated</th>
+                  {/* Was an empty <th> (the one jsx-a11y control-has-associated-label
+                      warning on this file). The name is off-screen so the column
+                      header stays visually blank; srOnlyAnchor keeps that hidden
+                      text from widening the page. */}
+                  <th scope="col" style={{ padding: `${spacing.sm} ${spacing.md}`, ...srOnlyAnchor }}>
+                    <span style={srOnly}>Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -472,7 +523,17 @@ function MemoriesPage({ onDelete }) {
                     <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{m.importance}</td>
                     <td style={{ padding: `${spacing.sm} ${spacing.md}`, color: colors.overlay0, fontFamily: dataFontFamily }}>{new Date(m.updatedAt).toLocaleString()}</td>
                     <td style={{ padding: `${spacing.sm} ${spacing.md}` }}>
+                      {/* Every row's control reads as a bare "Delete" to a screen
+                          reader listing buttons — indistinguishable, and this one
+                          is destructive. The aria-label names the specific memory.
+                          focus-ring matches the shared control convention. */}
                       <button
+                        ref={el => {
+                          if (el) deleteButtonRefs.current.set(m.id, el)
+                          else deleteButtonRefs.current.delete(m.id)
+                        }}
+                        className="focus-ring"
+                        aria-label={`Delete memory ${m.key} from ${m.agentType}`}
                         onClick={() => handleDelete(m.id)}
                         style={{ background: 'transparent', border: `1px solid ${colors.statusFailed}80`, color: colors.alertRed, borderRadius: radii.md, padding: '3px 8px', fontSize: 11, fontFamily: uiFontFamily, cursor: 'pointer' }}
                       >

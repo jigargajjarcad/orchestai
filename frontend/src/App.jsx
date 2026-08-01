@@ -496,7 +496,15 @@ function MemoriesPage({ onDelete }) {
       ) : (
         <Card level="surface">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
+            {/* P2-M6.4 — `width:100%` alone pins the table to the container, so
+                on a phone it compressed instead of using the overflow-x wrapper
+                it already sits in: the Value column collapsed to roughly one
+                character per line (verified in Chrome at 375px). minWidth gives
+                the columns a floor and hands the overflow to the wrapper, which
+                is the pattern the other tables in this app already use. Desktop
+                is unaffected — the container is far wider than the floor, so
+                width:100% still wins there. */}
+            <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
               <caption style={srOnly}>Stored agent memories, with a delete control per row</caption>
               <thead>
                 <tr style={{ textAlign: 'left', color: colors.overlay0, borderBottom: `1px solid ${colors.surface0}` }}>

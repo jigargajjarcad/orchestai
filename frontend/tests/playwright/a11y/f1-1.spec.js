@@ -98,6 +98,61 @@ test.describe('F1.1 — contrast on POPULATED screens', () => {
     expect(await contrastViolations(page)).toEqual([])
   })
 
+  test('Evals suite row stays legible once selected', async ({ page }) => {
+    // The independent release audit found this: selecting a suite swaps the
+    // row's background from `mantle` to `surface0` (#313244), which is lighter
+    // than any of the four surface tiers `textMuted` was validated against.
+    // The secondary line measured 4.45:1 there — under WCAG 1.4.3 AA's 4.5:1.
+    // Zero violations before selection, one after, which is why an unselected
+    // sweep of this page came back clean three times.
+    //
+    // No sleeps: every step waits on an observable condition instead.
+    await openApp(page)
+    await gotoView(page, 'Evals')
+
+    const row = page.getByRole('button', { name: /Roster analysis/ })
+    await expect(row).toBeVisible()               // suites have loaded
+    expect(await contrastViolations(page)).toEqual([])   // clean while unselected
+
+    await row.click()
+    await expect(row).toHaveAttribute('aria-current', 'true')   // selection committed
+    // The element under test, on the selected background.
+    await expect(row.getByText(/Golden-set roster questions/)).toBeVisible()
+    expect(await contrastViolations(page)).toEqual([])
+
+    // Targeted measurement, on top of the page-wide sweep above. The sweep
+    // alone would still pass if this element stopped being measured — made
+    // aria-hidden, say, which `toBeVisible()` does not catch — and its failure
+    // output is a page-wide array diff rather than a number. This asserts the
+    // ratio of the specific element, so a regression reports "4.45 vs 4.5".
+    const measured = await row.evaluate((el) => {
+      const span = [...el.querySelectorAll('span')].find(s => /Golden-set/.test(s.textContent))
+      const rgb = (c) => c.match(/[\d.]+/g).map(Number)
+      const opaque = (c) => { const p = rgb(c); return p.length < 4 || p[3] !== 0 }
+      // The span's own background is transparent, so walk up to whatever
+      // actually paints behind it rather than assuming it is the row.
+      let bgEl = span
+      while (bgEl && !opaque(getComputedStyle(bgEl).backgroundColor)) bgEl = bgEl.parentElement
+      const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+      const L = (c) => { const [r, g, b] = c.map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+      const fg = rgb(getComputedStyle(span).color).slice(0, 3)
+      const bg = rgb(getComputedStyle(bgEl).backgroundColor).slice(0, 3)
+      const [hi, lo] = [Math.max(L(fg), L(bg)), Math.min(L(fg), L(bg))]
+      const cs = getComputedStyle(span)
+      return {
+        ratio: (hi + 0.05) / (lo + 0.05),
+        px: parseFloat(cs.fontSize),
+        bold: parseInt(cs.fontWeight, 10) >= 700,
+        bgFrom: bgEl.tagName,
+      }
+    })
+    // 11px regular is not "large text", so WCAG 1.4.3 AA requires 4.5:1.
+    expect(measured.px).toBeLessThan(18.66)
+    expect(measured.bold).toBe(false)
+    expect(measured.bgFrom).toBe('BUTTON')   // the selected row is what paints behind it
+    expect(measured.ratio).toBeGreaterThanOrEqual(4.5)
+  })
+
   test('inline code stays legible in BOTH colour schemes', async ({ page }) => {
     // The bug was scheme-dependent, so pinning only one scheme would let it
     // come back for half the users.

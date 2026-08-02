@@ -147,7 +147,14 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
                 }}
               >
                 <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>{s.name}</span>
-                <span style={{ display: 'block', fontSize: 11, color: colors.textMuted, fontFamily: uiFontFamily }}>
+                {/* `subtext0`, not `textMuted`. Selecting a row swaps its
+                    background to `surface0` (#313244), which is lighter than
+                    any of the four surface tiers `textMuted` was validated
+                    against — measured 4.45:1 there, just under WCAG 1.4.3 AA's
+                    4.5:1. `subtext0` is this system's documented "secondary
+                    text, safe on every tier" token and reads 5.65:1 on the
+                    selected background (7.89:1 on the unselected `mantle`). */}
+                <span style={{ display: 'block', fontSize: 11, color: colors.subtext0, fontFamily: uiFontFamily }}>
                   {s.targetAgentType} · {s.description}
                 </span>
               </button>

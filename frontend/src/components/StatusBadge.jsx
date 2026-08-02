@@ -51,7 +51,11 @@ export function StatusBadge({ status, label, style, borderAlphaSuffix }) {
       style={{
         display: 'inline-block',
         background: palette.background,
-        border: `1px solid ${palette.text}${borderAlphaSuffix ?? statusBadgeAlphaSuffix.border}`,
+        // F1.1 — the border composes from `accent` (the badge's hue), not from
+        // `text`. They were the same value until the glyph moved to the AA-safe
+        // status text tier; keeping the border on `accent` is what makes that a
+        // contrast fix rather than a visual change.
+        border: `1px solid ${palette.accent}${borderAlphaSuffix ?? statusBadgeAlphaSuffix.border}`,
         color: palette.text,
         borderRadius: radii.md,
         padding: '2px 10px',

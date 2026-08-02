@@ -12,17 +12,21 @@
 // legible without re-introducing a second status signal outside the pill +
 // selection ring (see AgentNode.jsx's selection-ring comment).
 
-import { statusColors, surface, typography } from './timelineTheme'
+import { statusColors, statusTextColors, surface, typography } from './timelineTheme'
 
 export function StatusPill({ status }) {
   const color = statusColors[status] ?? statusColors.Pending
+  // F1.1 — the fill and border stay on the status hue; only the glyph moves to
+  // the AA-safe text tier. Measured before: Completed 3.85, Failed 2.89 against
+  // this pill's own 15% tint — both short of WCAG 1.4.3 AA's 4.5:1.
+  const textColor = statusTextColors[status] ?? statusTextColors.Pending
   return (
     <span
       style={{
         display: 'inline-block',
         flexShrink: 0,
         background: `${color}26`, // ~15% alpha fill, text at full opacity
-        color,
+        color: textColor,
         border: `1px solid ${color}80`,
         borderRadius: 4,
         padding: '1px 7px',

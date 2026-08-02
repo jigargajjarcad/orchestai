@@ -1,7 +1,12 @@
 /* frontend/src/observability/timelineFocus.css
  *
- * Scoped focus-visibility override for this view's React Flow canvas only
- * (Task 6, carry-forward #1 from Task 2's review, plan §6/§7 Task 6).
+ * Overrides for React Flow's own shipped stylesheet. Originally (Task 6,
+ * carry-forward #1 from Task 2's review, plan §6/§7 Task 6) this was a
+ * focus-visibility fix scoped to the Observability canvas; F1.1 added the
+ * attribution-contrast rule at the bottom and a second importer, so it now
+ * covers BOTH canvases — Observability's and the Playground's, which import it
+ * independently. The filename is narrower than the contents; left as-is rather
+ * than renamed, since a rename is churn this milestone has no mandate for.
  *
  * The problem: React Flow's own shipped stylesheet
  * (@xyflow/react/dist/style.css) sets
@@ -35,4 +40,25 @@
   outline: 2px solid var(--observability-focus-ring, #89b4fa) !important;
   outline-offset: 2px !important;
   border-radius: 10px;
+}
+
+/* F1.1 — React Flow's attribution badge, restyled for contrast.
+ *
+ * It ships as #999999 text on a rgba(255,255,255,0.5) panel, which composites
+ * over this product's dark canvas to #88888d. Measured in the browser:
+ * 1.23:1, against WCAG 1.4.3 AA's 4.5:1 — an illegible label on a link that
+ * is in the tab order. Third-party origin is not an exemption; it renders
+ * inside our page.
+ *
+ * Restyled rather than hidden: `proOptions.hideAttribution` is a licensing
+ * question, not an accessibility one, and not this milestone's to decide.
+ * `crust` for the plate and `textMuted` for the link are the same two tokens
+ * F1 already established as an AA-safe pair (7.4:1 here). Values are literal
+ * because plain CSS cannot import from theme/tokens.js — the same constraint
+ * the focus-ring rule above works around with a custom property. */
+.react-flow__attribution {
+  background: #11111b !important;
+}
+.react-flow__attribution a {
+  color: #9399b2 !important;
 }

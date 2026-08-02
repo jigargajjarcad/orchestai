@@ -68,7 +68,7 @@
 
 import { useEffect, useRef } from 'react'
 import { colors as sharedColors } from '../theme/tokens'
-import { agentColors, toolCallColor, statusColors, surface, elevation, typography } from './timelineTheme'
+import { agentColors, toolCallColor, statusColors, statusTextColors, surface, elevation, typography } from './timelineTheme'
 import { StatusPill } from './NodeParts'
 import { formatDuration, formatCost } from './format'
 
@@ -367,7 +367,11 @@ export function DetailPanel({ span, onClose, returnFocusRef, narrow = false }) {
               style={{
                 fontFamily: typography.uiFontFamily,
                 ...typography.panelLabel,
-                color: statusColors.Failed,
+                // F1.1 — this is text, so it takes the AA-safe status text
+                // tier; measured at 3.18:1 on the card before the change. The
+                // fill and border below stay on `statusColors.Failed`, which is
+                // painted, not read.
+                color: statusTextColors.Failed,
               }}
             >
               Error{errorCategory ? ` · ${errorCategory}` : ''}

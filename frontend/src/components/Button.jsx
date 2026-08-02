@@ -75,9 +75,30 @@ const SIZE_STYLES = {
   lg: { fullWidthPadding: '11px 0', inlinePadding: '11px 18px', fontSize: '15px' },
 }
 
+// F1.1 — `ariaDisabled` is additive, and exists for exactly one situation: a
+// control that becomes unavailable WHILE IT HOLDS FOCUS.
+//
+// The `disabled` attribute makes an element unfocusable, so the browser drops
+// focus to <body> the moment it is applied. Measured on the Playground: press
+// Enter on "Run Agents" and focus goes BUTTON -> BODY and never returns, at the
+// exact instant the user commits to a run. To reach the reconnect control, the
+// approval card, or the results afterwards, a keyboard user has to Tab from the
+// top of the document again (WCAG 2.4.3 Focus Order).
+//
+// `ariaDisabled` renders the identical disabled treatment and exposes the same
+// state to assistive tech, but keeps the control in the tab order so focus
+// survives. This is the WAI-ARIA Authoring Practices recommendation for
+// transiently-unavailable controls. Enforcement stays with the caller's
+// handler, which is where a real guard belongs — a control that merely LOOKS
+// inert must not be trusted to be inert.
+//
+// Use `disabled` for "unavailable and not focused" (Evals' submit buttons,
+// which are already inert before the user reaches them); use `ariaDisabled`
+// for "became unavailable under the user's fingers".
 export function Button({
   variant = 'primary',
   disabled,
+  ariaDisabled,
   onClick,
   type = 'button',
   children,
@@ -89,8 +110,11 @@ export function Button({
   const [hovered, setHovered] = useState(false)
   const [pressed, setPressed] = useState(false)
   const sizeStyle = SIZE_STYLES[size] ?? SIZE_STYLES.md
+  // Drives every visual: the two states are indistinguishable on screen, and
+  // deliberately so — only their focusability differs.
+  const inactive = Boolean(disabled || ariaDisabled)
 
-  const stateAlphaSuffix = disabled
+  const stateAlphaSuffix = inactive
     ? null
     : pressed
       ? interactiveState.activeAlphaSuffix
@@ -106,8 +130,8 @@ export function Button({
           border: `1px solid ${colors.traceBlue}${buttonGhostBorderAlphaSuffix}`,
         }
       : {
-          background: disabled ? interactiveState.disabledBackground : colors.traceBlue,
-          color: disabled ? interactiveState.disabledText : colors.crust,
+          background: inactive ? interactiveState.disabledBackground : colors.traceBlue,
+          color: inactive ? interactiveState.disabledText : colors.crust,
           border: 'none',
           boxShadow: stateAlphaSuffix ? `inset 0 0 0 999px ${colors.crust}${stateAlphaSuffix}` : 'none',
         }
@@ -117,6 +141,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-disabled={ariaDisabled ? true : undefined}
       className="focus-ring"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => {
@@ -132,7 +157,7 @@ export function Button({
         fontWeight: 700,
         fontSize: sizeStyle.fontSize,
         fontFamily: uiFontFamily,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        cursor: inactive ? 'not-allowed' : 'pointer',
         display: icon ? 'inline-flex' : undefined,
         alignItems: icon ? 'center' : undefined,
         gap: icon ? spacing.xs : undefined,

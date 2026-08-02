@@ -7,6 +7,12 @@
 import { useMemo, useEffect } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, BackgroundVariant, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+// F1.1 — the React Flow overrides (node focus ring, attribution contrast) are
+// imported explicitly here rather than relied on via ObservabilityPage's own
+// import. Both graphs need them; a global stylesheet happening to be in the
+// bundle because another module pulled it in is not a dependency this graph
+// should leave implicit. Duplicate imports of the same CSS module are deduped.
+import '../observability/timelineFocus.css'
 import { computeGraphLayout, computeTraceBounds } from '../observability/layout'
 import { AgentNode } from '../observability/AgentNode'
 import { ToolCallNode } from '../observability/ToolCallNode'
@@ -134,7 +140,10 @@ export function PlaygroundExecutionGraph({ spans }) {
             fitView
             fitViewOptions={FIT_VIEW_OPTIONS}
             nodesFocusable
-            edgesFocusable
+            // F1.1 — see ObservabilityPage's identical prop: a focused edge has
+            // no visible focus indicator (WCAG 2.4.7) and announces a raw span
+            // id for a target that cannot be activated. Same fix, same reason.
+            edgesFocusable={false}
             minZoom={0.2}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color={timelineSurface.panelBorder} />

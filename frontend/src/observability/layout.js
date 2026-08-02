@@ -228,6 +228,28 @@ export function computeGraphLayout(spans, options = {}) {
         source: parentSpan.spanId,
         target: span.spanId,
         type: 'traceEdge',
+        // F1.1 — decorative to assistive tech.
+        //
+        // React Flow gives every edge `role="img"` plus an auto-generated
+        // `aria-label` of "Edge from <sourceId> to <targetId>" — raw span ids
+        // and, in the Playground, raw GUIDs. Taking edges out of the tab order
+        // (`edgesFocusable={false}`) fixed the WCAG 2.4.7 failure but left
+        // those labels in the accessibility tree, so a VoiceOver/NVDA user
+        // browsing with a virtual cursor still walked three meaningless
+        // announcements before reaching the first useful node.
+        //
+        // Hiding them is correct rather than merely convenient: an edge carries
+        // no information that is not already stated, in words, on the nodes it
+        // connects — Observability's node `ariaLabel` says "Child of X, running
+        // alongside Y", and the graph container names itself. The edge is the
+        // visual rendering of that sentence, so it is exactly the decorative
+        // case `aria-hidden` exists for. Same reasoning the time-axis tick row
+        // already uses in PlaygroundExecutionGraph.
+        //
+        // `domAttributes` is spread onto the edge wrapper AFTER React Flow's
+        // own aria attributes (verified in @xyflow/react 12.11.2), so this
+        // reliably wins over the generated role/label.
+        domAttributes: { 'aria-hidden': 'true' },
         data: {
           edgeStatus: edgeStatusFor(span.status),
           identityColor: identityColorFor(parentSpan),

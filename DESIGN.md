@@ -7,6 +7,7 @@ colors:
   mantle: "#181825"
   surface0: "#313244"
   surface2: "#585b70"
+  text-muted: "#9399b2"
   overlay0: "#6c7086"
   subtext0: "#a6adc8"
   text: "#cdd6f4"
@@ -22,6 +23,11 @@ colors:
   status-failed: "#dc2626"
   status-pending: "#6b7280"
   status-warning: "#f59e0b"
+  status-running-text: "#7aa2f7"
+  status-completed-text: "#22c55e"
+  status-failed-text: "#fa8484"
+  status-pending-text: "#a9a9b3"
+  status-warning-text: "#fbbf24"
   error-bg: "#2d1b1b"
   surface-raised: "#232336"
   surface-overlay: "#2a2a40"
@@ -77,7 +83,7 @@ elevation:
 components:
   status-badge:
     backgroundColor: "{colors.status-running}"
-    textColor: "{colors.status-running}"
+    textColor: "{colors.status-running-text}"
     rounded: "{rounded.md}"
     padding: "2px 10px"
   panel:
@@ -384,8 +390,11 @@ for it — density stays the default, the extension is intentional rhythm, not u
 - **Shape:** 4px radius, `2px 10px` padding, 11px uppercase label text, 700 weight,
   `0.05–0.06em` letter-spacing.
 - **Style:** background is the status color at ~18–20% alpha, border is the status color at
-  ~50–60% alpha, text is the full-opacity status color. This "tinted pill" pattern is the
-  only way status color appears — never a solid fill.
+  ~50–60% alpha, text is the status color's paired `*-text` token at full opacity. This
+  "tinted pill" pattern is the only way status color appears — never a solid fill.
+  (F1.1: the glyph was the same hex as the fill, which measured 2.6–3.9:1 against its own
+  tint — below the 4.5:1 WCAG AA bar for text. Only the glyph changed; the background and
+  border still compose from the original hue, so the badge looks the same.)
 
 ### Cards / Panels
 - **Corner Style:** 8px radius (`rounded.xl`) for top-level panels, 4–6px for nested rows.
@@ -440,8 +449,9 @@ item, toggle, selectable card/row, link): default / hover / active / focus-visib
   reverse.
 - **Do** use the Two-Palette Rule: Catppuccin tones for identity, hard Status tones for state;
   `good`/`warn`/`critical` are Status-set colors reused for non-status UI, not a third palette.
-- **Do** use tinted-pill badges (20% alpha bg, 50–60% alpha border, full-opacity text) for any
-  new status indicator, matching the existing badge pattern exactly.
+- **Do** use tinted-pill badges (20% alpha bg, 50–60% alpha border, full-opacity `*-text`
+  token for the glyph) for any new status indicator, matching the existing badge pattern
+  exactly.
 - **Do** reserve the 3px `border-left` accent for cards that represent a single dominant
   status; it is the one deliberate exception to the side-stripe ban below.
 - **Do** use the Surface Hierarchy (`canvas`/`surface`/`raised`/`overlay`) for background
@@ -467,7 +477,17 @@ item, toggle, selectable card/row, link): default / hover / active / focus-visib
   JSON) in the UI face — the Two-Face Rule has no exceptions in either direction.
 - **Don't** expand the 6-color Agent Identity Palette or the 5-color Status palette — R1's
   dense-fixture stress test validated the current breadth as sufficient; add semantic meaning
-  via the documented `good`/`warn`/`critical` aliases, never a new hue.
+  via the documented `good`/`warn`/`critical` aliases, never a new hue. (F1.1 exception, and
+  the only one: each Status hue now has a paired `*-text` token — `status-running-text`
+  `#7aa2f7`, `status-completed-text` `#22c55e`, `status-failed-text` `#fa8484`,
+  `status-pending-text` `#a9a9b3`, `status-warning-text` `#fbbf24`. These are **not new
+  hues** — each is its own Status hue lightened until it clears 4.5:1, and no new colour
+  meaning is introduced. They exist because the Status palette is tuned as fills, where WCAG
+  asks 3:1, while a badge's *glyph* is text and needs 4.5:1: measured in the browser on
+  populated screens, every Status hue failed as text — Running 2.28, Skipped 2.34, Pending
+  2.37, Failed 2.55, Completed 3.28, Warning 4.49. Use `*-text` for anything set on `color`;
+  use the original hue for every fill, border, edge stroke and node accent, which are
+  unchanged. Same remedy, and same reasoning, as F1's `text-muted`.)
 - **Don't** reconstruct span parent/child hierarchy from timestamps or visual proximity —
   it must always be driven by the actual `spanId`/`parentSpanId` data, mirroring the backend's
   own architectural rule (ADR-011).

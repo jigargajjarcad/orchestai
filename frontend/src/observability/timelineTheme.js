@@ -46,6 +46,21 @@ export const statusColors = {
   Skipped: sharedColors.overlay0,
 }
 
+// F1.1 — the same statuses as TEXT. `statusColors` above is tuned for fills,
+// edge strokes and selection rings (3:1 territory); as text every entry
+// measured below WCAG 1.4.3 AA's 4.5:1 in the browser — the StatusPill glyph
+// on its own 15% tint read 2.60–3.86, and DetailPanel's "Error · category"
+// label read 3.18 on the plain card. Use this map wherever a status colour is
+// applied to `color`; keep `statusColors` for everything that is painted.
+// See theme/tokens.js for the derivation and the measured worst cases.
+export const statusTextColors = {
+  Pending: sharedColors.statusPendingText,
+  Running: sharedColors.statusRunningText,
+  Completed: sharedColors.statusCompletedText,
+  Failed: sharedColors.statusFailedText,
+  Skipped: sharedColors.subtext0,
+}
+
 // Tool-call spans use the existing mauve "tool" identity color regardless of
 // which agent dispatched them (matches ObservabilityPage.jsx's SpanRow:
 // `span.spanType === 'ToolCall' ? colors.agentMauve : ...`).

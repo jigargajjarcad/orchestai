@@ -66,6 +66,33 @@ export const colors = {
   // Matching dark-red banner background for inline error messages.
   errorBg: '#2d1b1b',
 
+  // F1.1 — the status palette as TEXT.
+  //
+  // The five status hues above are tuned as fills, borders and accents, where
+  // WCAG asks for 3:1 against the adjacent surface. As TEXT they need 4.5:1
+  // (1.4.3 AA) and every one of them missed it once a populated screen was
+  // measured in the browser: the badge text sits on its own hue at 20% over a
+  // dark surface, which lifts the background toward the foreground. Measured
+  // worst case per hue, before this change — Running 2.28, Skipped 2.34,
+  // Pending 2.37, Failed 2.55, Completed 3.28, Warning 4.49. All below 4.5.
+  //
+  // Same remedy as F1's `textMuted`: a NEW token tier rather than a value
+  // change, because the originals are also used for fills/borders/graph edges
+  // that are not text and are not failing. Only the glyph brightens; every
+  // badge fill, border and node accent renders exactly as before.
+  //
+  // Each value is the same hue, lightened until it clears 4.5:1 against every
+  // background it can land on (the hue at 20% and 15% alpha over each of the
+  // four surface tiers, plus each tier plain). Verified worst cases: Running
+  // 4.68, Completed 4.75, Failed 5.10, Pending 4.91, Warning 5.78,
+  // Skipped 5.13. Skipped reuses `subtext0` rather than inventing a sixth
+  // neutral — it is already the app's muted-text neutral at the right value.
+  statusRunningText: '#7aa2f7',
+  statusCompletedText: '#22c55e',
+  statusFailedText: '#fa8484',
+  statusPendingText: '#a9a9b3',
+  statusWarningText: '#fbbf24',
+
   // Surface ramp upper rungs (raised/overlay) — back the `surface.raised`/
   // `surface.overlay` tokens below and mirror DESIGN.md/design.json's
   // `surface-raised`/`surface-overlay` colorMeta entries.
@@ -360,31 +387,43 @@ export const statusBadgeAlphaSuffix = {
   border: '8c', // 55% alpha
 }
 
+// F1.1 — `accent` is new, and is the hue this badge is BUILT from: the value
+// `background`/`border` are derived from, and the value `text` used to be.
+// StatusBadge composes its border from the palette's text colour, so without
+// splitting the two, brightening the glyph to reach 4.5:1 would have lightened
+// every badge border with it. `accent` keeps the border (and any other
+// hue-derived treatment) rendering exactly as before, while `text` moves to
+// the AA-safe tier. `accent` always equals the pre-F1.1 `text` value.
 export const statusBadgeColors = {
   running: {
     background: `${colors.statusRunning}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.statusRunning}${statusBadgeAlphaSuffix.border}`,
-    text: colors.statusRunning,
+    accent: colors.statusRunning,
+    text: colors.statusRunningText,
   },
   completed: {
     background: `${colors.statusCompleted}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.statusCompleted}${statusBadgeAlphaSuffix.border}`,
-    text: colors.statusCompleted,
+    accent: colors.statusCompleted,
+    text: colors.statusCompletedText,
   },
   failed: {
     background: `${colors.statusFailed}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.statusFailed}${statusBadgeAlphaSuffix.border}`,
-    text: colors.statusFailed,
+    accent: colors.statusFailed,
+    text: colors.statusFailedText,
   },
   pending: {
     background: `${colors.statusPending}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.statusPending}${statusBadgeAlphaSuffix.border}`,
-    text: colors.statusPending,
+    accent: colors.statusPending,
+    text: colors.statusPendingText,
   },
   warning: {
     background: `${colors.statusWarning}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.statusWarning}${statusBadgeAlphaSuffix.border}`,
-    text: colors.statusWarning,
+    accent: colors.statusWarning,
+    text: colors.statusWarningText,
   },
   // 'Skipped' isn't part of DESIGN.md's Status palette (it's a Two-Palette-Rule
   // exception the running app already makes: ObservabilityPage.jsx's
@@ -394,7 +433,10 @@ export const statusBadgeColors = {
   skipped: {
     background: `${colors.overlay0}${statusBadgeAlphaSuffix.background}`,
     border: `${colors.overlay0}${statusBadgeAlphaSuffix.border}`,
-    text: colors.overlay0,
+    accent: colors.overlay0,
+    // overlay0 reads at 2.34:1 as text on its own tint; subtext0 is the app's
+    // existing muted-text neutral and clears the bar at 5.13:1.
+    text: colors.subtext0,
   },
 }
 

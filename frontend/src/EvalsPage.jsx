@@ -47,6 +47,31 @@ const selectStyle = {
   fontFamily: dataFontFamily,
 }
 
+// F1.1 — a section heading that renders exactly like the <Label> it replaced.
+//
+// Every section caption on this page ("Eval Suites", "Pass/Fail Summary",
+// "Regression vs. Baseline", ...) was a <Label>, i.e. a <span>: styled as a
+// heading but marked up as nothing. Measured consequence: the heading inventory
+// for Suites, Run, Results and Post-Hoc was a single <h1> — the view title — so
+// heading navigation found nothing to move to on any of them.
+//
+// Mirrors ObservabilityPage's identical helper and App.jsx's existing pattern:
+// `font: 'inherit'` means the <h2> adds semantics only and the Label inside
+// still supplies every pixel. Rendering is unchanged.
+//
+// NOTE — deliberately NOT applied to the FIELD captions on this page
+// ("Subject version", "Baseline run", "From", "To", "Agent type", "Max traces",
+// "Rubric"). Those are form labels, not section headings; making them headings
+// would be wrong. They need `useId` + `htmlFor` instead, which is F1.1 finding
+// M2 and out of this milestone's fix scope.
+function SectionHeading({ children }) {
+  return (
+    <h2 style={{ margin: 0, font: 'inherit', letterSpacing: 'inherit' }}>
+      <Label style={{ fontWeight: 400 }}>{children}</Label>
+    </h2>
+  )
+}
+
 function SubNav({ subView, setSubView }) {
   const tabs = [['suites', 'Suites'], ['run', 'Run'], ['results', 'Results'], ['posthoc', 'Post-Hoc']]
   return (
@@ -74,7 +99,7 @@ export function SuitesView({ suites, error, selectedSuiteId, onSelect }) {
   return (
     <Panel>
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>Eval Suites</Label>
+        <SectionHeading>Eval Suites</SectionHeading>
       </div>
       {/* P2-M6.3 — announce the RESOLVED load state to screen readers. Scoped
           deliberately to the success case: the loading state is already a live
@@ -188,7 +213,7 @@ export function RunView({ suites, selectedSuiteId, onRunTriggered }) {
   return (
     <Panel>
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>Trigger a run — {suite?.name}</Label>
+        <SectionHeading>Trigger a run — {suite?.name}</SectionHeading>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div>
@@ -320,7 +345,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
       {results && (
         <Panel>
           <div style={{ marginBottom: 8 }}>
-            <Label style={{ fontWeight: 400 }}>Pass/Fail Summary</Label>
+            <SectionHeading>Pass/Fail Summary</SectionHeading>
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, fontFamily: uiFontFamily }}>
             <span style={{ fontFamily: dataFontFamily }}>{passCount} / {results.results.length}</span> passed
@@ -356,7 +381,7 @@ function ResultsView({ suites, selectedSuiteId, selectedRunId, onSelectRun }) {
       {regression && (
         <Panel>
           <div style={{ marginBottom: 8 }}>
-            <Label style={{ fontWeight: 400 }}>Regression vs. Baseline</Label>
+            <SectionHeading>Regression vs. Baseline</SectionHeading>
           </div>
           <div style={{ fontSize: 13, color: colors.text, marginBottom: 10, fontFamily: uiFontFamily }}>
             Pass rate <span style={{ fontFamily: dataFontFamily }}>{(regression.currentPassRate * 100).toFixed(0)}%</span> vs baseline{' '}
@@ -459,7 +484,7 @@ export function PostHocView() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Panel>
         <div style={{ marginBottom: 8 }}>
-          <Label style={{ fontWeight: 400 }}>Score historical traces — judge-only, no re-execution</Label>
+          <SectionHeading>Score historical traces — judge-only, no re-execution</SectionHeading>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
@@ -537,7 +562,7 @@ export function PostHocView() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ marginBottom: 8 }}>
               {/* "Run" is a UI-face label; the run id is data → data face (Two-Face Rule). */}
-              <Label style={{ fontWeight: 400 }}>Run <span style={{ fontFamily: dataFontFamily }}>{runId.slice(0, 8)}…</span></Label>
+              <SectionHeading>Run <span style={{ fontFamily: dataFontFamily }}>{runId.slice(0, 8)}…</span></SectionHeading>
             </div>
             <Button
               variant="primary"

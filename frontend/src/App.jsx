@@ -373,11 +373,16 @@ const reviewMarkdownComponents = {
   // react-markdown v10 no longer passes an `inline` flag to `code`, so detect a
   // fenced block via its language class / multiline content instead. Inline
   // backticks must stay inline `<code>` — never emit a <pre> inside a <p>.
+  //
+  // F1.1 — `color`/`background` are set explicitly. See the Final Result
+  // renderer below for the full reasoning; in short, index.css's bare `code`
+  // rule inherits colours that flip with the visitor's OS colour scheme, which
+  // rendered inline code at 1.60:1 on a light-scheme machine.
   code: ({ className, children }) => {
     const isBlock = /language-/.test(className || '') || String(children).includes('\n')
     return isBlock
-      ? <code style={{ fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
-      : <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
+      ? <code style={{ fontSize: 11, fontFamily: dataFontFamily, color: colors.text, background: 'transparent' }}>{children}</code>
+      : <code style={{ background: colors.surface0, color: colors.text, borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: dataFontFamily }}>{children}</code>
   },
 }
 
@@ -663,6 +668,12 @@ export default function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    // F1.1 — the real re-entry guard. The submit button now reports its
+    // unavailability with `aria-disabled` rather than the `disabled` attribute
+    // (so it keeps focus while a run is in flight — see the Button below), and
+    // an aria-disabled control is still clickable and still triggers implicit
+    // form submission on Enter. Enforcement therefore has to live here.
+    if (submitting || isActive) return
     setError(null)
     setSubmitting(true)
     setAgents({})
@@ -1019,10 +1030,17 @@ export default function App() {
                 aria-label="Require human approval before agents run"
               />
             </div>
+            {/* F1.1 — `ariaDisabled`, not `disabled`. This control disables
+                itself the instant it is activated, and the `disabled` attribute
+                would take focus with it: measured BUTTON -> BODY on Enter, with
+                no recovery, stranding a keyboard user at the top of the
+                document at the start of every run. Same appearance, same state
+                exposed to assistive tech, focus preserved. handleSubmit above
+                carries the re-entry guard. */}
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting || isActive}
+              ariaDisabled={submitting || isActive}
               style={{ ...(submitting || isActive ? {} : { color: colors.base }), transition: 'background 0.15s' }}
             >
               {isActive ? '⏳ Running…' : 'Run Agents'}
@@ -1119,12 +1137,29 @@ export default function App() {
                       // reviewMarkdownComponents). Inline backticks stay inline
                       // <code>; the block wrapper is the separate `pre` handler,
                       // so no <pre> is ever emitted inside a <p>.
+                      //
+                      // F1.1 — `color` and `background` are now set explicitly,
+                      // and that is a real bug fix, not decoration. index.css
+                      // styles bare `code` with `color: var(--text-h)` and
+                      // `background: var(--code-bg)`; both variables are
+                      // redefined inside `@media (prefers-color-scheme: dark)`.
+                      // This application's chrome is hard-coded dark (#root sets
+                      // #cdd6f4, App.css sets body #11111b) and follows the
+                      // system scheme nowhere else — but these two leftover
+                      // variables did. So on a LIGHT-scheme OS, the majority
+                      // default, the inline branch below rendered #08060d text
+                      // on its own #313244 background: 1.60:1, measured, versus
+                      // WCAG 1.4.3 AA's 4.5:1. Effectively invisible, and agent
+                      // output is full of backticked tool and field names. The
+                      // block branch inherited a #f4f3ec plate inside a mantle
+                      // <pre> for the same reason. Setting both explicitly makes
+                      // the rendering independent of the visitor's OS theme.
                       pre: ({ children }) => <pre style={{ background: colors.mantle, borderRadius: 6, padding: '12px 16px', overflow: 'auto' }}>{children}</pre>,
                       code: ({ className, children }) => {
                         const isBlock = /language-/.test(className || '') || String(children).includes('\n')
                         return isBlock
-                          ? <code style={{ fontSize: 12, fontFamily: dataFontFamily }}>{children}</code>
-                          : <code style={{ background: colors.surface0, borderRadius: 3, padding: '1px 5px', fontSize: 12, fontFamily: dataFontFamily }}>{children}</code>
+                          ? <code style={{ fontSize: 12, fontFamily: dataFontFamily, color: colors.text, background: 'transparent' }}>{children}</code>
+                          : <code style={{ background: colors.surface0, color: colors.text, borderRadius: 3, padding: '1px 5px', fontSize: 12, fontFamily: dataFontFamily }}>{children}</code>
                       },
                       a: ({ href, children }) => <a href={href} style={{ color: colors.traceBlue }} target="_blank" rel="noreferrer">{children}</a>,
                       p: ({ children }) => <p style={{ margin: '0 0 12px' }}>{children}</p>,

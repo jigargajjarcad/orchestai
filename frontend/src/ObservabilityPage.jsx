@@ -57,12 +57,15 @@ const AGENT_COLORS = {
   Browser: colors.agentPeach,
 }
 
+// F1.1 — this map is only ever applied to `color` (SpanRow's status text), so
+// it takes the AA-safe status TEXT tier rather than the fill hues. The fill
+// hues read 2.7–3.9:1 as text, short of WCAG 1.4.3 AA's 4.5:1.
 const STATUS_COLORS = {
-  Pending: colors.statusPending,
-  Running: colors.statusRunning,
-  Completed: colors.statusCompleted,
-  Failed: colors.statusFailed,
-  Skipped: colors.overlay0,
+  Pending: colors.statusPendingText,
+  Running: colors.statusRunningText,
+  Completed: colors.statusCompletedText,
+  Failed: colors.statusFailedText,
+  Skipped: colors.subtext0,
 }
 
 function todayIso() {
@@ -100,6 +103,28 @@ const selectStyle = {
   background: colors.mantle,
   color: colors.text,
   fontSize: 12,
+}
+
+// F1.1 — a section heading that renders exactly like the <Label> it replaced.
+//
+// Every "section caption" on this page was a <Label>, i.e. a <span>: styled as
+// a heading (uppercase, letter-spaced, muted, sitting directly above the block
+// it introduces) but marked up as nothing. Measured consequence: the heading
+// inventory for Timeline, Cost Dashboard, Error Rates, Summary and Compare was
+// a single <h1> — the view title — so heading navigation, the primary way
+// screen-reader users move around a page, found nothing to move to.
+//
+// `font: 'inherit'` + `letterSpacing: 'inherit'` is the pattern App.jsx already
+// uses for Memories' "Agent Memories" and the Playground's "Agent Executions":
+// the <h2>/<h3> contributes semantics only, and the Label inside keeps supplying
+// every pixel. Rendering is unchanged.
+function SectionHeading({ children, level = 2 }) {
+  const Tag = `h${level}`
+  return (
+    <Tag style={{ margin: 0, font: 'inherit', letterSpacing: 'inherit' }}>
+      <Label style={{ fontWeight: 400 }}>{children}</Label>
+    </Tag>
+  )
 }
 
 function SubNav({ subView, setSubView }) {
@@ -474,7 +499,19 @@ function TimelineView({ tasks, initialTaskId = null }) {
                     onNodeClick={handleNodeClick}
                     fitView
                     nodesFocusable
-                    edgesFocusable
+                    // F1.1 — edges are deliberately NOT focusable. They were,
+                    // and it failed WCAG 2.4.7: React Flow's own stylesheet
+                    // sets `outline: none` on a focused edge and the override
+                    // in timelineFocus.css only covers nodes, so every other
+                    // tab stop had no visible focus indicator at all. The
+                    // announcement there was "Edge from s1 to s2" — a raw span
+                    // id, naming a target with no activation behaviour. On a
+                    // 23-node trace that is ~22 invisible, inert stops.
+                    // Nothing is lost by removing them: the relationship an
+                    // edge represents is already in each node's own ariaLabel
+                    // ("Child of X, running alongside Y"), stated in words, on
+                    // the stop that actually opens the detail panel.
+                    edgesFocusable={false}
                     minZoom={0.2}
                   >
                     <Background variant={BackgroundVariant.Dots} gap={16} size={1} color={timelineSurface.panelBorder} />
@@ -564,7 +601,7 @@ function SummaryView({ tasks }) {
 
           <div style={{ borderTop: `1px solid ${colors.surface0}`, paddingTop: 14 }}>
             <div style={{ marginBottom: 8 }}>
-              <Label style={{ fontWeight: 400 }}>Agents Involved</Label>
+              <SectionHeading>Agents Involved</SectionHeading>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
               {data.agentsInvolved.map(a => (
@@ -575,7 +612,7 @@ function SummaryView({ tasks }) {
               ))}
             </div>
             <div style={{ marginBottom: 8 }}>
-              <Label style={{ fontWeight: 400 }}>Providers / Models</Label>
+              <SectionHeading>Providers / Models</SectionHeading>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {data.providersAndModels.map(m => (
@@ -691,14 +728,14 @@ function DashboardView() {
 
           <Panel style={{ marginBottom: 20 }}>
             <div style={{ marginBottom: 8 }}>
-              <Label style={{ fontWeight: 400 }}>Cost Over Time</Label>
+              <SectionHeading>Cost Over Time</SectionHeading>
             </div>
             <BarChart entries={data.breakdown} keyFn={b => b.date} valueFn={b => b.costUsd} label="Cost over time" />
           </Panel>
 
           <Panel>
             <div style={{ marginBottom: 8 }}>
-              <Label style={{ fontWeight: 400 }}>Breakdown by Agent / Model</Label>
+              <SectionHeading>Breakdown by Agent / Model</SectionHeading>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', ...srOnlyAnchor, fontSize: 12, fontFamily: uiFontFamily }}>
@@ -744,7 +781,7 @@ function ErrorRateTable({ title, rows, nameKey }) {
   return (
     <Panel>
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>{title}</Label>
+        <SectionHeading>{title}</SectionHeading>
       </div>
       {rows.length === 0 ? (
         <StateText tone="muted" style={{ fontSize: 12 }}>No data in this range.</StateText>
@@ -834,7 +871,11 @@ function ComparisonSide({ side }) {
   }
   return (
     <Panel style={{ flex: '1 1 320px' }}>
-      <div style={{ fontSize: 13, color: colors.text, fontWeight: 700, marginBottom: 4 }}>{side.userPrompt}</div>
+      {/* F1.1 — the task prompt IS this panel's heading; it was a bold div.
+          Two ComparisonSides render side by side, so without it both panes'
+          "Final Result"/"Agent Executions" headings would be indistinguishable
+          in a heading list. `font: inherit` keeps the existing type exactly. */}
+      <h2 style={{ margin: '0 0 4px', font: 'inherit', letterSpacing: 'inherit', fontSize: 13, color: colors.text, fontWeight: 700 }}>{side.userPrompt}</h2>
       <StatusBadge status={side.status} borderAlphaSuffix="60" style={{ padding: '1px 8px', fontSize: 10, letterSpacing: 'normal' }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '14px 0' }}>
@@ -845,7 +886,7 @@ function ComparisonSide({ side }) {
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>Final Result</Label>
+        <SectionHeading level={3}>Final Result</SectionHeading>
       </div>
       <div style={{
         background: colors.mantle, borderRadius: 6, padding: '10px 12px', fontSize: 12, color: colors.subtext0,
@@ -855,7 +896,7 @@ function ComparisonSide({ side }) {
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <Label style={{ fontWeight: 400 }}>Agent Executions</Label>
+        <SectionHeading level={3}>Agent Executions</SectionHeading>
       </div>
       {side.executions.map((e, i) => (
         <div key={i} style={{ borderLeft: `3px solid ${AGENT_COLORS[e.agentType] ?? colors.surface2}`, padding: '4px 10px', marginBottom: 6 }}>
